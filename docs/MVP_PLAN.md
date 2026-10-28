@@ -1,9 +1,14 @@
 # Geometric ARt - MVP Plan (4 people, 4-week hard cap, parallel from Day 1)
 
-Sources: `AR_Geometric_Pattern_Studio_Proposal-1.pdf` (sketches p3-6), `docs/PROPOSAL_SUMMARY.md`, page renders `/tmp/pdfpages/h03..h06.png` (re-checked directly).
-Status: working document. **Timeline: 3 weeks target + week 4 buffer/polish/user test = 4 weeks hard cap.** Day 0 (2 hours) locks section 2.
+Sources: [proposal PDF](../AR_Geometric_Pattern_Studio_Proposal-1.pdf) (sketches p3-6) and [PROPOSAL_SUMMARY.md](PROPOSAL_SUMMARY.md). Sketches were visually rechecked against the supplied PDF on October 28, 2026; temporary render paths are not project dependencies.
 
-Conventions: **A / B / C / D** = the four people (A = AR + rendering + build, B = engine, C = UI + Scale tool, D = input + lesson + save/load + Rotate/Erase/Duplicate tools). "Sketch" = the proposal PDF. Fidelity levels used throughout: **F** = fully working, **M** = visible and minimally working, **S** = visible stub (drawn exactly, behaviour deferred). `D-xx` = assumption/decision not in the sketches (section 6.2).
+**Status:** proposed implementation plan. At reviewed commit `5691ec4`, the repo has the PDF and documentation only: no Unity project, packages, code, scenes, or tests. Names and paths below describe work to create, not existing capabilities. No Unity Editor/MCP, runtime, build, or device validation was performed in this documentation review.
+
+**Scope clarification:** hand tracking is optional (user, October 28, 2026); touch/mouse is the baseline. Other scope reductions below are proposed choices and should not be described as meeting every original proposal feature.
+
+**Timeline:** 3 weeks target + week 4 buffer/polish/user test = a proposed 4-week cap, not a verified course deadline. [P2.md](P2.md) controls the October 28-November 3 checkpoint and pulls a smaller real integration forward. Day 0 is a two-hour kickoff target; it cannot guarantee completion of all contracts/mocks.
+
+Conventions: **A / B / C / D** = the four people (A = AR + rendering + build, B = engine, C = UI + Scale tool, D = input + lesson + save/load + Rotate/Erase/Duplicate tools). "Sketch" = the proposal PDF. Fidelity levels used throughout: **F** = planned fully working, **M** = planned minimally working, **S** = visible disabled stub (behaviour deferred). These are acceptance levels, not current implementation status. `D-xx` = assumption/decision not in the sketches (section 6.2).
 
 ---
 
@@ -11,13 +16,13 @@ Conventions: **A / B / C / D** = the four people (A = AR + rendering + build, B 
 
 ### 1.1 MVP in one paragraph
 
-An iPhone-only Unity (AR Foundation/ARKit) app where the user scans a table, places **one anchored square art board**, and draws with **on-screen touch and the sketched quick menubar** (Place Snap Point, click, Line between Snap points, Undo, Redo, Tools), uses the **Tools 3x3 grid**, organizes content with the **layer widget**, sets the cell count with the **"2x2" pill**, and follows **one guided Eight-Pointed Star lesson** that produces the sketch-3 figure and ends with the sketch-4 2x2 tiling. Every element drawn on pages 3-6 is visible in the UI. Input is **Screen only (touch + buttons)**; the "Hand Gestures / Screen" toggle from sketch 1 is drawn but disabled, with Hand Gestures greyed out and Screen the only active mode (D-02). Target: >= 30 FPS on a physical iPhone, one 2-minute measurement.
+An iPhone-only Unity (AR Foundation/ARKit) app where the user scans a table, places **one anchored square art board**, and draws with **on-screen touch and the sketched quick menubar** (Place Snap Point, click, Line between Snap points, Undo, Redo, Tools), uses the **Tools 3x3 grid**, organizes content with the **layer widget**, sets the cell count with the **"2x2" pill**, and follows **one guided Eight-Pointed Star lesson** that produces the sketch-3 figure and ends with the sketch-4 2x2 tiling. Every element drawn on pages 3-6 is visible in the UI. Input is **Screen only (touch + buttons)**; the "Hand Gestures / Screen" toggle from sketch 1 is drawn but disabled, with Hand Gestures greyed out and Screen the only active mode (D-02). Target: median >= 30 FPS on a physical iPhone during a documented 2-minute measurement; no result is claimed.
 
 ### 1.2 What is cut or reduced, and why
 
 | Cut / reduced | Why | Visible in UI? |
 |---|---|---|
-| **Hand Gestures input mode**: not part of the MVP; the toggle is drawn and disabled (D-02) | Scope for a 4-week build; touch and buttons cover every command | Yes: toggle visible, Hand Gestures greyed out |
+| **Hand Gestures input mode**: optional, deferred from the touch-first MVP; the toggle is disabled (D-02) | User-confirmed optional feature; touch and buttons cover every command | Yes: toggle visible, Hand Gestures greyed out |
 | Rotate: tap rotates the selection by +45 degrees (no drag) | Cheap, still demonstrates the tool | Yes (M) |
 | Erase: tap a shape or snap point to delete it (no drag-erase) | Cheap | Yes (M) |
 | Duplicate: tap copies the selection to the next free cell, snapped. "Fill grid" and linked repeat cut | Sketch 4 only needs copy + Select/Move + snap | Yes (M) |
@@ -30,7 +35,11 @@ An iPhone-only Unity (AR Foundation/ARKit) app where the user scans a table, pla
 | Save/load: single slot JSON (Save and Load in Settings). Autosave, named designs, schema migration cut | Needed only for "save/reload" in the demo | Settings only |
 | Telemetry/CSV logger, PlayMode tests, CI: cut. Replaced by an FPS overlay, a smoke checklist, and a paper observer sheet | Overhead | Settings: "Show FPS" |
 | Lesson: text coach card with step validation; no ghost overlays, no "Show me" | Overlays cost a day for small value | Coach card only during lesson (D-18) |
-| Radial 4/8 helper, connectors, six-fold lesson, export/share, linked "source cell updates copies" | Not in required list / stretch / out of scope | No |
+| Linked source-cell repetition and enlarged editable cell | Explicit reduction from the proposal: independent manual duplicates do not propagate edits; revisit final scope after P2 | No |
+| Radial 4/8 helper | Described in the proposal's Free Design activity; deferred by this plan, not originally a stretch goal | No |
+| Optional star connectors | Described in the proposal; this plan instead fits the star's cardinal tips to cell boundaries, requiring its own geometry validation | No |
+| Six-fold lesson, trimming, interlacing, more recipes, standalone Mac editor | Explicit proposal stretch goals | No |
+| Export/share | Not specified in the proposal | No |
 | Evaluation: informal 3 users in week 4 (observer sheet + FPS overlay) | Time | n/a |
 
 Full engine behaviour kept: Line (click-click and drag), Circle, snapping, undo/redo (all commands), layers (add/delete bottom/hide/select), grid pill 1x1..4x4, Select/Move with snap-while-drag, dotted/solid line toggle, palette + width in Settings.
@@ -38,15 +47,15 @@ Full engine behaviour kept: Line (click-click and drag), Circle, snapping, undo/
 ### 1.3 Interaction model (the one definition everybody codes against)
 
 * There is a **cursor** in board space. In **Screen** mode the cursor is the last touch position on the board; touch down/move/up on the board are pointer Down/Move/Up with no finger offset (D-03). The six buttons act at the cursor.
-* **Place Snap Point**: adds a persistent snap point at the (snapped) cursor on the active layer. If the cursor is on an existing snap point or a faint candidate (circle-division, cell point), that point is promoted/re-selected as "latest".
-* **click** (double-ring button, "click" drawn inside in sketch 1): commits the active tool's action at the cursor (pointer Down+Up). With Line: click, move, click draws a line; dragging also draws one.
-* **Line b/w Snap points**: draws a line between the latest and previous snap point (skips if it exists). **Double tap** toggles solid/dotted for new lines (sketch 3); the glyph shows the current style. Re-selecting an existing point as "latest" lets users close the squares of the lesson (D-23).
+* **Place Snap Point**: the session command adds a point at a valid cursor or re-selects an existing candidate as "latest". For touch UI, the dot button arms a point-placement mode: cancel the current preview, temporarily suppress the drawing tool, and use the next valid board tap to set the cursor and invoke the command. Consume that tap so it cannot also draw a shape; restore the previous tool afterward. Reject button actions without a valid cursor. Promotion creates a user point only when needed, on the active layer.
+* **click** (double-ring button, "click" drawn inside in sketch 1): supplies one synthetic click at a valid cursor. Line/Circle must distinguish click-click from a drag using a documented movement threshold; a drag commits once on release and clears pending click state. UI touches never also enter the drawing path. P2 starts with drag-to-draw and may leave this button disabled until the combined state machine is tested.
+* **Line b/w Snap points**: draws a line between the latest and previous snap point (skips if it exists). **Double tap** toggles solid/dotted for new lines (sketch 3); delay single-tap dispatch until the double-tap window closes, so toggling does not also create a line. The glyph shows the current style. Re-selecting an existing point as "latest" lets users close the squares of the lesson (D-23).
 * **Tools** enters Tools mode (sketches 2/4): the bottom area becomes the Tools panel; header, layer widget, pill, toggle, and 6 buttons are hidden as drawn. Tapping a tool selects it and keeps the panel open; tapping the "Tools" title bar returns to the quick menubar (D-05). Undo/Redo are reachable only from the quick menubar, as drawn.
 * **Snap** cell toggles magnetic snapping on/off (default on) (D-06).
 
 ### 1.4 Sketch fidelity checklist
 
-Rule: every row is a must-have; any UI element not listed here must be in section 6.2 and may appear only where named there (Settings sheet, Stamps popover, lesson coach card, placement coach text, toasts). Layout reference for C (fractions of screen height, from sketches 1/2/4): header 0-7%; AR view behind everything; quick menubar zone bottom ~35% (toggle row ~70%, two rows of circle buttons ~77-96%); layer widget on the left edge and "2x2" pill on the right edge just above the toggle row (~62-66%); Tools panel bottom ~30-35% (title bar + 3x3 grid).
+Rule: these are full-MVP target rows; P2 uses its own smaller acceptance list and disables unfinished controls. For the full MVP, any UI element not listed here must be in section 6.2 and may appear only where named there (Settings sheet, Stamps popover, lesson coach card, placement coach text, toasts). Layout reference for C (fractions of screen height, from sketches 1/2/4): header 0-7%; AR view behind everything; quick menubar zone bottom ~35% (toggle row ~70%, two rows of circle buttons ~77-96%); layer widget on the left edge and "2x2" pill on the right edge just above the toggle row (~62-66%); Tools panel bottom ~30-35% (title bar + 3x3 grid).
 
 **Sketch 1 - Home screen (p3)** "User opens the application and mounts the board, sees the quick menubar"
 
@@ -81,10 +90,10 @@ Rule: every row is a must-have; any UI element not listed here must be in sectio
 | ID | Drawn element | Level | Owner | Task / acceptance |
 |---|---|---|---|---|
 | S3-01 | Board with corner dots, dashed diagonals/diameters, center dot, circle, 8 dots, two solid squares (8-pointed star) | F | D (lesson), B (geometry/snap), A (render) | D-3, B-5, A-3. Following lesson steps 1-5 yields this figure; golden test vs `GoldenBoards.StarOnFullBoard`. Board corners = derived snap candidates. |
-| S3-02 | Layer bar with 3 segments labelled "8 pointed Star made w squares" / "Circle" / "Dotted lines" (top to bottom), "+" above, "-" below | F | C (widget), D (lesson creates layers) | C-3, D-3. "-" twice reveals the star. |
+| S3-02 | Layer bar with 3 segments labelled "8 pointed Star made w squares" / "Circle" / "Dotted lines" (top to bottom), "+" above, "-" below | F | C (widget), D (lesson creates layers) | C-3, D-3. Hide the two guide layers to reveal the star non-destructively; "-" deletes bottom layers and remains undoable. |
 | S3-03 | "Double tap to switch to dotted line" | F | C, B | C-2, B-2, A-3. |
 | S3-04 | "Undo" / "Redo" captions over the arrows | F | C | C-2. |
-| S3-05 | 2x2 pill and Hand/Screen row; label "Hand" here vs "Hand Gestures" in sketch 1 | F | C | Use "Hand Gestures" (sketch 1 canonical). |
+| S3-05 | 2x2 pill and Hand/Screen row; label "Hand" here vs "Hand Gestures" in sketch 1 | F pill, S Hand mode | C | Use "Hand Gestures" (sketch 1 canonical). |
 | S3-06 | Header not drawn in this sketch | - | C | Header always shown in quick-menubar mode (D-13). |
 
 **Sketch 4 - Scaling & tiling (p6)** "User switches to tools mode, scales and tiles the pattern on a 2*2 grid using duplicate, select and then dragging the shape. Snap points are essential to snap the tiles into place."
@@ -102,8 +111,8 @@ Rule: every row is a must-have; any UI element not listed here must be in sectio
 
 ### 2.1 Principles
 
-1. **Pure C# core.** Geometry, snapping, commands, tools, serialization live in `noEngineReferences` assemblies, runnable in EditMode on any machine without AR.
-2. **Board space:** origin bottom-left as seen by the user, +x right, +y up, board = [0,1] x [0,1], N x N cells, cell side = 1/N. Doubles.
+1. **Pure C# core.** Contracts and Core use `noEngineReferences`; geometry, snapping, commands, and tools contain no Unity types. Persistence DTO conversion should remain independent of AR, while Unity filesystem/platform adapters live outside Core. MonoBehaviour installers, including the engine host, belong in a Unity-aware adapter/App assembly. Run EditMode tests through test assemblies on a machine with the pinned Unity Editor; a standalone .NET test project is not yet provided.
+2. **Board space:** origin at the bottom-left chosen at placement, +x right and +y toward the board top in that fixed frame (not redefined when the camera moves), board = [0,1] x [0,1], N x N cells, cell side = 1/N. Doubles.
 3. **One writer:** the board is mutated only by `ICommand`s executed through the engine. Others call `IEditorSession` or read.
 4. **Four seams only** (everything else is internal to a module): `IEditorSession` (engine <-> UI/input/lesson/render), `IBoardSpace` (AR <-> input/render), `ILessonController`, `IDesignIO`. Tool authors additionally use `IToolHost`/`IDrawingTool`/`ICommand`.
 5. **Consumer owns the mock; producer owns the real thing.**
@@ -142,13 +151,15 @@ ProjectSettings/ Packages/ [A]
 docs/
 ```
 
-A pins Unity 6 LTS (or 2022.3 LTS) + AR Foundation + Apple ARKit XR Plugin + URP with AR Background Renderer Feature + TextMeshPro + Newtonsoft Json + Test Framework **before Day 0** (see 2.9) and nobody changes render pipeline later.
+A chooses and records one exact supported Unity Editor version, compatible AR Foundation/Apple ARKit XR Plugin versions, URP, UI/text and input packages, and Test Framework before implementation. Commit the manifest/lock file and ProjectVersion; do not mix instructions for Unity 6 and 2022.3. Configure the actual iOS renderer with AR Background Renderer Feature and enable the ARKit provider. Newtonsoft Json is needed when persistence is implemented, not to unblock P2. P2 section 4.1 links the official setup guidance; avoid pipeline/package upgrades during recording.
 
 ### 2.3 Wiring
 
-Each module prefab carries an `Installer` MonoBehaviour (`[DefaultExecutionOrder(-100)]`) registering its service in `ServiceHub` in `Awake`; consumers resolve in `Start`. `Main.unity` (A) and `Flat.unity` (C) only instantiate the prefabs `EngineHost` (B), `BoardRoot` (A), `UIRoot` (C), `InputRoot` (D), `LessonHost` (D). Sandboxes instantiate their own real prefab plus mocks.
+Each module prefab carries an `Installer` MonoBehaviour (`[DefaultExecutionOrder(-100)]`) registering its service in `ServiceHub` in `Awake`; consumers resolve in `Start`. `Main.unity` (A) and `Flat.unity` (C) only instantiate the prefabs `EngineHost` (B), `BoardRoot` (A), `UIRoot` (C), `InputRoot` (D), `LessonHost` (D). Sandboxes instantiate their own real prefab plus mocks. Equal execution-order numbers do not order installers relative to one another: register in Awake without resolving another installer there, resolve only after all required registrations, and reject duplicates. Clear static services on session teardown/subsystem initialization, unsubscribe listeners on disable, and test with domain reload disabled. Production scenes contain exactly one real provider for each required service; optional P2 services may be absent behind disabled UI.
 
-### 2.4 Contract code (Day 0 deliverable; namespace `GeoART.Contracts`)
+### 2.4 Contract design sketch (namespace `GeoART.Contracts`)
+
+**This is abbreviated pseudocode, not compilable source.** It omits constructors for readonly values, equality/hash implementations, concrete `Kind`/`Clone` overrides, `Similarity2.Apply`, service methods, and the tool-discovery attribute. Implement and compile a small subset first (P2 section 4.2). Complete `IEquatable<T>`/`GetHashCode` consistently for IDs used as collection keys, supply valid style defaults, and deep-copy mutable shapes in commands. `Board` is mutable for the engine; the facade's read-only convention must be enforced by consumers. The real command policy restores model state, including ID allocation as defined by the snapshot, and clears redo after a new edit.
 
 ```csharp
 // ---------- Math / Model ----------
@@ -248,7 +259,7 @@ public interface IBoardSpace {
     bool IsPlaced { get; }
     void PlaceAtReticle(); void Reset();                      // Reset = "Re-place board" (Settings)
     bool TryScreenToBoard(Vec2 screenPx, out Vec2 board);     // screen px as Vec2 keeps Contracts engine-free
-    double PxToBoardUnits(double px);                         // snap radius / hit tolerance
+    bool TryBoardToScreen(Vec2 board, out Vec2 screenPx);     // perspective-aware snap/hit distances
 }
 
 // ---------- Lesson (D) ----------
@@ -266,9 +277,13 @@ public static class ServiceHub { public static void Register<T>(T s); public sta
 public static class Palette { public static readonly RgbaColor[] Default = null; /* 6 colours, D-08 */ }
 ```
 
-### 2.5 Fixtures (Day 0, hand-coded, small)
+### 2.5 Fixtures (planned, hand-coded, small)
 
-`Contracts/Fixtures/GoldenBoards.cs`: `Empty()`, `StarOnFullBoard()` (circle at (0.5,0.5) r=0.35, 8 snap points, dotted diameters, two solid squares; sketch 3), `Tiled2x2()` (four scaled stars, circle radius 0.25 per cell, diamond tips on cell-edge midpoints; sketch 4). A renders them on Day 1, D round-trips them, B uses them in golden tests, C uses them in mocks.
+`Contracts/Fixtures/GoldenBoards.cs` supplies `Empty()`, `StarOnFullBoard()`, and `Tiled2x2()`. The full-board fixture has center `(0.5,0.5)`, radius `0.35`, eight points at angles `k*pi/4`, dotted horizontal/vertical circle diameters and both board-corner diagonals, and squares joining alternate point indices. It is a rendering/test fixture, not proof that the lesson works.
+
+For `Tiled2x2`, cell side is `0.5` **board units**, and each star has radius `0.25` **board units** (half a cell side), centered at `(0.25,0.25)`, `(0.75,0.25)`, `(0.25,0.75)`, `(0.75,0.75)`. Cardinal tips then reach matching edge midpoints. Fit the source star by `0.25/0.35 = 5/7`, not by blindly scaling by one half. General fit uses `cellSide / max(selectionWidth, selectionHeight)` on geometry bounds, then translates the fitted center to the cell center. Stroke thickness is a rendering concern; seam tests compare control points. If guides were hidden, select only the eight artwork lines for duplication.
+
+A renders fixtures, B tests geometry/seams, C uses them in mocks, and D later tests persistence. Keep an empty-board route for interactive demonstrations.
 
 ### 2.6 Who uses what before the real thing exists
 
@@ -278,11 +293,11 @@ public static class Palette { public static readonly RgbaColor[] Default = null;
 | C (UI) | `IEditorSession`, `ILessonController`, `IBoardSpace`, `IDesignIO` | `MockEditorSession` (flips state, records calls) + small mocks (C) | B, D, A |
 | D (touch, lesson) | `IBoardSpace`, `IEditorSession` | `FlatBoardSpace` (A, Day 0) + `LoggingEditorSession`; from W1 Wed real `EditorSession` classes | A, B |
 | D/C (tools) | `IToolHost` | `FakeToolHost` in `Mocks/ForInput` (D; C copies) | B `EditorSession` implements it |
-| B | `PxToBoardUnits` | constant | A |
+| B | Board-to-screen projection for snap/hit distances | deterministic flat projection | A |
 
 ### 2.7 Contract rules
 
-Frozen at end of Day 0 (tag `contracts-v0`). Afterwards additive only, via PR labelled `contract`, approved by one person per consuming module, announced in chat. Renames/removals only at an integration checkpoint. No logic in Contracts beyond trivial struct helpers and `ServiceHub`.
+Freeze the **compiled, reviewed subset** at the kickoff gate (generic tag `contracts-v0`; P2 uses `p2-contracts`). Do not freeze unimplemented pseudocode. Afterwards additive changes are preferred, via PR labelled `contract`, approved by one person per consuming module, announced in chat. Renames/removals only at an integration checkpoint. No logic in Contracts beyond trivial struct helpers and `ServiceHub`.
 
 ### 2.8 Test seams
 
@@ -290,13 +305,13 @@ B: EditMode tests only. A: `Sandbox_A_Flat` (Editor, ortho) and `Sandbox_A_AR` (
 
 ### 2.9 Day 0 kickoff (together, ~2 hours)
 
-Pre-Day-0 homework (A, evening before, 1 hour): create the Unity project with pinned version/packages/URP, folder skeleton, asmdefs, `.gitignore`, `.gitattributes`, push; everyone clones and opens it before the call.
+Pre-Day-0 homework (A; time-box the first attempt, allow for installation/signing delays): create the Unity project with pinned version/packages/URP, folder skeleton, asmdefs, `.gitignore`, `.gitattributes`, push; everyone clones and opens it before the call.
 
 | Time | Activity | Output |
 |---|---|---|
 | 0:00-0:10 | Confirm the cuts (1.2) and `D-xx` decisions (6.2) | Signed off |
-| 0:10-1:10 | Write `Contracts` from 2.4 (B+D: model/tools/persistence; A+C: session/board/input/lesson), cross-review, compile | `GeoART.Contracts` compiles |
-| 1:10-1:45 | Mocks + fixtures: `StubEditorSession`, `FlatBoardSpace`, `MockEditorSession` skeleton, `GoldenBoards`; five empty prefab shells with Installers; empty `Main`, `Flat`, four sandbox scenes | Tag `contracts-v0`; sandboxes Play |
+| 0:10-1:10 | Implement a minimal subset of 2.4 (B+D: model/tools; A+C: session/board/input), cross-review; defer lesson/persistence contracts if needed | Compiled subset and explicit remaining work |
+| 1:10-1:45 | Prioritize one working Flat scene with minimal fixtures/mocks; queue remaining prefab shells and sandboxes | Record compilation and first Play result; tag only a compiling subset |
 | 1:45-2:00 | Agree sync times (Wed + Fri), PR rules, who has Mac/iPhone, Apple provisioning plan | Task lists in section 3 |
 
 Hardware: iOS builds need macOS + Xcode + a physical iPhone. A needs it from day 1; D needs a device for the QA smoke runs; B and C work Editor-only on any OS.
@@ -315,16 +330,16 @@ Task IDs are referenced from the fidelity tables. Days: W1 Mon = day 1.
 | # | Task | When | Acceptance |
 |---|---|---|---|
 | A-0 | Project, packages, URP, `FlatBoardSpace` (Day 0) | pre-Day-0 / Day 0 | everyone opens it |
-| A-1 | **Signed "hello AR" build on iPhone**; env-var Team ID; build menu item; one-page `docs/BUILD_IOS.md` | W1 Mon-Tue | any teammate with a Mac builds from `main`. Free profiles expire in 7 days: weekly re-sign reminder |
+| A-1 | **Signed "hello AR" build on iPhone**; env-var Team ID; build menu item; one-page `docs/BUILD_IOS.md` | W1 Mon-Tue | a teammate with the documented toolchain and authorized signing setup can build from `main`; inspect the actual Personal Team profile expiry (seven days from issuance), rebuild/reinstall as needed; see P2 section 4.1 |
 | A-2 | Plane detection (horizontal), reticle, coach states, tap-to-place board with outer frame + dashed dividers, `Reset` | W1 Wed-Thu | S1-03, S1-13, S2-04; board stays put when the camera moves |
-| A-3 | `BoardView` renders `GoldenBoards` in `Sandbox_A_Flat` and on device (batched meshes per layer, dotted dashes, circles as polylines, polygons, snap dots, widths) + `ARBoardSpace.TryScreenToBoard/PxToBoardUnits` | W1 Thu-Fri | S3-01, S3-03, S4-01 render; **M1 device build shows placed board with golden star** |
+| A-3 | `BoardView` renders `GoldenBoards` in `Sandbox_A_Flat` and on device (batched meshes per layer, dotted dashes, circles as polylines, polygons, snap dots, widths) + `ARBoardSpace.TryScreenToBoard/TryBoardToScreen` | W1 Thu-Fri | S3-01, S3-03, S4-01 render; **M1 device build shows placed board with golden star** |
 | A-4 | `BoardView` driven by real session: preview ghosts, candidates (faint), user dots, selection highlight, grid dividers follow `GridN` | W2 Mon-Tue | live drawing visible in Flat (Int 3) |
 | A-5 | `Main.unity` composes prefabs; touch on device works through `ARBoardSpace`; tracking-lost state (`PlacementState.TrackingLost`) | W2 Wed-Fri | **M2 device build: real engine on AR board** |
 | A-6 | Performance: dirty-mesh rebuild on `BoardChanged`, FPS overlay, 2-minute median run on 2x2 star + stress board, fix hot spots | W3 Mon-Wed | median >= 30 FPS (one run recorded) |
 | A-7 | RC device build, signing refresh, final build | W3 Thu - W4 | builds per integration tag |
 
 **Isolated testing:** `Sandbox_A_Flat` (ortho + `FlatBoardSpace` + `StubEditorSession` + golden boards) and `Sandbox_A_AR` (device). No B/C/D code.
-**Done when:** S1-03, S1-13, S2-04, S3-01/03/04 and S4-01 rendering pass; 2-minute median >= 30 FPS; anchored board survives a 3-surface walkthrough; signed build reproducible from `main`.
+**Done when:** S1-03, S1-13, S2-04, S3-01/03 and S4-01 rendering pass; 2-minute median >= 30 FPS; anchored board survives a 3-surface walkthrough; signed build reproducible from `main`.
 
 ### 3.2 B - Core engine (plain C#)
 
@@ -336,7 +351,7 @@ Task IDs are referenced from the fidelity tables. Days: W1 Mon = day 1.
 | B-1 | Geometry helpers (distance, bounds, `Similarity2` per shape kind, regular polygon vertices, circle-division points); `CommandStack` + commands (Add/Remove shape, Transform, Add/Remove snap point, Add/Remove/Move layer, Visibility, SetGrid, Clear); `ToolRegistry` | W1 Mon-Tue | random do/undo sequence returns the original board |
 | B-2 | `SnapService` (user points, endpoints, centers, circle divisions N=8, cell corners/edge-midpoints/centers, visible layers only); `EditorSession`; Line + Circle tools (click-click and drag, minimum length/radius, Cancel leaves model unchanged); PlaceSnapPoint, ClickAtCursor, LineBetweenSnapPoints, ToggleDottedLine, Undo/Redo | W1 Wed-Fri | S1-07..11, S3-03; **usable `EditorSession` ready for Int 3 (W2 Wed) - earlier if possible** |
 | B-3 | Layers (add on top, select, move, hide, `DeleteBottomLayer` incl. snap points, keep >= 1), `SetGrid` 1..4 | W1 Fri-W2 Mon | S1-04, S1-05 |
-| B-4 | Select/Move (hit-test via `PxToBoardUnits`, drag snaps selection key points to other candidates, excludes self) | W2 Mon-Wed | S2-02, S4-03 snap-while-drag lands tiles exactly |
+| B-4 | Select/Move (screen-projected hit distances; tap toggles shape membership, tap empty clears, drag a selected shape moves the group without toggling membership; drag snaps selection key points to other candidates, excludes self) | W2 Mon-Wed | S2-02, S4-03; user can select all eight star lines, transform the group, and snap tile placement; geometry tests verify exact targets |
 | B-5 | Golden tests: scripted pointer events build `StarOnFullBoard`; Scale-fit + Duplicate + Select/Move builds `Tiled2x2` with seam error < 1e-5 x cell; `FitToCell`/bounds helper for C and D tools; lesson predicates | W2 Thu-Fri | S3-01, S4-03 |
 | B-6 | Review C/D tools, bug burn, engine cap (300 shapes + toast), P1: line/circle intersection snaps | W3 Mon-Wed | no Unity types in Core |
 | B-7 | Pair-debug C's Scale tool and D's lesson validators against engine behaviour; device bug fixes; final regression | W3 Wed - W4 | no open engine bugs at M3 |
@@ -361,7 +376,7 @@ Task IDs are referenced from the fidelity tables. Days: W1 Mon = day 1.
 | C-8 | Device fit (safe area, hit targets >= 44 pt), polish, fidelity screenshots for every row in 1.4 | W3 Wed - W4 | all UI rows verified |
 
 **Isolated testing:** `Sandbox_C_UI` + `MockEditorSession` (flips tool/layer/undo state; every button clickable in the Editor). EditMode tests for widget logic. No B/A/D code.
-**Done when:** every UI row in 1.4 verified by screenshot; `GeoART.UI` never references `GeoART.Core`; Scale handles Cancel and undo.
+**Done when:** layout rows in 1.4 verified by screenshots and working controls verified by interaction checks; `GeoART.UI` never references `GeoART.Core`; Scale handles Cancel and undo.
 
 ### 3.4 D - Touch input, lesson, save/load, simple tools, QA
 
@@ -377,14 +392,16 @@ Task IDs are referenced from the fidelity tables. Days: W1 Mon = day 1.
 | D-5 | Single-slot JSON `IDesignIO` (Newtonsoft DTO with shape discriminator, doubles round-trip); Save/Load hooks into Settings | W3 Tue-Wed | save, relaunch, place new board, Load reproduces design; EditMode round-trip of golden boards |
 | D-6 | Observer sheet (`docs/OBSERVER_SHEET.md`), demo script, lead the informal 3-user sessions in week 4 | W3 Thu - W4 | 3 sessions recorded; demo rehearsed |
 
-**Lesson steps** (board center (0.5,0.5), guide circle radius ~0.35; coach text with hint, Next always allowed):
+**Lesson steps** (board center (0.5,0.5), guide circle radius ~0.35; coach text with hint). Next may allow a deliberate skip, but keep skipped/unvalidated steps distinct from successful completion; do not mark the lesson complete solely because the user clicked Next. Identify and cite the exact Met teaching example before claiming the lesson is adapted from it. Proposed steps:
+
 1. Circle on the board-center snap point, radius ~0.35 (layer `Circle`).
 2. Place Snap Point on the eight equally spaced circle points (faint candidates shown).
-3. Dotted vertical/horizontal diameters (double-tap line button; layer `Dotted lines`).
+3. Dotted vertical/horizontal circle diameters and both board-corner diagonals (double-tap line button; layer `Dotted lines`) to match the sketch-3 fixture.
 4. Join alternate points with Line b/w Snap points -> square 1 (layer `8 pointed Star made w squares`).
 5. Join the remaining four points -> square 2 rotated 45 degrees.
-6. Hide guides: "-" twice (deletes `Dotted lines`, then `Circle`) -> star revealed.
-7. Tile (sketch 4): Tools -> Scale to cell size (snap-fit) -> Duplicate -> Select/Move and snap into the 4 cells; the card shows the seam error.
+6. Hide `Dotted lines` and `Circle` using layer visibility -> star revealed without deleting construction data. The separate "-" action deletes bottom layers and must be undoable; it is not a hide operation.
+7. Tile (sketch 4): select all eight artwork lines -> Scale-fit -> move to a cell center -> Duplicate into the other cells. See 2.5 for fit geometry. The card may show computed model-space seam error only after implementing that check; it does not measure physical AR drift. Duplicates are independent, and later edits do not propagate.
+
 Lesson start creates the three layers (bottom to top: `Dotted lines`, `Circle`, `8 pointed Star made w squares`) with `GridN = 2`.
 
 **Isolated testing:** `Sandbox_D_Input` (Editor, `FlatBoardSpace`, `LoggingEditorSession`); EditMode for tools/lesson/persistence.
@@ -392,13 +409,15 @@ Lesson start creates the three layers (bottom to top: `Dotted lines`, `Circle`, 
 
 ### 3.5 Load balance
 
-Approximate: A 25% (heavy W1-W2, light W3), B 23% (heavy W1-W2, then review/bug burn), C 27% (UI is the big visible deliverable; Scale added), D 25% (touch is small; absorbs Stamps, Rotate/Erase/Duplicate, lesson, save/load, QA, user sessions). If someone is idle in W3, they take the nearest item from Section 4.4's spillover list rather than inventing new features.
+Planning estimates only: A and B are heavy on setup/integration, C on UI/Scale, and D on input/tools/lesson/persistence/QA. There is no measured basis for percentage allocations or assuming touch input is small. For P2, assign video editing explicitly and cut D's optional tools if needed. Later, available teammates take the highest-priority open bug or deferred item from section 1.2 after coordination; section 4.4 is a timeline, not a spillover list.
 
 ---
 
 ## 4. Timeline and integration
 
-### 4.1 Milestones (mapped to the proposal's three)
+### 4.1 Proposed milestones (adapted from the proposal's three)
+
+These relative weeks are the broader MVP sequence. P2 overrides their timing for a minimal Line/Circle/history path on the phone. The original proposal also mentioned a hand marker/gestures; the user has since confirmed those are optional. M2's manual tiling is a reduced interpretation, not delivery of linked repeats.
 
 | Milestone | End of | Proposal milestone | Acceptance |
 |---|---|---|---|
@@ -459,7 +478,7 @@ W4 Thu-Fri      | final build                  | final QA smoke                 
 Contracts (Day 0) -> everyone starts in parallel against mocks.
 A BoardView needs only Board + GoldenBoards.      C UI needs only the IEditorSession mock.
 D touch needs IBoardSpace (FlatBoardSpace).       B needs nothing.
-Soft dependencies: D lesson wants B's real session (W1 Wed onward); C Scale + D tools want B's FitToCell/bounds helper (B-1/B-5, otherwise local code).
+Soft dependencies: D lesson uses mocks until B's real session is usable; C Scale + D tools want B's FitToCell/bounds helper (B-1/B-5, otherwise local code).
 First hard sync: Int 3 (B session + C UI + D touch + A BoardView). Second: Int 4 (A ARBoardSpace on device).
 ```
 
@@ -474,7 +493,7 @@ Same rules as for a normal Unity team, tightened for a 4-week sprint.
 * **Repo setup (A, pre-Day-0):** Force Text serialization, Visible Meta Files; Unity `.gitignore` (Library, Temp, Obj, Logs, UserSettings, Builds, `*.csproj`, `*.sln`, `xcuserdata`, generated Xcode project, `Assets/Editor/Local/`); **Git LFS** for `*.png *.jpg *.psd *.fbx *.wav *.mp3 *.mp4 *.ttf *.otf *.a *.dylib *.bundle *.exr`; **UnityYAMLMerge** driver in `.gitattributes` (`*.unity *.prefab *.asset *.mat merge=unityyamlmerge eol=lf`) with the per-machine git config in `docs/GIT_SETUP.md`; `.editorconfig`; `CODEOWNERS`; PR template.
 * **Ownership (what prevents conflicts):** folders and files are exclusively owned (section 2.2); only A edits `Main.unity`, only C edits `Flat.unity`; sandboxes are private; everything shared is a small additive prefab owned by one person (nested prefabs for UI: `QuickMenubar`, `ToolsPanel`, `LayerWidget`, `SettingsSheet`, `CoachCard`); `ProjectSettings`/`Packages` only via A; nobody edits another person's `.asmdef`; tools are added as new files that self-register (no shared registry file).
 * **Branching (timeline-sensitive):** trunk-based, branches `feat/<area>-<topic>` live <= 1 day and merge to `main` at least daily; rebase every morning; squash merge; messages `area: summary`. `main` must always open in Unity, pass EditMode tests, and play `Flat.unity`. Tags `contracts-v0`, `int-1`..`int-7`, `m1`, `m2`, `m3`, `final`; A builds a device build for every `int` tag.
-* **Review:** 1 approval (not the author) within 2 hours; PRs touching another owner's folder need that owner; `contract` PRs need one approver per consuming module. PRs < ~300 lines. During crunch (W3), reviews may be post-merge for the owner's own folders (still announced in chat). No CI licence assumed: `./tools/check.sh` runs `Unity -batchmode -runTests -testPlatform EditMode` before pushing to `main`.
+* **Review:** 1 approval (not the author) within 2 hours; PRs touching another owner's folder need that owner; `contract` PRs need one approver per consuming module. PRs < ~300 lines. During crunch (W3), reviews may be post-merge for the owner's own folders (still announced in chat). No CI licence assumed. `tools/check.sh` is a planned helper, not an existing command: until implemented, run EditMode tests through Unity Test Runner and retain results. A future batch runner must use the pinned Editor, project path, test-results/log paths, and report failures correctly.
 * **Naming:** namespaces `GeoART.<Module>`; `PascalCase` types; `IThing`; `_camelCase` privates; `XxxTool`, `XxxCommand`, `XxxInstaller`, `MockXxx`; scenes `Sandbox_<Letter>_<Topic>.unity`; sprites `ui_<screen>_<name>.png`; coordinate variables end `...Board`, `...Px`, `...World`.
 
 ---
@@ -486,7 +505,7 @@ Same rules as for a normal Unity team, tightened for a 4-week sprint.
 | Risk | L / I | Mitigation |
 |---|---|---|
 | Schedule: only 3 weeks of real work | High / High | Aggressive cuts (1.2); all behaviour behind mocks so nobody waits; week 4 is buffer; scope freeze at M3; spillover list = polish only |
-| Signing/provisioning (7-day free profile, Xcode problems) | Med / High | A-1 first thing in W1; weekly re-sign reminder; Team ID via env var; documented path |
+| Signing/provisioning (7-day free profile, Xcode problems) | Med / High | A-1 first thing in W1; weekly re-sign reminder; record actual profile expiry; Team ID via local config; documented path |
 | Only some teammates have a Mac/iPhone | Med / High | A and D own device work; B and C Editor-only; A builds each `int` tag |
 | **B critical path** (Int 3 needs a working session) | Med / High | Others run on mocks; B ships Line + Circle + undo first; tools self-register so later ones do not block; C and D carry the Scale, Stamps, Rotate, Erase and Duplicate tools |
 | AR drift/tracking loss | Med / Med | ARAnchor, `TrackingLost` state cancels unfinished shapes, "Re-place board", textured-surface guidance; test on 3 surfaces |
@@ -495,7 +514,7 @@ Same rules as for a normal Unity team, tightened for a 4-week sprint.
 | Contract churn | Med / High | Fewer, simpler interfaces; freeze after Day 0; additive-only; review by consumers |
 | Sketch/prose ambiguity (tiling, "click", Settings) | High / Med | Decisions D-xx; fidelity checklist with F/M/S levels; Day 0 sign-off |
 | Scale tool slips (needed for sketch 4) | Med / Med | Fallback: tap = fit-to-cell; C-5 starts W2 Tue with a day of slack |
-| Save/load and lesson validators eat the buffer | Med / Med | Single-slot save; validators lenient (Next always allowed) |
+| Save/load and lesson validators eat the buffer | Med / Med | Single-slot save; explicit skip allowed without claiming successful completion |
 
 ### 6.2 Assumptions and decisions (not in the sketches, or interpretations)
 
@@ -504,34 +523,41 @@ Sketched elements are never altered by these.
 | ID | Topic | Decision |
 |---|---|---|
 | D-01 | Settings sheet | One sheet: palette (6 swatches), width (Thin/Medium/Thick), Start lesson, Save, Load, Clear (confirm), Re-place board, Show FPS. No other new screens. |
-| D-02 | Hand Gestures / Screen toggle | Drawn exactly as in sketch 1 (labels "Hand Gestures" and "Screen", pill toggle) but non-functional: "Hand Gestures" is greyed out/disabled, the knob rests on the Screen side, and Screen is the only active mode. Taps on the toggle do nothing. All input is touch plus the on-screen buttons. |
-| D-03 | Screen-mode input | Touch on board = pointer events, cursor = last touch; buttons act at the cursor; no finger offset. |
+| D-02 | Hand Gestures / Screen toggle | Based on sketch 1 (labels "Hand Gestures" and "Screen", pill toggle) but non-functional: "Hand Gestures" is greyed out/disabled, the knob rests on the Screen side, and Screen is the only active mode. Taps on the toggle do nothing. All input is touch plus the on-screen buttons. |
+| D-03 | Screen-mode input | Touch normally sends pointer events with no finger offset; point-placement mode consumes the next valid tap without drawing (1.3). Cursor-dependent commands require a valid cursor. UI gestures are excluded; interruptions cancel. |
 | D-04 | Board | 40 cm square drawing area with a thin outer frame (sketch 1 shows an outer and inner quad), dashed dividers per cell. |
 | D-05 | Tools mode | Replaces header/layers/pill/toggle/buttons (sketches 2/4); tap tool = select and stay; tap "Tools" title bar = back; Undo/Redo only in quick menubar. |
 | D-06 | "Snap" cell | Toggles magnetic snapping (default on). |
-| D-07 | Grid | N x N, N in 1..4, default 2; pill cycles on tap. |
+| D-07 | Grid | N x N, N in 1..4, default 2; pill cycles on tap. Changes dividers/candidates only; does not move, scale, or duplicate existing geometry. |
 | D-08 | Palette | 6 swatches: black, white, red, orange, blue, green; default black, Medium; sketch-4 heavy strokes = Thick. |
 | D-09 | Wall vs table | Table only; sketch's "wall" annotation is not implemented (cut). |
 | D-10 | Layer widget | Segments bottom-to-top; tap = active; double-tap = show/hide; "+" adds top layer; "-" deletes the bottom layer with content and snap points (undoable, min 1 layer); Arrange = long-press a segment moves it up one slot (wraps). |
 | D-11 | Stamps options | Triangle, Square, Hexagon; current palette color and width; default size. |
-| D-12 | Sketch 2 diagonal strip | The real table edge; not UI. |
+| D-12 | Sketch 2 diagonal strip | Interpreted as the real table edge, not UI; the sketch does not establish its meaning. |
 | D-13 | Header | Shown in quick-menubar mode; sketch 3 omits it, not read as intentional. |
-| D-14 | Duplicate | Tap copies the selection to the next free cell (snapped), one undo step; subsequent moves use Select/Move + snap (sketch 4). Fill grid cut. |
+| D-14 | Duplicate | Copies the selected artwork group with fresh IDs into the next available cell in a documented row-major order, translated center-to-center, one undo step. Reject empty/oversize selections and a full grid with a hint; define occupancy by visible artwork bounds overlapping a cell interior, excluding hidden construction guides. Does not rescale automatically or link copies. Subsequent moves use Select/Move + snap. |
 | D-15 | Save/reload | Single slot in Settings; Load always rebuilds the design on the currently placed board (prompt to place if none). |
 | D-16 | Cap | 300 shapes; toast beyond that. |
-| D-17 | Connectors | Not built. Seams in the guided star come from Scale-fit + snap so diamond tips land on cell-edge midpoints (visible in sketch 4). |
+| D-17 | Connectors | Deferred. This plan tests a fitted star with cardinal tips on cell-edge midpoints (2.5); this changes the proposal's optional connector method. Only the constrained fixture/validated construction may claim matching model-space seams, not arbitrary free designs or AR tracking. |
 | D-18 | Lesson UI | Text coach card at the top of the view only while the lesson runs, started from Settings. Builds the sketch-3 figure on the full board, then step 7 tiles to sketch 4. No ghost overlays. Free Design = no lesson. |
 | D-19 | Time frame | 3-week target + 1-week buffer, 4-week hard cap; milestones at end of W1, W2, W3. |
-| D-20 | "click" vs double ring | One button; commits the active tool; Circle is chosen from the Tools grid. |
+| D-20 | "click" vs double ring | One synthetic click at a valid cursor (1.3), not an unconditional commit; Circle is chosen from Tools. P2 can disable it until tested. |
 | D-21 | Placement UX | Scanning coach text, reticle on detected plane, tap places; no confirm; Settings > Re-place board. |
 | D-22 | Rotate | Tap = +45 degrees about the selection centroid. Scale: drag, uniform, snap-fit to cell side when Snap is on (fallback tap = fit-to-cell). Erase: tap only. |
 | D-23 | Line b/w Snap points | Joins latest and previous snap point; placing on an existing point re-selects it as latest (needed to close squares). |
 | D-24 | Radial 4/8 helper | Out of MVP. |
 | D-25 | Export/share, onboarding | Not in MVP. |
-| D-26 | Evaluation | Informal: 3 users in week 4, observer sheet (completion, time, problems) + FPS overlay; proposal targets (seam 1e-5 x cell, 30 FPS) reported as measured, not guaranteed. |
+| D-26 | Evaluation | Planned 3 users in week 4 (within the proposal's 3-5), observer sheet plus measured frame times. Report completion, time, tracking loss, and 8/10 placement/drag trials; false hand gestures are not applicable without hand input. Report measured two-minute median FPS and model-space seam error; targets are not results. |
 
 ---
 
-## 7. Verification note
+## 7. Documentation review and remaining decisions
 
-Checked against `PROPOSAL_SUMMARY.md` and the sketch renders: all four sketches mapped in 1.4 with every drawn element present in the UI (F/M/S level stated); required-feature list covered or explicitly reduced in 1.2 (one board, stamps/lines/circles, palette + width in Settings, touch input, snapping, layers/guide lines, guided lesson, undo, save/reload; bounded grid repetition reduced to the pill + Duplicate + snap tiling, "fill grid" cut); proposal milestones mapped in 4.1; stretch/out-of-scope kept out; input is touch/screen only and the Hand Gestures / Screen toggle is drawn disabled (D-02).
+Reviewed October 28, 2026 against the complete proposal text, its four rendered sketches, all three docs, and repository contents at `5691ec4`. This is a static documentation review, not evidence of a compiled or tested Unity app.
+
+- The board-space geometry, separate input/AR adapter, undoable commands, one-board scope, and four workstreams fit the project.
+- Hand tracking is optional by user clarification; touch-first delivery is appropriate.
+- Linked source-cell repetition and its enlarged editor, radial assistance, intersection snapping, and connector-based joins are reduced or deferred. They must be identified as deviations from the proposal rather than incorrectly classified together as stretch goals. Confirm the intended final repetition behavior after P2.
+- Fixture geometry, incomplete contract examples, guide visibility, perspective snap distances, group selection, and lesson validation have been clarified in this plan. Implementations still need tests and device validation.
+- Attribute-based tool discovery needs iOS linker preservation and a device test, or explicit registration. See [Unity managed code stripping](https://docs.unity3d.com/6000.0/Documentation/Manual/managed-code-stripping.html).
+- Exact Unity/package versions, team role assignments, device availability, official checkpoint requirements, and the precise Met lesson reference remain to be recorded. [P2.md](P2.md) provides the immediate build, integration, test, and video gates.

@@ -1,6 +1,11 @@
 # AR Geometric Pattern Studio - Proposal Summary
 
-Source: `/home/macharradm/MO/GeometricARt/AR_Geometric_Pattern_Studio_Proposal-1.pdf` (9 pages, US Letter, exported from Google Docs).
+Source: [AR_Geometric_Pattern_Studio_Proposal-1.pdf](../AR_Geometric_Pattern_Studio_Proposal-1.pdf) (9 pages, US Letter, exported from Google Docs). The repository copy matches the PDF supplied for the October 28, 2026 review.
+
+**Document role:** historical summary of the proposal, not a claim that its features are implemented or an assignment rubric. The repository at reviewed commit `5691ec4` contains planning documents and the PDF, but no Unity project. See [P2.md](P2.md) for the current checkpoint plan and [MVP_PLAN.md](MVP_PLAN.md) for proposed implementation decisions.
+
+**Later clarification, October 28, 2026:** the user confirmed that **hand tracking is optional**. Touch/mouse is the baseline. The original proposal inconsistently lists pinch input in its required scope while allowing it to be dropped in the description. Preserve that history below, but do not treat hand tracking as a current requirement. Other reductions, including independent duplicates instead of linked repetition, remain implementation-plan decisions rather than statements from the proposal.
+
 Title: "AR Geometric Pattern Studio: Lines, Circles, and Islamic Geometric Art - Project Proposal".
 Team: Abdul Moeed Zahid, Ratul Mahjabin, Joseph Flynn, Luis Gonzalez.
 
@@ -41,7 +46,7 @@ The sketches are hand-drawn pencil/pen photos of phone outlines (portrait iPhone
 
 ## 2. Features / requirements
 
-### 2.1 Stated REQUIRED (MVP) features (verbatim list from Scope)
+### 2.1 Original proposal scope (verbatim; hand input clarified above)
 "one board; stamps, lines, and circles; a small palette and line-width control; pinch plus touch/mouse input; snapping and a separate guide layer; the single guided eight-pointed lesson; square-grid repetition with a bounded row/column count; undo; and save/reload (the design is rebuilt on a newly placed board)."
 
 ### 2.2 STRETCH goals (explicitly "stretch goals only")
@@ -201,19 +206,19 @@ The numbered captions imply the narrative order 1 -> 2 -> 3 -> 4, but the sketch
 - **Stamps**: triangle, square, hexagon (and "has options"). Recolor from a "small palette"; "line-width control".
 - **Radial helper**: 4- or 8-copy.
 - **Transforms (tools)**: select/move, rotate, scale, duplicate, erase.
-- **Symmetry / tiling**: square-grid translation only (no wallpaper groups); radial 4/8 helper; seams guaranteed only for the guided star via connectors (cardinal tips to edge midpoints) with matching boundary positions (tolerance 0.00001 x cell side). Linked center/radius parameter graph for the guided star (changing radius/center rebuilds the construction).
+- **Symmetry / tiling**: square-grid translation only (no wallpaper groups); radial 4/8 helper; seam matching targeted only for the guided star via connectors (cardinal tips to edge midpoints) with matching boundary positions (tolerance 0.00001 x cell side). Linked center/radius parameter graph for the guided star (changing radius/center rebuilds the construction).
 - **Persistence**: save/load the design (rebuilt on a newly placed board). No export/share (image, PDF, AR Quick Look, etc.) is mentioned.
 - **Undo/Redo** (Redo only appears in sketches), delete, clear.
 - **Hand input model**: Vision joints (image-space) -> mapped to board/screen; pinch with hysteresis; cursor "hand marker".
 
 ---
 
-## 6. Open questions / ambiguities
+## 6. Original ambiguities and current clarifications
 
 1. **Settings screen** content is not sketched (gear icon in sketch 1 only). Possibly color palette, line width, mode, save/load - all guesses.
 2. **Where are the palette and line-width controls, save/load, clear, delete?** The required-features list includes palette, line width, and save/reload, but no sketch shows them (maybe under Settings, Stamps options, or Tools). Clear/delete appear only in prose.
 3. **"click" button** (sketch 1 center, row 1) vs the **double-circle icon** (sketch 3 same slot): same button redrawn, or a Circle tool vs a click/select action? Guess: the sketch-1 "click" is the screen-mode equivalent of a pinch; the sketch-3 double circle is the Circle tool. Unresolved.
-4. **Hand Gestures / Screen toggle**: default state and exact semantics unclear (knob drawn on left in both sketches). The PDF prose says hand gestures may be dropped for scope, in which case the toggle might not be needed for MVP.
+4. **Hand Gestures / Screen toggle**: original default state and exact semantics are unclear (knob drawn on left in both sketches). **Resolved scope:** hand tracking is optional, as confirmed by the user on October 28, 2026. The current plan uses touch/mouse and shows Hand disabled; the PDF's required-pinch wording does not override that clarification.
 5. **Sketch 2 viewport**: what the long diagonal double-line strip is (table edge? a drawn line? user's finger/pen?) is unclear. Also whether the board is rotated because the phone is rotated in AR.
 6. **Sketch 2/4 "Has options"** under Stamps is faint pencil; reading is my best interpretation. Also unclear what the options are (triangle/square/hexagon, colors?).
 7. **Tools panel vs quick menubar**: does the Tools panel replace the bottom buttons (as drawn), slide up over them, or toggle? How to exit it (no close/back button drawn; Tools button not visible in sketches 2 and 4).
@@ -228,4 +233,4 @@ The numbered captions imply the narrative order 1 -> 2 -> 3 -> 4, but the sketch
 16. Text legibility: "Can be operated via phone screen (objects added/placed on canvas through phone" and "Specify no of cells on canvas" are handwriting transcriptions; I am confident of them. The "Hand Gestures" label (sketch 1) vs "Hand" (sketch 3) both read clearly.
 
 ## Appendix: references (p7-9, for context only)
-Kaplan 2000 (Computer Generated Islamic Star Patterns, Taprats); Kaplan & Salesin 2004 (Islamic Star Patterns in Absolute Geometry, Najm); Kaplan 2005 (Islamic Star Patterns from Polygons in Contact, Hankin's method); Zhang et al. 2020 (MediaPipe Hands). Stated relevance: separating motif from repeated pattern; construction geometry vs finished artwork (show/hide guides); adjustable geometric values (center, radius, equal points) for a consistent rebuild; connectors at cell boundaries; hand detection then gesture interpretation (pinch = thumb/index relationship). The project uses Apple Vision instead of MediaPipe.
+Kaplan 2000 (Computer Generated Islamic Star Patterns, Taprats); Kaplan & Salesin 2004 (Islamic Star Patterns in Absolute Geometry, Najm); Kaplan 2005 (Islamic Star Patterns from Polygons in Contact, Hankin's method); Zhang et al. 2020 (MediaPipe Hands). Stated relevance: separating motif from repeated pattern; construction geometry vs finished artwork (show/hide guides); adjustable geometric values (center, radius, equal points) for a consistent rebuild; connectors at cell boundaries; hand detection then gesture interpretation (pinch = thumb/index relationship). The proposal selects Apple Vision instead of MediaPipe if the optional hand-input feature is implemented; neither integration exists in the reviewed repository.
