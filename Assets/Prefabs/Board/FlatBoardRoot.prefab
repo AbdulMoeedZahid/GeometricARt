@@ -1,0 +1,105 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1414628405615940249
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 443759404697573440}
+  - component: {fileID: 5704053606583444334}
+  m_Layer: 0
+  m_Name: Board
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &443759404697573440
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1414628405615940249}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 4222587791184035871}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &5704053606583444334
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1414628405615940249}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5dc9401cf140241a19944637bf2ca647, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: GeoART.BoardRender::GeoART.BoardRender.BoardView
+  sideMeters: 0.4
+  material: {fileID: 2100000, guid: d6785f3be715040fdbb23f9eba9b97c6, type: 2}
+  showSnapCandidates: 1
+  sheetColor: {r: 1, g: 1, b: 1, a: 0.32}
+  frameColor: {r: 0.08, g: 0.08, b: 0.1, a: 1}
+  dividerColor: {r: 0.2, g: 0.2, b: 0.25, a: 0.85}
+  snapPointColor: {r: 0.08, g: 0.08, b: 0.1, a: 1}
+  candidateColor: {r: 0.25, g: 0.25, b: 0.3, a: 0.5}
+  previewColor: {r: 1, g: 0.55, b: 0.1, a: 0.9}
+  cursorColor: {r: 1, g: 0.42, b: 0, a: 1}
+  surfaceOutlineColor: {r: 0.1, g: 0.8, b: 1, a: 0.9}
+--- !u!1 &7041599214711851051
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4222587791184035871}
+  - component: {fileID: 7618781456573535442}
+  m_Layer: 0
+  m_Name: FlatBoardRoot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4222587791184035871
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7041599214711851051}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 443759404697573440}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &7618781456573535442
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7041599214711851051}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 29eee60889d2349abbae43cbf63e0476, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: GeoART.Mocks::GeoART.Mocks.FlatBoardSpace
+  viewCamera: {fileID: 0}
+  board: {fileID: 443759404697573440}
+  sideMeters: 0.4

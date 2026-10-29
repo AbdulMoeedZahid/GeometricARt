@@ -1,0 +1,230 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &4795066192140386222
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6946842989594963559}
+  - component: {fileID: 4057791832830413511}
+  m_Layer: 0
+  m_Name: Reticle
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6946842989594963559
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4795066192140386222}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 7754312177490759684}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4057791832830413511
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4795066192140386222}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b4c93c0b413d44199a490bf0006decd8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: GeoART.BoardRender::GeoART.BoardRender.ReticleView
+  sideMeters: 0.4
+  material: {fileID: 2100000, guid: d6785f3be715040fdbb23f9eba9b97c6, type: 2}
+  color: {r: 1, g: 1, b: 1, a: 0.95}
+  fillColor: {r: 1, g: 1, b: 1, a: 0.12}
+--- !u!1 &6536391633028168456
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6363660143529666501}
+  - component: {fileID: 4884695938895559833}
+  m_Layer: 0
+  m_Name: CornerPicker
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6363660143529666501
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6536391633028168456}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 7754312177490759684}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4884695938895559833
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6536391633028168456}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b4ac10de75abd4dd9b3621fda36e18e7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: GeoART.BoardRender::GeoART.BoardRender.CornerPickerView
+  material: {fileID: 2100000, guid: d6785f3be715040fdbb23f9eba9b97c6, type: 2}
+  viewCamera: {fileID: 0}
+  aimColor: {r: 1, g: 1, b: 1, a: 1}
+  cornerColor: {r: 0.1, g: 0.85, b: 1, a: 1}
+  badColor: {r: 1, g: 0.15, b: 0.15, a: 1}
+  fitColor: {r: 0.2, g: 1, b: 0.4, a: 1}
+  boardFillColor: {r: 1, g: 1, b: 1, a: 0.12}
+--- !u!1 &6998566096084965225
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1521601252716567511}
+  - component: {fileID: 1423793921719209929}
+  m_Layer: 0
+  m_Name: Board
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1521601252716567511
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6998566096084965225}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 7754312177490759684}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1423793921719209929
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6998566096084965225}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5dc9401cf140241a19944637bf2ca647, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: GeoART.BoardRender::GeoART.BoardRender.BoardView
+  sideMeters: 0.4
+  material: {fileID: 2100000, guid: d6785f3be715040fdbb23f9eba9b97c6, type: 2}
+  showSnapCandidates: 1
+  sheetColor: {r: 1, g: 1, b: 1, a: 0.32}
+  frameColor: {r: 0.08, g: 0.08, b: 0.1, a: 1}
+  dividerColor: {r: 0.2, g: 0.2, b: 0.25, a: 0.85}
+  snapPointColor: {r: 0.08, g: 0.08, b: 0.1, a: 1}
+  candidateColor: {r: 0.25, g: 0.25, b: 0.3, a: 0.5}
+  previewColor: {r: 1, g: 0.55, b: 0.1, a: 0.9}
+  cursorColor: {r: 1, g: 0.42, b: 0, a: 1}
+  surfaceOutlineColor: {r: 0.1, g: 0.8, b: 1, a: 0.9}
+--- !u!1 &8963451404255204571
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7754312177490759684}
+  - component: {fileID: 4067471168502987235}
+  - component: {fileID: 4115248604165880154}
+  m_Layer: 0
+  m_Name: BoardRoot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7754312177490759684
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8963451404255204571}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1521601252716567511}
+  - {fileID: 6946842989594963559}
+  - {fileID: 6363660143529666501}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4067471168502987235
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8963451404255204571}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0fe199a9afa884b72abfc94811fc61cd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: GeoART.ARBoard::GeoART.ARBoard.ARBoardSpace
+  raycastManager: {fileID: 0}
+  planeManager: {fileID: 0}
+  arCamera: {fileID: 0}
+  xrOrigin: {fileID: 0}
+  boardRoot: {fileID: 1521601252716567511}
+  boardView: {fileID: 1423793921719209929}
+  reticle: {fileID: 6946842989594963559}
+  sideMeters: 0.4
+  liftMeters: 0.002
+  disablePlaneDetectionWhenPlaced: 1
+  registerInServiceHub: 1
+  defaultMode: 1
+  allowVerticalSurfaces: 0
+  cornerView: {fileID: 4884695938895559833}
+--- !u!114 &4115248604165880154
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8963451404255204571}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d4b566cc7de940a593c3583105aa4a0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: GeoART.ARBoard::GeoART.ARBoard.ARPlacementTapHandler

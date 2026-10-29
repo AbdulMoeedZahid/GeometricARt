@@ -1,0 +1,14 @@
+<!-- Keep GeoART assemblies intact under IL2CPP managed code stripping (P2 4.2): tools/services may be found by
+     reflection or only referenced from scenes. ignoreIfMissing lets modules that do not exist yet be listed. -->
+<linker>
+  <assembly fullname="GeoART.Contracts" preserve="all"/>
+  <assembly fullname="GeoART.BoardRender" preserve="all"/>
+  <assembly fullname="GeoART.ARBoard" preserve="all"/>
+  <assembly fullname="GeoART.App" preserve="all"/>
+  <assembly fullname="GeoART.Mocks" preserve="all" ignoreIfMissing="1"/>
+  <assembly fullname="GeoART.Core" preserve="all" ignoreIfMissing="1"/>
+  <assembly fullname="GeoART.UI" preserve="all" ignoreIfMissing="1"/>
+  <assembly fullname="GeoART.Input" preserve="all" ignoreIfMissing="1"/>
+  <assembly fullname="GeoART.Lesson" preserve="all" ignoreIfMissing="1"/>
+  <assembly fullname="GeoART.Persistence" preserve="all" ignoreIfMissing="1"/>
+</linker>

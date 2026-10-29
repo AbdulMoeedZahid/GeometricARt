@@ -1,0 +1,17 @@
+{
+    "name": "GeoART.Mocks",
+    "rootNamespace": "GeoART.Mocks",
+    "references": [
+        "GeoART.Contracts",
+        "GeoART.BoardRender"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

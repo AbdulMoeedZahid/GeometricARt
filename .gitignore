@@ -1,0 +1,52 @@
+# ---- Unity (generated; never commit) ----
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+/Assets/Editor/Local/
+/Assets/Editor/Local.meta
+*.csproj
+*.unityproj
+*.sln
+*.slnx
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+sysinfo.txt
+crashlytics-build.properties
+.vs/
+.vscode/
+.idea/
+.utmp/
+
+# ---- Xcode / iOS output ----
+xcuserdata/
+DerivedData/
+*.xcuserstate
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- tools/mathcheck (dotnet console harness; its project file is source, its outputs are not) ----
+/tools/mathcheck/bin/
+/tools/mathcheck/obj/
+!/tools/mathcheck/MathCheck.csproj

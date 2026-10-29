@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Console harness for the pure corner-fit math (CORNER_PLACEMENT_PLAN 6.3). Runs without the Unity test runner,
+    which hangs over SSH. Outside Assets/, so Unity ignores it. Run with Unity's bundled SDK:
+      Unity.app/Contents/Resources/Scripting/DotNetSdk/dotnet run, project tools/mathcheck, configuration Release
+      (exact command in docs/BOARD_PLACEMENT.md)
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <UseAppHost>false</UseAppHost>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../Assets/GeoART/Contracts/Math/Vec2.cs" />
+    <Compile Include="../../Assets/GeoART/Contracts/Board/ICornerPlacement.cs" />
+    <Compile Include="../../Assets/GeoART/BoardRender/CornerRectFit.cs" />
+  </ItemGroup>
+</Project>
