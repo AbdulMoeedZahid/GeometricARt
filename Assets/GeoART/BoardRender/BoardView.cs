@@ -8,7 +8,7 @@ namespace GeoART.BoardRender
     /// Draws the board and the session's model in the transform's local XZ plane (A-2/A-3/A-4).
     /// Three meshes, one draw call each, rebuilt only when dirty:
     ///   Base    - translucent sheet, outer frame (D-04), dashed cell dividers for GridN (D-07), and the dashed
-    ///             outline of a corner-registered surface when it is larger than the board
+    ///             outline of a corner-registered surface when it is larger than the board (empty when showBase is off)
     ///   Shapes  - committed lines/circles/polygons on visible layers + user snap points  (BoardChanged)
     ///   Overlay - snap candidates, tool preview ghosts, cursor                            (PreviewChanged/StateChanged)
     /// Binds to the IEditorSession in ServiceHub at Start, or explicitly via <see cref="Bind"/>.
@@ -24,6 +24,9 @@ namespace GeoART.BoardRender
         [SerializeField, Tooltip("Material using the GeoART/BoardUnlit shader with vertex colours on.")]
         Material material;
 
+        [SerializeField, Tooltip("Draw the board itself (sheet, frame, grid dividers, registered-surface outline). " +
+                                 "Off in AR: the real surface is the board, only the design is drawn on it.")]
+        bool showBase = true;
         [SerializeField] bool showSnapCandidates = true;
         [SerializeField] Color sheetColor = new Color(1f, 1f, 1f, 0.32f);
         [SerializeField] Color frameColor = new Color(0.08f, 0.08f, 0.1f, 1f);
@@ -185,6 +188,11 @@ namespace GeoART.BoardRender
         {
             var mb = _base.Builder;
             mb.Clear();
+            if (!showBase)
+            {
+                _base.Apply();
+                return;
+            }
             float h = sideMeters * 0.5f;
             Vector3 bl = new Vector3(-h, 0f, -h), br = new Vector3(h, 0f, -h);
             Vector3 tr = new Vector3(h, 0f, h), tl = new Vector3(-h, 0f, h);

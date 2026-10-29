@@ -21,7 +21,7 @@ namespace GeoART.EditorTools
     /// Generates A's materials, prefabs and scenes from code (re-runnable; overwrites only A-owned assets):
     ///   Prefabs/Board/BoardRoot.prefab      ARBoardSpace + tap-to-place + Board (BoardView) + Reticle + CornerPicker
     ///   Prefabs/Board/FlatBoardRoot.prefab  FlatBoardSpace + Board, for Editor scenes (C's Flat.unity)
-    ///   Prefabs/Board/ARPlane.prefab        translucent plane visual
+    ///   Prefabs/Board/ARPlane.prefab        detected plane, no visual (planes are raycast targets only, never drawn)
     ///   Scenes/Main.unity                   startup scene for the iPhone build (DevHud + temporary PlacementControls)
     ///   Scenes/Sandbox/Sandbox_A_AR.unity   Main + star fixture, to check rendering on the device
     ///   Scenes/Sandbox/Sandbox_A_Flat.unity Editor-only board with the star fixture and a perspective camera
@@ -49,9 +49,8 @@ namespace GeoART.EditorTools
             var shader = AssetDatabase.LoadAssetAtPath<Shader>(BoardShaderPath);
             if (shader == null) throw new System.InvalidOperationException($"Missing shader at {BoardShaderPath}");
             var boardMat = SaveMaterial($"{MaterialsDir}/BoardLines.mat", shader, Color.white, true);
-            var planeMat = SaveMaterial($"{MaterialsDir}/PlaneFill.mat", shader, new Color(1f, 1f, 1f, 0.12f), false);   // light, so paper corners stay visible
 
-            var planePrefab = BuildPlanePrefab(planeMat);
+            var planePrefab = BuildPlanePrefab();
             var boardRoot = BuildBoardRootPrefab(boardMat);
             var flatRoot = BuildFlatBoardRootPrefab(boardMat);
 
@@ -88,13 +87,10 @@ namespace GeoART.EditorTools
             return mat;
         }
 
-        static GameObject BuildPlanePrefab(Material planeMat)
+        /// <summary>ARPlane only: no mesh visualizer or renderer, so detected planes are never drawn (no grey halos).</summary>
+        static GameObject BuildPlanePrefab()
         {
-            var go = new GameObject("ARPlane", typeof(ARPlane), typeof(ARPlaneMeshVisualizer), typeof(MeshFilter), typeof(MeshRenderer));
-            var mr = go.GetComponent<MeshRenderer>();
-            mr.sharedMaterial = planeMat;
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            mr.receiveShadows = false;
+            var go = new GameObject("ARPlane", typeof(ARPlane));
             return SavePrefab(go, $"{PrefabsDir}/ARPlane.prefab");
         }
 
@@ -107,6 +103,7 @@ namespace GeoART.EditorTools
             var board = NewChild(root.transform, "Board");
             var view = board.AddComponent<BoardView>();
             SetField(view, "material", boardMat);
+            SetField(view, "showBase", false);   // the registered real surface is the board; draw only the design
 
             var reticle = NewChild(root.transform, "Reticle");
             var reticleView = reticle.AddComponent<ReticleView>();

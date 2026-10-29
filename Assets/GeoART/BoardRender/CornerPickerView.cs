@@ -7,7 +7,7 @@ namespace GeoART.BoardRender
     /// <summary>
     /// Visuals for corner placement (CORNER_PLACEMENT_PLAN 4.5): the aim marker under the screen-centre crosshair, the
     /// picked corners, a rubber band to the aim point and, with 4 corners, the fitted rectangle preview (green outline,
-    /// translucent board square, arrow on the edge that becomes the top) or a red outline if the fit is invalid.
+    /// board square outline, arrow on the edge that becomes the top) or a red outline if the fit is invalid.
     /// The owner calls <see cref="Show"/> every frame while picking and <see cref="Hide"/> otherwise. The mesh is tiny
     /// and rebuilt every visible frame with reused buffers, so there is no GC.
     /// </summary>
@@ -22,7 +22,8 @@ namespace GeoART.BoardRender
         [SerializeField] Color cornerColor = new Color(0.1f, 0.85f, 1f, 1f);
         [SerializeField] Color badColor = new Color(1f, 0.15f, 0.15f, 1f);
         [SerializeField] Color fitColor = new Color(0.2f, 1f, 0.4f, 1f);
-        [SerializeField] Color boardFillColor = new Color(1f, 1f, 1f, 0.12f);
+        [SerializeField, Tooltip("Fill of the board square in the 4-corner preview. Alpha 0 (default) draws outlines only.")]
+        Color boardFillColor = new Color(1f, 1f, 1f, 0f);
 
         const float OutlineWidth = 0.002f, BandWidth = 0.0015f, MarkerWidth = 0.0015f;
         const float CornerRadius = 0.004f, Dash = 0.008f, Gap = 0.006f;
@@ -142,10 +143,10 @@ namespace GeoART.BoardRender
             _poly.Add(L(frame.SurfacePoint(1, 1))); _poly.Add(L(frame.SurfacePoint(0, 1)));
             _mb.AddPolyline(_poly, true, OutlineWidth, fitColor);
 
-            // Board square (largest centred square, D1): translucent fill and frame.
+            // Board square (largest centred square, D1): frame, plus a fill only if boardFillColor has alpha.
             Vector3 b00 = L(frame.BoardPoint(new Vec2(0, 0))), b10 = L(frame.BoardPoint(new Vec2(1, 0)));
             Vector3 b11 = L(frame.BoardPoint(new Vec2(1, 1))), b01 = L(frame.BoardPoint(new Vec2(0, 1)));
-            _mb.AddQuad(b00, b01, b11, b10, boardFillColor);
+            if (boardFillColor.a > 0f) _mb.AddQuad(b00, b01, b11, b10, boardFillColor);
             _poly.Clear();
             _poly.Add(b00); _poly.Add(b10); _poly.Add(b11); _poly.Add(b01);
             _mb.AddPolyline(_poly, true, OutlineWidth, aimColor);

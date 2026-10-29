@@ -46,6 +46,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: GeoART.BoardRender::GeoART.BoardRender.BoardView
   sideMeters: 0.4
   material: {fileID: 2100000, guid: d6785f3be715040fdbb23f9eba9b97c6, type: 2}
+  showBase: 1
   showSnapCandidates: 1
   sheetColor: {r: 1, g: 1, b: 1, a: 0.32}
   frameColor: {r: 0.08, g: 0.08, b: 0.1, a: 1}

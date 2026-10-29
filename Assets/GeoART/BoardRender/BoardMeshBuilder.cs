@@ -47,26 +47,30 @@ namespace GeoART.BoardRender
             AddQuad(a - ext - half, a - ext + half, b + ext + half, b + ext - half, color);
         }
 
+        /// <summary>Upper bound on dashes per segment, so a degenerate pattern can never stall a frame.</summary>
+        public const int MaxDashesPerSegment = 4096;
+
         /// <summary>Dashed ribbon; <paramref name="phase"/> carries the pattern across consecutive segments.</summary>
+        /// <remarks>
+        /// Dash k covers [k * period - offset, k * period - offset + dash] along the segment, computed from the integer k.
+        /// Do not accumulate the position in float: with dash 8 mm / gap 6 mm, Mathf.Repeat returned 0.00799999945 at
+        /// t = 0.022, the step t + (dash - inPeriod) rounded back to t, and the loop never ended (main-thread freeze on
+        /// device as soon as the corner picker drew its dashed rubber band).
+        /// </remarks>
         public void AddDashedSegment(Vector3 a, Vector3 b, float width, Color32 color, float dash, float gap, ref float phase)
         {
             float len = Vector3.Distance(a, b);
-            if (len < 1e-7f) return;
+            if (!(len >= 1e-7f) || float.IsInfinity(len)) return;   // also rejects NaN
             float period = Mathf.Max(dash + gap, 1e-5f);
-            float t = 0f;
-            while (t < len)
+            dash = Mathf.Clamp(dash, 0f, period);
+            float offset = Mathf.Repeat(phase, period);
+            int count = Mathf.Min(Mathf.CeilToInt((offset + len) / period), MaxDashesPerSegment);
+            for (int k = 0; k <= count; k++)
             {
-                float inPeriod = Mathf.Repeat(phase + t, period);
-                if (inPeriod < dash)
-                {
-                    float end = Mathf.Min(len, t + (dash - inPeriod));
-                    AddSegmentNoCaps(Vector3.Lerp(a, b, t / len), Vector3.Lerp(a, b, end / len), width, color);
-                    t = end;
-                }
-                else
-                {
-                    t += period - inPeriod;
-                }
+                float start = Mathf.Max(0f, k * period - offset);
+                float end = Mathf.Min(len, k * period - offset + dash);
+                if (end > start)
+                    AddSegmentNoCaps(Vector3.Lerp(a, b, start / len), Vector3.Lerp(a, b, end / len), width, color);
             }
             phase = Mathf.Repeat(phase + len, period);
         }

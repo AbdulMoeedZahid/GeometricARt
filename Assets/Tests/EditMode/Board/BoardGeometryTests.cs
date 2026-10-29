@@ -154,6 +154,33 @@ namespace GeoART.Tests
         }
 
         [Test]
+        public void MeshBuilder_DashedSegmentTerminatesForAnyLength()
+        {
+            // Regression: the old float-accumulating loop stalled at t = 0.022 under IL2CPP (strict float32), freezing the
+            // app on the first corner (CornerPickerView's dashed rubber band). Every length up to 2.5 m must finish with
+            // the expected dash count, also with a carried phase and a degenerate pattern.
+            var mb = new BoardMeshBuilder();
+            for (int mm = 1; mm <= 2500; mm++)
+            {
+                float len = mm * 0.001f, phase = 0f;
+                mb.Clear();
+                mb.AddDashedSegment(Vector3.zero, new Vector3(len, 0, 0), 0.0015f, Color.black, 0.008f, 0.006f, ref phase);
+                Assert.That(mb.VertexCount / 4, Is.EqualTo(Mathf.CeilToInt(len / 0.014f)).Within(1), $"len {len}");
+                Assert.That(phase, Is.EqualTo(Mathf.Repeat(len, 0.014f)).Within(1e-5f));
+            }
+
+            float carried = 0.011f;   // starts inside a gap
+            mb.Clear();
+            mb.AddDashedSegment(Vector3.zero, new Vector3(0.05f, 0, 0), 0.0015f, Color.black, 0.008f, 0.006f, ref carried);
+            Assert.That(mb.VertexCount / 4, Is.InRange(3, 5));
+
+            float zero = 0f;
+            mb.Clear();
+            mb.AddDashedSegment(Vector3.zero, new Vector3(1000f, 0, 0), 0.0015f, Color.black, 0f, 0f, ref zero);
+            Assert.That(mb.VertexCount / 4, Is.LessThanOrEqualTo(BoardMeshBuilder.MaxDashesPerSegment + 1));
+        }
+
+        [Test]
         public void StubSession_ServesFixtureAndGridChanges()
         {
             var stub = new StubEditorSession(GoldenBoards.StarOnFullBoard());

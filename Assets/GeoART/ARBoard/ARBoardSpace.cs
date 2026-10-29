@@ -64,6 +64,7 @@ namespace GeoART.ARBoard
         const float ActionIssueSeconds = 3f;
         const float TrackingGraceSeconds = 1f;
         const float PlaneExtensionMargin = 0.75f;   // fallback hits must lie within the plane's extents + this
+        const int MaxSubsumeHops = 8;
 
         static readonly List<ARRaycastHit> s_Hits = new List<ARRaycastHit>();
 
@@ -408,7 +409,9 @@ namespace GeoART.ARBoard
         void UpdatePicking(Ray centerRay)
         {
             SetReticleVisible(false);
-            while (_lockedPlane != null && _lockedPlane.subsumedBy != null) _lockedPlane = _lockedPlane.subsumedBy;
+            // Follow merges to the surviving plane; bounded so a subsumedBy cycle can never hang the frame.
+            for (int i = 0; i < MaxSubsumeHops && _lockedPlane != null && _lockedPlane.subsumedBy != null; i++)
+                _lockedPlane = _lockedPlane.subsumedBy;
             if (_lockedPlane != null && _lockedPlane.trackingState == TrackingState.Tracking)
                 _picker.SetPlane(_lockedPlane.transform.position, _lockedPlane.normal);   // same plane as infinitePlane
             _picker.UpdateAim(centerRay);

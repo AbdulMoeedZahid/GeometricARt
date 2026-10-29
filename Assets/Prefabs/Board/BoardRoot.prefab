@@ -98,7 +98,7 @@ MonoBehaviour:
   cornerColor: {r: 0.1, g: 0.85, b: 1, a: 1}
   badColor: {r: 1, g: 0.15, b: 0.15, a: 1}
   fitColor: {r: 0.2, g: 1, b: 0.4, a: 1}
-  boardFillColor: {r: 1, g: 1, b: 1, a: 0.12}
+  boardFillColor: {r: 1, g: 1, b: 1, a: 0}
 --- !u!1 &6998566096084965225
 GameObject:
   m_ObjectHideFlags: 0
@@ -145,6 +145,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: GeoART.BoardRender::GeoART.BoardRender.BoardView
   sideMeters: 0.4
   material: {fileID: 2100000, guid: d6785f3be715040fdbb23f9eba9b97c6, type: 2}
+  showBase: 0
   showSnapCandidates: 1
   sheetColor: {r: 1, g: 1, b: 1, a: 0.32}
   frameColor: {r: 0.08, g: 0.08, b: 0.1, a: 1}
