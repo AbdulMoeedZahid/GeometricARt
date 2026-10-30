@@ -42,6 +42,7 @@ namespace GeoART.Contracts
         void MoveLayer(EntityId id, int newIndex);
         void DeleteBottomLayer();
         void SetLayerVisible(EntityId id, bool visible);
+        void SetLayerOpacity(EntityId id, double opacity);       // clamped to [0,1]
         void SetGrid(int n);
 
         // history + lifecycle

@@ -54,8 +54,8 @@ namespace GeoART.EditorTools
             var boardRoot = BuildBoardRootPrefab(boardMat);
             var flatRoot = BuildFlatBoardRootPrefab(boardMat);
 
-            BuildARScene(MainScene, boardRoot, planePrefab, StubSessionInstaller.Fixture.Empty);
-            BuildARScene(SandboxARScene, boardRoot, planePrefab, StubSessionInstaller.Fixture.StarOnFullBoard);
+            BuildARScene(MainScene, boardRoot, planePrefab, EngineInstaller.Fixture.Empty);
+            BuildARScene(SandboxARScene, boardRoot, planePrefab, EngineInstaller.Fixture.StarOnFullBoard);
             BuildFlatScene(SandboxFlatScene, flatRoot);
 
             EditorBuildSettings.scenes = new[]
@@ -132,7 +132,7 @@ namespace GeoART.EditorTools
 
         // ---------- scenes ----------
 
-        static void BuildARScene(string path, GameObject boardRootPrefab, GameObject planePrefab, StubSessionInstaller.Fixture fixture)
+        static void BuildARScene(string path, GameObject boardRootPrefab, GameObject planePrefab, EngineInstaller.Fixture fixture)
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -159,7 +159,7 @@ namespace GeoART.EditorTools
             var app = new GameObject("App");
             app.AddComponent<DevHud>();
             app.AddComponent<PlacementControls>();   // TEMPORARY (A) until C's UI binds ICornerPlacement
-            SetField(app.AddComponent<StubSessionInstaller>(), "fixture", (int)fixture);
+            AddEditorApp(app, (int)fixture);
 
             EditorSceneManager.SaveScene(scene, path);
         }
@@ -186,7 +186,7 @@ namespace GeoART.EditorTools
             var app = new GameObject("App");
             var hud = app.AddComponent<DevHud>();
             SetField(hud, "showFps", true);
-            SetField(app.AddComponent<StubSessionInstaller>(), "fixture", (int)StubSessionInstaller.Fixture.StarOnFullBoard);
+            AddEditorApp(app, (int)EngineInstaller.Fixture.StarOnFullBoard);
 
             EditorSceneManager.SaveScene(scene, path);
         }
@@ -220,6 +220,16 @@ namespace GeoART.EditorTools
             origin.CameraFloorOffsetObject = offset;
             origin.Camera = camera;
             return origin;
+        }
+
+        /// <summary>Real engine session plus the drawing UI: board input, tool bar, layer sidebar.</summary>
+        static void AddEditorApp(GameObject app, int fixture)
+        {
+            SetField(app.AddComponent<EngineInstaller>(), "fixture", fixture);
+            app.AddComponent<BoardInputRouter>();
+            app.AddComponent<ToolBar>();
+            app.AddComponent<LayerSidebar>();
+            app.AddComponent<ToastView>();
         }
 
         static void CreateEventSystem() =>

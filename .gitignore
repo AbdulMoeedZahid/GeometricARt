@@ -48,5 +48,8 @@ Thumbs.db
 
 # ---- tools/mathcheck (dotnet console harness; its project file is source, its outputs are not) ----
 /tools/mathcheck/bin/
+/tools/enginecheck/bin/
+/tools/enginecheck/obj/
 /tools/mathcheck/obj/
 !/tools/mathcheck/MathCheck.csproj
+!/tools/enginecheck/EngineCheck.csproj

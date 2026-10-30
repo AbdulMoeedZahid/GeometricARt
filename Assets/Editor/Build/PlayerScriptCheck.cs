@@ -19,7 +19,7 @@ namespace GeoART.EditorTools
     {
         static readonly string[] s_RequiredAssemblies =
         {
-            "GeoART.Contracts.dll", "GeoART.BoardRender.dll", "GeoART.ARBoard.dll", "GeoART.App.dll", "GeoART.Mocks.dll",
+            "GeoART.Contracts.dll", "GeoART.BoardRender.dll", "GeoART.ARBoard.dll", "GeoART.App.dll", "GeoART.Mocks.dll", "GeoART.Engine.dll",
         };
 
         [MenuItem("GeoART/Build/Check iOS Player Scripts", priority = 21)]

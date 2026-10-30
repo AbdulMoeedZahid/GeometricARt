@@ -3,6 +3,8 @@
     "rootNamespace": "GeoART.App",
     "references": [
         "GeoART.Contracts",
+        "GeoART.Engine",
+        "Unity.InputSystem",
         "UnityEngine.UI"
     ],
     "includePlatforms": [],

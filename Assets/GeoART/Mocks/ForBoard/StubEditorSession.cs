@@ -73,6 +73,14 @@ namespace GeoART.Mocks
             BoardChanged?.Invoke(BoardChangeKind.Layers);
         }
 
+        public void SetLayerOpacity(EntityId id, double opacity)
+        {
+            var layer = _board.FindLayer(id);
+            if (layer == null) return;
+            layer.Opacity = Math.Max(0.0, Math.Min(1.0, opacity));
+            BoardChanged?.Invoke(BoardChangeKind.Layers);
+        }
+
         public void ClearBoard() => LoadBoard(GoldenBoards.Empty());
 
         public void LoadBoard(Board b)

@@ -14,6 +14,8 @@ namespace GeoART.BoardRender
     /// Binds to the IEditorSession in ServiceHub at Start, or explicitly via <see cref="Bind"/>.
     /// The side can change at runtime (<see cref="SetSideMeters"/>, corner placement); stroke widths scale with it,
     /// clamped by <see cref="StrokeScaleFor"/>, so the design keeps the same look on screen at any board size.
+    /// Strokes are anti-aliased by the shader (see <see cref="BoardMeshBuilder"/>); circles get a segment count from their
+    /// radius (<see cref="BoardMeshBuilder.CircleSegmentsFor"/>) so large circles stay round.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class BoardView : MonoBehaviour
@@ -40,7 +42,6 @@ namespace GeoART.BoardRender
         // Heights above the board plane (metres) so layers never z-fight with each other.
         const float ShapesLift = 0.0008f;
         const float OverlayLift = 0.0016f;
-        const int CircleSegments = 96;
 
         IEditorSession _session;
         bool _subscribed;
@@ -163,24 +164,35 @@ namespace GeoART.BoardRender
 
         float StrokeScale => StrokeScaleFor(sideMeters);
 
+        /// <summary>Stroke width in metres at the 0.40 m board: Thin 1.0 mm, Medium 1.7 mm, Thick 2.8 mm (times StrokeScale).
+        /// The shader keeps any stroke at least ~1.5 px wide on screen (fading it instead), so thin lines never break up.</summary>
         float WidthOf(LineWidth w)
         {
             switch (w)
             {
-                case LineWidth.Thin: return 0.0018f * StrokeScale;
-                case LineWidth.Thick: return 0.0055f * StrokeScale;
-                default: return 0.0032f * StrokeScale;
+                case LineWidth.Thin: return 0.0010f * StrokeScale;
+                case LineWidth.Thick: return 0.0028f * StrokeScale;
+                default: return 0.0017f * StrokeScale;
             }
         }
 
+        // Base pattern (grid dividers, surface outline) and the Dotted line style.
         float Dash => 0.008f * StrokeScale;
         float Gap => 0.006f * StrokeScale;
+        float StrokeDash => 0.005f * StrokeScale;
+        float StrokeGap => 0.0035f * StrokeScale;
 
         Vector3 P(Vec2 uv, float lift) => BoardGeometry.BoardToLocal(uv, sideMeters, lift);
 
         static Color32 ToColor32(RgbaColor c) =>
             c.A == 0 ? ToColor32(Palette.Black)   // default(StrokeStyle) guard: never draw invisible ink
                      : new Color32(c.R, c.G, c.B, c.A);
+
+        static Color32 WithOpacity(Color32 c, float opacity)
+        {
+            c.a = (byte)Mathf.RoundToInt(c.a * opacity);
+            return c;
+        }
 
         // ---------- rebuilds ----------
 
@@ -201,15 +213,15 @@ namespace GeoART.BoardRender
 
             _poly.Clear();
             _poly.Add(bl); _poly.Add(br); _poly.Add(tr); _poly.Add(tl);
-            mb.AddPolyline(_poly, true, 0.003f * StrokeScale, frameColor);
+            mb.AddPolyline(_poly, true, 0.002f * StrokeScale, frameColor);
 
             for (int i = 1; i < gridN; i++)
             {
                 double t = (double)i / gridN;
                 float phase = 0f;
-                mb.AddDashedSegment(P(new Vec2(t, 0), 0f), P(new Vec2(t, 1), 0f), 0.0015f * StrokeScale, dividerColor, Dash, Gap, ref phase);
+                mb.AddDashedSegment(P(new Vec2(t, 0), 0f), P(new Vec2(t, 1), 0f), 0.0011f * StrokeScale, dividerColor, Dash, Gap, ref phase);
                 phase = 0f;
-                mb.AddDashedSegment(P(new Vec2(0, t), 0f), P(new Vec2(1, t), 0f), 0.0015f * StrokeScale, dividerColor, Dash, Gap, ref phase);
+                mb.AddDashedSegment(P(new Vec2(0, t), 0f), P(new Vec2(1, t), 0f), 0.0011f * StrokeScale, dividerColor, Dash, Gap, ref phase);
             }
 
             // Registered surface (D1: the board is centred in it, so the outline is symmetric).
@@ -233,10 +245,13 @@ namespace GeoART.BoardRender
                 foreach (var layer in board.Layers)
                 {
                     if (layer == null || !layer.Visible) continue;
+                    float opacity = Mathf.Clamp01((float)layer.Opacity);
+                    if (opacity <= 0f) continue;
                     foreach (var shape in layer.Shapes)
-                        if (shape != null) AddShape(mb, shape, ToColor32(shape.Style.Color), ShapesLift);
+                        if (shape != null) AddShape(mb, shape, WithOpacity(ToColor32(shape.Style.Color), opacity), ShapesLift);
+                    Color32 snapColor = WithOpacity(snapPointColor, opacity);
                     foreach (var sp in layer.SnapPoints)
-                        if (sp != null) mb.AddDisc(P(sp.Position, ShapesLift), 0.0035f * StrokeScale, snapPointColor);
+                        if (sp != null) mb.AddDisc(P(sp.Position, ShapesLift), 0.0035f * StrokeScale, snapColor);
                 }
             }
             _shapes.Apply();
@@ -259,7 +274,7 @@ namespace GeoART.BoardRender
                 if (_session.Cursor is Vec2 cursor && cursor.IsFinite)
                 {
                     Vector3 c = P(cursor, OverlayLift);
-                    mb.AddCircle(c, 0.009f * StrokeScale, 24, 0.0018f * StrokeScale, cursorColor);
+                    mb.AddCircle(c, 0.009f * StrokeScale, 0.0012f * StrokeScale, cursorColor);
                     mb.AddDisc(c, 0.0022f * StrokeScale, cursorColor, 10);
                 }
             }
@@ -276,15 +291,15 @@ namespace GeoART.BoardRender
                     if (dashed)
                     {
                         float phase = 0f;
-                        mb.AddDashedSegment(P(line.A, lift), P(line.B, lift), width, color, Dash, Gap, ref phase);
+                        mb.AddDashedSegment(P(line.A, lift), P(line.B, lift), width, color, StrokeDash, StrokeGap, ref phase);
                     }
                     else mb.AddSegment(P(line.A, lift), P(line.B, lift), width, color);
                     break;
 
                 case CircleShape circle:
                     if (circle.Radius > 0 && circle.Center.IsFinite)
-                        mb.AddCircle(P(circle.Center, lift), (float)(circle.Radius * sideMeters), CircleSegments,
-                            width, color, dashed, Dash, Gap);
+                        mb.AddCircle(P(circle.Center, lift), (float)(circle.Radius * sideMeters), width, color,
+                            dashed, StrokeDash, StrokeGap);
                     break;
 
                 case PolygonShape poly:
@@ -297,7 +312,7 @@ namespace GeoART.BoardRender
                                          poly.Center.Y + poly.Radius * System.Math.Sin(a));
                         _poly.Add(P(v, lift));
                     }
-                    mb.AddPolyline(_poly, true, width, color, dashed, Dash, Gap);
+                    mb.AddPolyline(_poly, true, width, color, dashed, StrokeDash, StrokeGap);
                     break;
             }
         }

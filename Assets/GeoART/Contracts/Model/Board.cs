@@ -70,6 +70,7 @@ namespace GeoART.Contracts
         public EntityId Id;
         public string Name;
         public bool Visible = true;
+        public double Opacity = 1.0;                                     // [0,1], multiplies stroke alpha
         public readonly List<Shape> Shapes = new List<Shape>();          // first = back
         public readonly List<SnapPoint> SnapPoints = new List<SnapPoint>();
 
