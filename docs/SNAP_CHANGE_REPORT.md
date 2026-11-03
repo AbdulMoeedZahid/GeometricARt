@@ -54,6 +54,22 @@ next import; they are not part of this commit.
 - **BoardRender**
   - `BoardRender/BoardView.cs`: candidate dots move into their own mesh part, `Candidates`, drawn in four tiers by `SnapKind`. The overlay and candidate loops use index loops, with no boxed enumerators.
 
+### E2 (snapping in Line/Circle, tap-to-connect, Snap toggle)
+- **Engine**
+  - `Engine/EditorSession.Snap.cs` (new): owns the `SnapIndex`, implements the three C0 hooks (`EnsureCandidates`,
+    `OnModelChanged`, `OnSnapSettingsChanged`) and the private snap query `TrySnap`. Adds `HoverRingRadius` and
+    `TapSlopFraction`.
+  - `Engine/EditorSession.Tools.cs`: Down/Move/Up now snap; tap detection; tap-to-connect with a pending start;
+    hover ring and pending ring in `Preview`. Adds `PendingConnectStart`. The Line hint now reads
+    "Line: drag from start to end, or tap two points".
+- **Tests**
+  - `tools/enginecheck/SnapToolChecks.cs` (new): 22 checks for snapping in the tools, taps, rings, metrics, allocation.
+  - `tools/enginecheck/PatternChecks.cs` (new): the golden `SnapBuildsTiled2x2`.
+  - `tools/enginecheck/ToolChecks.cs`: `TooShortIsDiscarded` now calls `s.SetSnapEnabled(false)` (see section 8, E2).
+
+`EditorSession.cs`, `SnapIndex.cs`, `Intersect.cs` and Contracts are unchanged. Unity will generate
+`EditorSession.Snap.cs.meta` on the next import; it is not part of this commit.
+
 ## 3. Contract changes
 
 ### C0
@@ -117,6 +133,21 @@ public sealed class SnapIndex
 Additions beyond the plan's required API: `Intersect.ParamEps`, `Intersect.ParallelSinEps`, `SnapIndex.BoundsSlack`,
 `SnapIndex.CircleDivisions` and `SnapIndex.PolygonVertex`. `Candidates` returns the same list instance for the life
 of the index; it is cleared and refilled in place on rebuild.
+
+### E2
+No Contracts or `IEditorSession` change. New public members on the concrete `EditorSession` only:
+```csharp
+// Engine/EditorSession.Snap.cs
+public const double HoverRingRadius = 0.012;          // board units: hover ring and pending ring
+public const double TapSlopFraction = 10.0 / 24.0;    // tap slop = this * snap tolerance, in the tolerance's space
+
+// Engine/EditorSession.Tools.cs
+public Vec2? PendingConnectStart { get; }              // pending tap-to-connect start (exact candidate position) or null
+```
+Behaviour changes behind existing members: `Pointer` snaps and handles taps; `Preview` can now hold ring
+`CircleShape`s (Thin, solid, current colour, radius `HoverRingRadius`), including the pending ring while no gesture is
+open; `SetSnapEnabled(false)`, `SetTool`, `ClearBoard`/`LoadBoard` and `Cancel` clear the pending start;
+`SnapCandidates` is now filled.
 
 ## 4. How it works
 
@@ -240,6 +271,67 @@ There are four groups of two: Line/Circle, Dotted/Width, Grid kind/Tiles, and Sn
 
 The radii scale with `StrokeScale`, like strokes. The hover ring and the pending tap-to-connect ring are `Preview` shapes from the engine, so they draw in the Overlay with `previewColor` (orange).
 
+### E2: snapping in the tools and tap-to-connect
+
+**Data flow.** `BoardInputRouter` -> `Pointer(e)` -> `TrySnap(raw)` -> the snapped point (a candidate's own `Position`,
+or the raw point if nothing is in range) becomes the Line start / Circle centre on Down (`_anchor`) and the Line end /
+radius point on Move and Up (`_current`). The ghost, the cursor and the commit all use those snapped values, so a
+committed `LineShape.A/B` or `CircleShape.Center` is `==` the candidate, and a snapped radius is
+`Vec2.Distance(centre, candidate)` exactly. Nothing is rounded or re-derived after the snap.
+
+**Where the candidates come from.** `EditorSession.Snap.cs` holds one `SnapIndex`. `EnsureCandidates` (called by the
+`SnapCandidates` getter and by `TrySnap`) runs `SnapIndex.Sync(_board)` and copies its list into the core's
+`_candidates` only when Sync rebuilt. What invalidates it:
+- `OnModelChanged` (every `RaiseBoardChanged`: commits, layer commands, grid changes, `LoadBoard`) calls `MarkDirty`,
+  because the SnapIndex signature cannot see an in-place edit such as a moved shape.
+- The signature itself catches a different board instance, GridN/GridKind, layer count, and per-layer Id, Visible,
+  shape count and user-point count, so direct model edits that change those are also picked up.
+Sync never runs a rebuild during a drag (nothing changes the model between Down and Up), so Move only scans the list.
+
+**Snapping rule (`TrySnap`).** Off (`SnapEnabled == false`) means no candidates and no snap. Otherwise:
+- With `SnapMetric` set and the pointer projectable (`TryToScreen` true and finite), distances are in screen pixels
+  and the radius is `SnapMetric.TolerancePx`. Candidates the metric cannot project are skipped.
+- Otherwise (no metric, or the pointer itself not projectable), distances are in board units with identity
+  projection and radius `FallbackSnapTolerance` (0.02).
+- Squared distances are compared; "within" is `d2 <= tol * tol`. The nearest wins; on an exactly equal distance the
+  lower `SnapIndex.Priority` wins; then the earlier list index. The list is already in priority order, so in practice
+  the strict `<` scan gives "nearest, then first in the list".
+
+**Tap detection.** At Down the engine records the raw Down position, projected with the metric if it can (else board
+units), and the slop `TapSlopFraction * tolerance` in that same space (10 px of 24 px with a metric; 0.00833 board
+units without). Every later event of the gesture (Moves and the Up) is measured against the Down position. The first
+sample at or beyond the slop, off the board, non-finite, or not projectable turns the gesture into a drag for good
+(so moving out and back is still a drag). A drag drops the pending start at that moment. Up then either runs the
+normal drag commit (unchanged apart from snapping) or, for a tap, the tap step below. A tap never goes through the
+drag commit, so a tap never commits a zero-length shape.
+
+**Tap-to-connect state machine (Line tool only).** The tap's candidate is `TrySnap(raw Down position)`.
+
+| State | Event | Result |
+|---|---|---|
+| no pending | tap on candidate C | pending = C.Position; pending ring stays in `Preview` |
+| no pending | tap off any candidate | nothing |
+| pending P | tap on candidate C, C != P, length >= `MinStrokeLength`, layer visible | commit `LineShape(P, C)` (current style) into the layer active at Down; one `BoardChanged(Shapes)`; pending cleared |
+| pending P | tap on C, C != P, length < `MinStrokeLength` | nothing committed; pending cleared |
+| pending P | tap on C, layer hidden or missing | `HiddenLayerToast`; pending cleared (also if the Down itself is refused for a hidden layer) |
+| pending P | tap on P again | pending cleared (toggle) |
+| pending P | tap off any candidate, Down off the board | pending cleared |
+| pending P | gesture becomes a drag | pending cleared at once; the drag draws a normal line |
+| pending P | Cancel (with or without a gesture), `SetTool` to another tool, `ClearBoard`/`LoadBoard`, lost Up (second Down) | pending cleared |
+| pending P | `SetSnapEnabled(false)` | pending cleared, one `PreviewChanged` |
+
+In the Circle tool a tap does nothing (no circle, no pending start), even when the wiggle is above `MinStrokeLength`
+in board units. With snapping off there are no candidates, so every tap is "off any candidate".
+
+**Preview contents.** During a gesture, `Preview` is: the ghost (Line: one `LineShape`; Circle: the ghost circle and
+the dotted radius line), then the hover ring if the current point snapped, then the pending ring if a pending start
+exists. Outside a gesture it holds only the pending ring (or nothing). All five shapes are preallocated and reused;
+`EndGesture` clears `Preview` and re-adds the pending ring. The cursor shows the snapped point during a gesture.
+
+**Allocation.** `Pointer(Move)` allocates 0 bytes once warm: index loops over `List<SnapCandidate>`, the metric is
+called through the interface with `out Vec2` (no boxing), rings and ghosts are reused, `StrokeStyle` is a struct.
+`SnapMetric` is read once per snap; tap measurement uses the metric captured at Down.
+
 ## 5. Invariants
 
 _Filled in by the final pass (R1)._
@@ -263,6 +355,9 @@ _Filled in by the final pass (R1)._
 | Candidate dot radii | 2.1 / 2.8 / 3.2 / 3.8 mm | `BoardRender/BoardView.cs` `MinorGridDotRadius`, `GridDotRadius`, `GuideDotRadius`, `ShapeDotRadius` | U3 |
 | Shape-dot halo | 1.2 mm | `BoardRender/BoardView.cs` `HaloWidth` | U3 |
 | Candidate colours | see section 4, U3 | `BoardRender/BoardView.cs` `candidateColor`, `guideCandidateColor`, `shapeCandidateColor`, `candidateHaloColor` (Inspector) | U3 |
+| Hover ring / pending ring radius | 0.012 board units (about 4.8 mm), Thin, solid, current colour | `Engine/EditorSession.Snap.cs` `HoverRingRadius` (style in `EditorSession.Tools.cs` `RingStyle`) | E2 |
+| Tap slop | 10/24 of the snap tolerance (10 reference px with the App metric; 0.00833 board units without) | `Engine/EditorSession.Snap.cs` `TapSlopFraction` | E2 |
+| Shortest line a tap-to-connect commits | 0.01 board units (same as drags) | `Engine/EditorSession.Tools.cs` `MinStrokeLength` (existing) | E2 |
 
 ## 7. How to extend
 
@@ -312,6 +407,65 @@ above fail: removing end snapping in `SegmentSegment`, swapping `CellCorner`/`In
 - EditMode `VerifierToolBarToastTests.ToolBarEightButtonsFitInsideCanvas`: all 8 buttons are inside the canvas, in column order (run with a 390x844 portrait Game view).
 - The existing `ToolBarOnRightEdge` still passes at 390x844. It **fails in a landscape Game view** (1920x1080) on the baseline too, because it measures against the Game view's size.
 - Screenshot `Logs/SnapScreens/u2_toolbar_ui_390x844.png` (not committed): all 8 buttons fit at 390x844.
+
+### E2
+23 new checks (the harness total went from 102 to 125). Unless noted, no metric is set, so the tolerance is 0.02 board
+units on the default 2x2 square grid. "Exact" means compared with `==`.
+
+`tools/enginecheck/SnapToolChecks.cs`:
+- `DragEndWithinToleranceCommitsCandidateExactly`: a drag ending 0.0036 from the corner (0.5, 0.5) commits B == (0.5, 0.5); a start with nothing in range stays raw.
+- `DragEndOutsideToleranceCommitsRaw`: 0.03 from the nearest candidate commits the raw end.
+- `SnapOffCommitsRaw`: with Snap off, line ends and circle centre/radius are raw and there are no candidates; turning it back on snaps again.
+- `LineStartSnapsOnDown`: the Line start snaps on Down (cursor and hover ring on the candidate) and is kept in the commit.
+- `CircleCentreAndRadiusSnap`: the centre snaps on Down; the radius point snaps on Move (ghost) and Up; radius is exactly 0.25 to an edge midpoint and exactly `Distance(centre, corner)` on a diagonal.
+- `TieBreakIsDeterministic`: on an exactly equal distance a user point beats a cell corner; of two equidistant user points the earlier wins, and swapping their order swaps the winner, every time; a nearer corner beats a farther user point.
+- `GridIntersectionOnEmptyBoardSquareAndHex`: empty board, square: corner (0, 0) and edge midpoint (0.75, 0.5) exactly; hex: two interior hex corners from `TileGrid.SnapPoints` exactly.
+- `CandidatesRefreshAfterCommit`: no `Intersection` with one line; after the second (crossing) line commits, the crossing is a candidate and a third line ends on it exactly.
+- `AnyModelChangeRefreshesCandidates`: a line moved in place (same counts) is picked up after any `BoardChanged` (here `SetLayerOpacity`), and the next drag snaps to the moved endpoint.
+- `HoverRingOnlyWhileSnapped`: no ring at a raw start; a ring (radius `HoverRingRadius`, Thin, solid, current colour) at the candidate while the end is snapped, cursor and ghost on it; gone when out of range; everything cleared after Up.
+- `TapTapConnectsTwoCandidates`: tap, tap commits one line between the exact candidates with the current style, one `BoardChanged(Shapes)`, pending cleared, empty `Preview`.
+- `PendingRingPersistsAndClears`: after the tap gesture ends, `Preview` holds just the pending ring; a tap on empty clears it (with `PreviewChanged`); tapping the same candidate twice toggles off with no zero-length line.
+- `CancelToolSwitchBoardReplaceAndSnapOffClearPending`: Cancel (no gesture and mid-tap), tool switch, `ClearBoard`, `LoadBoard`, `SetSnapEnabled(false)` (exactly one `PreviewChanged`) and an off-board Down each clear pending; with Snap off a tap only clears pending; a stray Up changes nothing.
+- `DragAfterPendingClearsPendingAndDrawsNormalLine`: the pending ring still shows at Down, disappears as soon as the gesture becomes a drag, and the drag commits a normal raw line.
+- `TapSlopUsesMaximumDistance`: moving out past the slop and back is a drag; staying inside it is a tap; no zero-length commit.
+- `TapNeverCommitsTooShortLine`: two user points 0.005 apart: the connecting tap commits nothing and clears pending.
+- `CircleToolTapCommitsNothing`: taps in the Circle tool make no pending start and no shape, also with a screen metric where the wiggle (0.012 board units, 12 px < 20.8 px slop) is above `MinStrokeLength`.
+- `HiddenLayerOnConnectingTapToastsAndCommitsNothing`: layer hidden before the connecting tap, and hidden between its Down and Up: one `HiddenLayerToast` each, nothing committed, pending cleared.
+- `ScaleOffsetMetricToleranceIsInPixels`: fake metric `screen = board * scale + offset`: at scale 1000, 22 px snaps (0.022 board units would not in fallback) and 26 px does not; at scale 500, 0.04 board units (20 px) snaps; at scale 2000 the tap slop is in pixels (0.008 board units = 16 px is a drag, 8 px is a tap).
+- `PerspectiveMetricIsAnisotropic`: projective fake metric `1000 * (x, y) / (1 + 0.8 y)`, 12 px: 0.019 board units along x does not snap but along y does; 0.015 along x does not snap near y = 0 but does near y = 1.
+- `UnprojectableCandidatesAndPointerFallBack`: a candidate the metric cannot project is skipped; if the pointer itself cannot be projected the board-unit fallback is used.
+- `MovePathAllocatesNothing`: on `StarOnFullBoard`, Line and Circle tools, with no metric and with the perspective metric, after a warm-up gesture: 200 Moves sweeping in and out of candidates allocate 0 bytes (`GC.GetAllocatedBytesForCurrentThread`).
+
+`tools/enginecheck/PatternChecks.cs`:
+- `SnapBuildsTiled2x2`: pointer events only, no metric, 2x2 grid. Four circles (centre snapped to each cell centre from
+  (+0.003, -0.002) off, radius snapped to the cell's right edge midpoint from (-0.002, +0.003) off), then each star's
+  two squares by tap-to-connect, every tap 0.003 inward plus 0.0015 sideways from the division point. Asserts exactly
+  4 circles with exact centres and radius == 0.25, exactly 32 lines, and an order- and orientation-independent `==`
+  match with `GoldenBoards.Tiled2x2()`, with one exception explained next.
+
+  **Fixture caveat (deviation from the plan's literal wording).** `GoldenBoards.Tiled2x2` builds each star separately
+  with `StarPoint`, and `0.25 * sin(pi)` and `0.25 * cos(pi/2)` are not 0. So at two seams the fixture has the shared
+  tip at two values 1 ulp apart: (0.5, 0.25) and (0.5, 0.25000000000000006); (0.25, 0.5) and (0.24999999999999994, 0.5).
+  A snapped seam is one point (dedup merges them, and the tangent-circle `Intersection` there is exact), so a
+  literal `==` against both variants cannot pass for any snapping design. The check therefore requires: every
+  endpoint not at those seams `==` the fixture; at each fixture "seam group" (distinct fixture endpoints within
+  1e-12) the drawn board uses exactly one bit-identical value, and it is one of the fixture's variants; exactly 2
+  such groups. That is stronger than the fixture at the seams (it proves they are seamless). Fixing the fixture needs
+  a change outside E2 (`GoldenBoards.StarPoint` in Contracts together with the matching expression in
+  `SnapIndex.Rebuild`); it was reported as an open question, not made here.
+
+Existing checks opted out of snapping (`s.SetSnapEnabled(false)` right after the session is created, no assertion
+changed):
+- `ToolChecks.TooShortIsDiscarded`: its raw drags start on the grid corner (0.5, 0.5) and the "just above the minimum"
+  drag ends 0.011 from it, so with snapping both ends snap to the corner and nothing commits.
+No other existing check needed it; `VerifierToolChecks` is unchanged. (`V_TooShortLineNotCommitted` still passes with
+snapping on: its 0.003 drag is now a tap that sets a pending start on (0.5, 0.5), and its following tap on the same
+point toggles it off, so `Preview` is empty as asserted.)
+
+Mutation spot-check, done once and not in the repo; each deliberate bug made at least one check fail: snapped
+position rounded to float (4 checks), tap path skipped (10), pending not cleared on discard (1), tie going to the
+later candidate (1), a list allocated per snap (1, 288 KB over 200 Moves), `OnModelChanged` not marking dirty (1),
+metric ignored (3).
 - How to screenshot UI over MCP: the MCP screenshot tool renders through the camera, which leaves out Screen Space Overlay canvases. In Play Mode, switch the canvases to Screen Space Camera for one `Camera.Render` into a RenderTexture, then restore them (see the Progress Log).
 ## 9. Known limitations and untested areas
 

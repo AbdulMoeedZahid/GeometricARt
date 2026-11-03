@@ -109,6 +109,7 @@ namespace GeoART.EngineCheck
         public static void TooShortIsDiscarded()
         {
             var s = new EditorSession();
+            s.SetSnapEnabled(false);
             int changes = 0;
             s.BoardChanged += _ => changes++;
             Drag(s, new Vec2(0.5, 0.5), new Vec2(0.505, 0.505));

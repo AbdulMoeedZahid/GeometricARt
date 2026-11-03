@@ -2,16 +2,25 @@ using GeoART.Contracts;
 
 namespace GeoART.Engine
 {
-    // OWNER: line/circle tools builder. Snap state (SnapEnabled, OrthoLock, SnapMetric) is in EditorSession.cs.
+    // OWNER: line/circle tools builder. Snap state (SnapEnabled, OrthoLock, SnapMetric) is in EditorSession.cs; the snap
+    // query (TrySnap) and the candidate cache are in EditorSession.Snap.cs.
     /// <summary>
     /// Pointer routing for the Line and Circle tools. One gesture at a time:
-    ///   Down (on the board)  Line: start point A.  Circle: centre.
-    ///   Move                 ghost in Preview (Line: A to p. Circle: radius |p - centre| plus a thin radius line).
-    ///   Up                   commits to the layer that was active at Down if the line length / radius is at least
+    ///   Down (on the board)  Line: start point A.  Circle: centre. Snapped (see EditorSession.Snap.cs).
+    ///   Move                 ghost in Preview (Line: A to p. Circle: radius |p - centre| plus a thin radius line), with p
+    ///                        snapped. A hover ring marks the candidate the current point snapped to.
+    ///   Up                   a drag commits to the layer that was active at Down if the line length / radius is at least
     ///                        <see cref="MinStrokeLength"/>, else discards. Raises BoardChanged(Shapes).
+    ///                        A tap (the pointer never left the tap slop) never goes through that commit: in the Line
+    ///                        tool it drives tap-to-connect, in the Circle tool it does nothing.
     ///   Cancel               discards.
-    /// Off-board or non-finite Move/Up positions keep the last valid point. The cursor follows the pointer during a
-    /// gesture and clears afterwards. A hidden or missing active layer refuses the gesture with a toast.
+    /// Off-board or non-finite Move/Up positions keep the last valid point. The cursor follows the snapped pointer during
+    /// a gesture and clears afterwards. A hidden or missing active layer refuses the gesture with a toast.
+    ///
+    /// Tap-to-connect (Line tool): a tap on a candidate with no pending start makes it the pending start (a ring stays
+    /// in Preview). A tap on a different candidate commits a line between the two exact candidate positions and clears
+    /// pending; a tap on the same candidate clears it. A tap off any candidate, a drag, Cancel, a tool switch, a board
+    /// replace or turning snapping off clears pending.
     /// </summary>
     public sealed partial class EditorSession
     {
@@ -26,12 +35,31 @@ namespace GeoART.Engine
         bool _gestureOpen;
         ToolId _gestureTool;
         EntityId _gestureLayer;
-        Vec2 _anchor, _current;
+        Vec2 _anchor, _current;   // snapped start and current point
+        Vec2 _lastRaw;            // last raw on-board pointer position of the gesture
 
-        // Ghosts are reused (never in the model), so a drag allocates nothing per Move.
+        // Snap state of the open gesture.
+        bool _downHit;            // the Down position snapped
+        SnapCandidate _downCand;  // ... to this candidate (the tap's candidate)
+        bool _hoverOn;            // the current point snapped: hover ring at _current
+
+        // Tap detection: measured from the raw Down position, in screen px with a metric, else board units.
+        bool _stillTap;
+        bool _tapScreen;
+        ISnapMetric _tapMetric;
+        Vec2 _tapOrigin;
+        double _tapSlop2;
+
+        // Tap-to-connect.
+        bool _hasPending;
+        Vec2 _pending;
+
+        // Ghosts and rings are reused (never in the model), so a drag allocates nothing per Move.
         readonly LineShape _ghostLine = new LineShape();
         readonly CircleShape _ghostCircle = new CircleShape();
         readonly LineShape _ghostRadius = new LineShape();
+        readonly CircleShape _hoverRing = new CircleShape();
+        readonly CircleShape _pendingRing = new CircleShape();
 
         public ToolId ActiveTool => _tool;
         public StampKind ActiveStamp => StampKind.Square;
@@ -41,6 +69,9 @@ namespace GeoART.Engine
 
         /// <summary>True between a Down that started a stroke and its Up/Cancel.</summary>
         public bool GestureActive => _gestureOpen;
+
+        /// <summary>The pending tap-to-connect start (an exact candidate position), or null.</summary>
+        public Vec2? PendingConnectStart => _hasPending ? _pending : (Vec2?)null;
 
         public void SetCursor(Vec2 boardPos, bool onBoard)
         {
@@ -68,33 +99,85 @@ namespace GeoART.Engine
         void BeginGesture(in PointerEvent e)
         {
             if (_gestureOpen) EndGesture(false);   // a lost Up: never commit a stale stroke
-            if (!e.OnBoard || !e.BoardPos.IsFinite) return;
-            if (_tool != ToolId.Line && _tool != ToolId.Circle) return;
+            if (!e.OnBoard || !e.BoardPos.IsFinite || (_tool != ToolId.Line && _tool != ToolId.Circle))
+            {
+                if (DropPending()) RaisePreviewChanged();   // a tap off the board is a tap off any candidate
+                return;
+            }
 
             Layer layer = ActiveLayer;
             if (layer == null || !layer.Visible)
             {
                 RaiseToast(HiddenLayerToast);
+                if (DropPending()) RaisePreviewChanged();
                 return;
             }
             _gestureOpen = true;
             _gestureTool = _tool;
             _gestureLayer = layer.Id;
-            _anchor = _current = e.BoardPos;
-            _cursor = e.BoardPos;
+            _lastRaw = e.BoardPos;
+            _downHit = TrySnap(e.BoardPos, out _downCand);
+            _hoverOn = _downHit;
+            _anchor = _current = _downHit ? _downCand.Position : e.BoardPos;
+            _cursor = _anchor;
+
+            _stillTap = true;
+            _tapMetric = SnapMetric;
+            _tapScreen = TryScreenSpace(e.BoardPos, out _tapOrigin, out double tol);
+            double slop = TapSlopFraction * tol;
+            _tapSlop2 = slop * slop;
+
             RebuildGhost();
         }
 
         void TrackGesture(in PointerEvent e)
         {
-            if (!e.OnBoard || !e.BoardPos.IsFinite) return;
-            if (e.BoardPos == _current) return;
-            _current = e.BoardPos;
-            _cursor = e.BoardPos;
+            bool dropped = MeasureTap(e);
+            if (!e.OnBoard || !e.BoardPos.IsFinite)
+            {
+                if (dropped) RebuildGhost();
+                return;
+            }
+            if (e.BoardPos == _lastRaw && !dropped) return;
+            _lastRaw = e.BoardPos;
+            bool hit = TrySnap(e.BoardPos, out SnapCandidate c);
+            Vec2 p = hit ? c.Position : e.BoardPos;
+            if (p == _current && hit == _hoverOn && !dropped) return;   // nothing visible changed
+            _current = p;
+            _cursor = p;
+            _hoverOn = hit;
             RebuildGhost();
         }
 
-        /// <summary>Closes the open gesture (commit or discard) and clears ghosts and cursor. No-op without a gesture.</summary>
+        /// <summary>
+        /// Updates tap detection with one pointer sample. Once the pointer leaves the slop (or the board, or stops being
+        /// projectable) the gesture is a drag for good, and a pending tap-to-connect start is dropped. Returns true if
+        /// that dropped a pending start.
+        /// </summary>
+        bool MeasureTap(in PointerEvent e)
+        {
+            if (!_stillTap) return false;
+            bool inside = false;
+            if (e.OnBoard && e.BoardPos.IsFinite)
+            {
+                Vec2 q = e.BoardPos;
+                bool ok = !_tapScreen || (_tapMetric.TryToScreen(e.BoardPos, out q) && q.IsFinite);
+                if (ok)
+                {
+                    double dx = q.X - _tapOrigin.X, dy = q.Y - _tapOrigin.Y;
+                    inside = dx * dx + dy * dy < _tapSlop2;
+                }
+            }
+            if (inside) return false;
+            _stillTap = false;
+            return DropPending();
+        }
+
+        /// <summary>
+        /// Closes the open gesture (commit = Up, else discard) and clears ghosts, hover ring and cursor. A discard
+        /// (Cancel, tool switch, board replace, lost Up) also clears the pending tap-to-connect start, gesture or not.
+        /// The pending ring, if any, stays in Preview.
+        /// </summary>
         void EndGesture(bool commit)
         {
             bool hadGesture = _gestureOpen;
@@ -102,8 +185,15 @@ namespace GeoART.Engine
             bool hadVisuals = _preview.Count > 0 || _cursor.HasValue;
             _preview.Clear();
             _cursor = null;
-            if (hadGesture && commit) Commit();
-            if (hadVisuals) RaisePreviewChanged();
+            _hoverOn = false;
+            if (!commit) _hasPending = false;
+            else if (hadGesture)
+            {
+                if (_stillTap) Tap();
+                else Commit();
+            }
+            AddPendingRing();
+            if (hadVisuals || _preview.Count > 0) RaisePreviewChanged();
         }
 
         void Commit()
@@ -123,6 +213,57 @@ namespace GeoART.Engine
                 : (Shape)new LineShape(_board.NewId(), _anchor, _current, _style);
             layer.Shapes.Add(shape);
             RaiseBoardChanged(BoardChangeKind.Shapes);
+        }
+
+        /// <summary>Tap-to-connect step for a finished tap. Never commits a zero-length (or too short) line.</summary>
+        void Tap()
+        {
+            if (_gestureTool != ToolId.Line) return;   // Circle: a tap draws nothing
+            if (!_downHit)
+            {
+                _hasPending = false;                   // tap off any candidate (also: snapping off)
+                return;
+            }
+            Vec2 q = _downCand.Position;
+            if (!_hasPending)
+            {
+                _hasPending = true;
+                _pending = q;
+                return;
+            }
+            Vec2 a = _pending;
+            _hasPending = false;
+            if (a == q) return;                         // same candidate again: toggle off
+            if (Vec2.Distance(a, q) < MinStrokeLength) return;
+
+            Layer layer = _board.FindLayer(_gestureLayer);
+            if (layer == null || !layer.Visible)
+            {
+                RaiseToast(HiddenLayerToast);
+                return;
+            }
+            layer.Shapes.Add(new LineShape(_board.NewId(), a, q, _style));
+            RaiseBoardChanged(BoardChangeKind.Shapes);
+        }
+
+        /// <summary>Clears the pending start and removes its ring. True if there was one (caller raises PreviewChanged).</summary>
+        bool DropPending()
+        {
+            if (!_hasPending) return false;
+            _hasPending = false;
+            _preview.Remove(_pendingRing);
+            return true;
+        }
+
+        StrokeStyle RingStyle => new StrokeStyle(_style.Color, LineWidth.Thin, LineStyle.Solid);
+
+        void AddPendingRing()
+        {
+            if (!_hasPending) return;
+            _pendingRing.Center = _pending;
+            _pendingRing.Radius = HoverRingRadius;
+            _pendingRing.Style = RingStyle;
+            _preview.Add(_pendingRing);
         }
 
         void RebuildGhost()
@@ -150,6 +291,14 @@ namespace GeoART.Engine
                 _ghostLine.Style = _style;
                 _preview.Add(_ghostLine);
             }
+            if (_hoverOn)
+            {
+                _hoverRing.Center = _current;
+                _hoverRing.Radius = HoverRingRadius;
+                _hoverRing.Style = RingStyle;
+                _preview.Add(_hoverRing);
+            }
+            AddPendingRing();
             RaisePreviewChanged();
         }
 
@@ -175,7 +324,7 @@ namespace GeoART.Engine
         {
             switch (t)
             {
-                case ToolId.Line: return "Line: drag from start to end";
+                case ToolId.Line: return "Line: drag from start to end, or tap two points";
                 case ToolId.Circle: return "Circle: drag from centre outwards";
                 default: return "";
             }
