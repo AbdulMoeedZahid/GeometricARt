@@ -123,17 +123,20 @@ namespace GeoART.EditorTools
         }
 
         /// <summary>Adds ARBackgroundRendererFeature to every URP renderer, so the camera feed shows at any quality level.</summary>
-        static void ConfigureRenderers()
+        static void ConfigureRenderers() => AddRendererFeature<ARBackgroundRendererFeature>();
+
+        /// <summary>Adds a renderer feature of type T to every URP renderer under Assets/ that does not have one yet.</summary>
+        internal static void AddRendererFeature<T>() where T : ScriptableRendererFeature
         {
             foreach (var guid in AssetDatabase.FindAssets("t:UniversalRendererData"))
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
                 if (!path.StartsWith("Assets/")) continue;
                 var data = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(path);
-                if (data == null || data.rendererFeatures.Any(f => f is ARBackgroundRendererFeature)) continue;
+                if (data == null || data.rendererFeatures.Any(f => f is T)) continue;
 
-                var feature = ScriptableObject.CreateInstance<ARBackgroundRendererFeature>();
-                feature.name = "ARBackgroundRendererFeature";
+                var feature = ScriptableObject.CreateInstance<T>();
+                feature.name = typeof(T).Name;
                 AssetDatabase.AddObjectToAsset(feature, data);
                 AssetDatabase.SaveAssets();
                 AssetDatabase.TryGetGUIDAndLocalFileIdentifier(feature, out string _, out long localId);
@@ -147,7 +150,7 @@ namespace GeoART.EditorTools
                 map.GetArrayElementAtIndex(map.arraySize - 1).longValue = localId;
                 so.ApplyModifiedPropertiesWithoutUndo();
                 EditorUtility.SetDirty(data);
-                Debug.Log($"[GeoART] Added ARBackgroundRendererFeature to {path}");
+                Debug.Log($"[GeoART] Added {typeof(T).Name} to {path}");
             }
         }
 

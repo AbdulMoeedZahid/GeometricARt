@@ -12,6 +12,7 @@ EditorBuildSettings:
     path: Assets/Scenes/Sandbox/Sandbox_A_AR.unity
     guid: 72bd23a6437f64b99a139741fc48e48f
   m_configObjects:
+    UnityEditor.XR.ARCore.ARCoreSettings: {fileID: 11400000, guid: 460561334b98642aca68dd075b942cd3, type: 2}
     UnityEditor.XR.ARKit.ARKitSettings: {fileID: 11400000, guid: 10505ea2f6192497194e061c495c2475, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
     com.unity.xr.arfoundation.simulation_settings: {fileID: 11400000, guid: 8e6fbd5eae86041af8bd58548cc94d92, type: 2}
