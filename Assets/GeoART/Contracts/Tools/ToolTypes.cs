@@ -25,7 +25,9 @@ namespace GeoART.Contracts
         public readonly HashSet<EntityId> Ids = new HashSet<EntityId>();
     }
 
-    public enum SnapKind { None, UserPoint, Endpoint, Center, CircleDivision, CellCorner, CellEdgeMid, CellCenter }
+    /// <summary>Append only: ordinals are stable. Intersection = a crossing of two drawn shapes (line/line, line/circle,
+    /// circle/circle). Grid intersections (tile corners) use CellCorner.</summary>
+    public enum SnapKind { None, UserPoint, Endpoint, Center, CircleDivision, CellCorner, CellEdgeMid, CellCenter, Intersection }
 
     public readonly struct SnapCandidate
     {

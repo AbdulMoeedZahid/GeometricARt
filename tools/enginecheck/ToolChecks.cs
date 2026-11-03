@@ -32,7 +32,30 @@ namespace GeoART.EngineCheck
         {
             var s = new EditorSession();
             Check.That(s.ActiveTool == ToolId.Line, "default tool is Line");
-            Check.That(!s.SnapEnabled && s.SnapCandidates.Count == 0, "snapping off");
+            Check.That(s.SnapEnabled, "snapping on by default");
+            Check.That(!s.OrthoLock, "H/V lock off by default");
+            Check.That(s.SnapMetric == null, "no screen metric: board-unit fallback");
+            Check.That(s.SnapCandidates != null, "candidate list available");
+        }
+
+        public static void SnapAndOrthoTogglesRaiseStateOnce()
+        {
+            var s = new EditorSession();
+            int states = 0;
+            s.StateChanged += () => states++;
+            s.SetSnapEnabled(false);
+            Check.That(!s.SnapEnabled && states == 1, "snap off, one StateChanged");
+            Check.That(s.SnapCandidates.Count == 0, "no candidates while snapping is off");
+            s.SetSnapEnabled(false);
+            Check.That(states == 1, "repeat is a no-op");
+            s.SetSnapEnabled(true);
+            Check.That(s.SnapEnabled && states == 2, "snap back on");
+            s.SetOrthoLock(true);
+            Check.That(s.OrthoLock && states == 3, "H/V lock on, one StateChanged");
+            s.SetOrthoLock(true);
+            Check.That(states == 3, "repeat is a no-op");
+            s.SetOrthoLock(false);
+            Check.That(!s.OrthoLock && states == 4, "H/V lock off");
         }
 
         public static void LineCommitsToActiveLayer()

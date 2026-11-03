@@ -2,7 +2,7 @@ using GeoART.Contracts;
 
 namespace GeoART.Engine
 {
-    // OWNER: line/circle tools builder. Snapping is out of scope for now (SnapEnabled false, candidates empty).
+    // OWNER: line/circle tools builder. Snap state (SnapEnabled, OrthoLock, SnapMetric) is in EditorSession.cs.
     /// <summary>
     /// Pointer routing for the Line and Circle tools. One gesture at a time:
     ///   Down (on the board)  Line: start point A.  Circle: centre.
@@ -35,7 +35,6 @@ namespace GeoART.Engine
 
         public ToolId ActiveTool => _tool;
         public StampKind ActiveStamp => StampKind.Square;
-        public bool SnapEnabled => false;
         /// <summary>Single source of truth is <see cref="Style"/>.Dash; the quick toggle flips it.</summary>
         public bool DottedLine => _style.Dash == LineStyle.Dotted;
         public Vec2? Cursor => _cursor;
@@ -185,11 +184,10 @@ namespace GeoART.Engine
         public void ToggleDottedLine() =>
             Style = _style.WithDash(DottedLine ? LineStyle.Solid : LineStyle.Dotted);   // raises StateChanged
 
-        // Snap points and stamps come later.
+        // Quick-menubar snap actions and stamps come later. SnapEnabled/SetSnapEnabled/OrthoLock live in EditorSession.cs.
         public void PlaceSnapPoint() { }
         public void ClickAtCursor() { }
         public void LineBetweenSnapPoints() { }
         public void SetStamp(StampKind k) { }
-        public void SetSnapEnabled(bool on) { }
     }
 }
