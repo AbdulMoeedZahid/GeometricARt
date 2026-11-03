@@ -28,6 +28,17 @@ namespace GeoART.Engine
         /// </summary>
         public const double TapSlopFraction = 10.0 / 24.0;
 
+        /// <summary>
+        /// Board-distance cap for snapping, in board units (0.03 = 1.2 cm on the 40 cm board). A candidate snaps only if
+        /// it is within the screen tolerance (<see cref="ISnapMetric.TolerancePx"/>) AND within this distance on the
+        /// board, so a flat viewing angle (where 24 px covers centimetres of board depth) cannot pull a point far away.
+        /// The board-unit fallback (<see cref="FallbackSnapTolerance"/>, 0.02) is already inside the cap. The H/V lock
+        /// applies the same cap to its alignment snap (perpendicular and along the axis).
+        /// </summary>
+        public const double MaxSnapBoardDistance = 0.03;
+
+        const double MaxSnapBoardDistance2 = MaxSnapBoardDistance * MaxSnapBoardDistance;
+
         readonly SnapIndex _snapIndex = new SnapIndex();
 
         partial void EnsureCandidates()
@@ -51,8 +62,9 @@ namespace GeoART.Engine
         }
 
         /// <summary>
-        /// Nearest snap candidate to <paramref name="p"/> within the tolerance, or false (snapping off, nothing in range).
-        /// Allocation-free once the candidate list is up to date.
+        /// Nearest snap candidate to <paramref name="p"/> within the tolerance and within <see cref="MaxSnapBoardDistance"/>
+        /// on the board, or false (snapping off, nothing in range). Nearest is measured in the tolerance space (screen px
+        /// with a metric). Allocation-free once the candidate list is up to date.
         /// </summary>
         bool TrySnap(Vec2 p, out SnapCandidate hit)
         {
@@ -79,6 +91,8 @@ namespace GeoART.Engine
             for (int i = 0; i < list.Count; i++)
             {
                 Vec2 q = list[i].Position;
+                double bx = q.X - p.X, by = q.Y - p.Y;   // board-distance cap first (also skips most projections)
+                if (!(bx * bx + by * by <= MaxSnapBoardDistance2)) continue;
                 if (screen && (!metric.TryToScreen(q, out q) || !q.IsFinite)) continue;
                 double dx = q.X - origin.X, dy = q.Y - origin.Y;
                 double d2 = dx * dx + dy * dy;
@@ -120,7 +134,7 @@ namespace GeoART.Engine
             EnsureCandidates();
 
             // Measuring space: screen px when the unsnapped end and a second axis point project, else board units.
-            var f = new OrthoSearch { Horizontal = horizontal, Anchor = a, S0 = end, Tol = FallbackSnapTolerance };
+            var f = new OrthoSearch { Horizontal = horizontal, Anchor = a, S0 = end, Tol = FallbackSnapTolerance, RawAlong = along };
             f.AxisDir = horizontal ? new Vec2(1, 0) : new Vec2(0, 1);
             ISnapMetric metric = SnapMetric;
             if (metric != null && metric.TryToScreen(end, out Vec2 e0) && e0.IsFinite)
@@ -145,6 +159,8 @@ namespace GeoART.Engine
                 Vec2 q = list[i].Position;
                 double qa = horizontal ? q.X : q.Y;
                 if (!(qa >= 0 && qa <= 1)) continue;
+                double perpBoard = horizontal ? q.Y - a.Y : q.X - a.X;   // board-distance cap, perpendicular part
+                if (!(Math.Abs(perpBoard) <= MaxSnapBoardDistance)) continue;
                 if (f.Metric != null && (!f.Metric.TryToScreen(q, out q) || !q.IsFinite)) continue;
                 double perp = Math.Abs(f.AxisDir.X * (q.Y - f.S0.Y) - f.AxisDir.Y * (q.X - f.S0.X));
                 if (!(perp <= f.Tol)) continue;
@@ -223,6 +239,7 @@ namespace GeoART.Engine
             public Vec2 S0;              // the unsnapped end, in the measuring space
             public Vec2 AxisDir;         // unit direction of the axis line, in the measuring space
             public double Tol, Tol2;
+            public double RawAlong;      // the unsnapped end's along-axis coordinate (board units), for the board cap
             public bool Found;
             public double BestAlong, BestD2;
             public int BestPriority;
@@ -234,9 +251,13 @@ namespace GeoART.Engine
                 if (along >= 0 && along <= 1) Offer(along, priority);
             }
 
-            /// <summary>Considers the axis point at <paramref name="along"/>: nearest to S0 within Tol, then priority, then first.</summary>
+            /// <summary>
+            /// Considers the axis point at <paramref name="along"/>: within <see cref="MaxSnapBoardDistance"/> of the
+            /// unsnapped end on the board, then nearest to S0 within Tol, then priority, then first.
+            /// </summary>
             public void Offer(double along, int priority)
             {
+                if (!(Math.Abs(along - RawAlong) <= MaxSnapBoardDistance)) return;
                 Vec2 q = OnAxis(Horizontal, Anchor, along);
                 if (Metric != null && (!Metric.TryToScreen(q, out q) || !q.IsFinite)) return;
                 double dx = q.X - S0.X, dy = q.Y - S0.Y;

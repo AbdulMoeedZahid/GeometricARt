@@ -347,15 +347,22 @@ namespace GeoART.EngineCheck
             Drag(farFallback, 0.1, 0.9, 0.62, 0.7);
             Check.That(LastLine(farFallback).B == new Vec2(0.62, 0.9), "same geometry in board units stays unaligned");
 
-            // Along the axis too: scale 500, 24 px = 0.048 board units; a candidate 0.04 along (20 px) snaps.
+            // Along the axis too: scale 500, 24 px = 0.048 board units; a candidate 0.028 along (14 px) snaps, while the
+            // board-unit fallback (0.028 > 0.02) would not.
             var along = Locked(new AffineMetric { Scale = 500, Tol = 24 });
-            AddUserPoint(along, 0.66, 0.12);
+            AddUserPoint(along, 0.648, 0.12);
             Drag(along, 0.1, 0.12, 0.62, 0.3);
-            Check.That(LastLine(along).B == new Vec2(0.66, 0.12), $"20 px along: snaps, got {P(LastLine(along).B)}");
+            Check.That(LastLine(along).B == new Vec2(0.648, 0.12), $"14 px along: snaps, got {P(LastLine(along).B)}");
             var alongFallback = Locked();
-            AddUserPoint(alongFallback, 0.66, 0.12);
+            AddUserPoint(alongFallback, 0.648, 0.12);
             Drag(alongFallback, 0.1, 0.12, 0.62, 0.3);
-            Check.That(LastLine(alongFallback).B == new Vec2(0.62, 0.12), "0.04 along in board units: no snap");
+            Check.That(LastLine(alongFallback).B == new Vec2(0.62, 0.12), "0.028 along in board units: no snap");
+
+            // ... but 0.04 along (20 px, inside the screen tolerance) is outside the board cap (MaxSnapBoardDistance).
+            var capped = Locked(new AffineMetric { Scale = 500, Tol = 24 });
+            AddUserPoint(capped, 0.66, 0.12);
+            Drag(capped, 0.1, 0.12, 0.62, 0.3);
+            Check.That(LastLine(capped).B == new Vec2(0.62, 0.12), $"0.04 along: board cap, no snap, got {P(LastLine(capped).B)}");
         }
 
         // ---------- toggling mid-gesture ----------

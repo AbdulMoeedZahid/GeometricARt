@@ -444,10 +444,12 @@ namespace GeoART.EngineCheck
             Drag(s, 0.1, 0.12, 0.5, 0.526);   // 26 px
             Check.That(((LineShape)s.ActiveLayer.Shapes[1]).B == new Vec2(0.5, 0.526), "26 px stays raw");
 
-            // Scale 500: the same 24 px are 0.048 board units.
+            // Scale 500: the same 24 px are 0.048 board units, but the board cap (MaxSnapBoardDistance = 0.03) also applies.
             var h = new EditorSession { SnapMetric = new AffineMetric { Scale = 500, OffX = -300, OffY = 999, Tol = 24 } };
-            Drag(h, 0.1, 0.12, 0.5, 0.54);    // 0.04 board = 20 px
-            Check.That(((LineShape)h.ActiveLayer.Shapes[0]).B == new Vec2(0.5, 0.5), "0.04 board units = 20 px snaps at scale 500");
+            Drag(h, 0.1, 0.12, 0.5, 0.528);   // 0.028 board = 14 px: inside both (the fallback 0.02 would not snap)
+            Check.That(((LineShape)h.ActiveLayer.Shapes[0]).B == new Vec2(0.5, 0.5), "0.028 board units = 14 px snaps at scale 500");
+            Drag(h, 0.1, 0.12, 0.5, 0.54);    // 0.04 board = 20 px: inside the screen tolerance, outside the board cap
+            Check.That(((LineShape)h.ActiveLayer.Shapes[1]).B == new Vec2(0.5, 0.54), "0.04 board units stays raw (board cap)");
 
             // Tap slop is in pixels too: at scale 2000, 0.008 board units = 16 px > 10 px slop, so it is a drag.
             var t = new EditorSession { SnapMetric = new AffineMetric { Scale = 2000, Tol = 24 } };
