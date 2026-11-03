@@ -82,14 +82,9 @@ namespace GeoART.EngineCheck
             }
             Check.That(lines.Count == 32, $"32 lines, got {lines.Count}");
 
-            // Lines == the golden fixture's lines, order-independent, either orientation, compared with ==.
-            //
-            // Fixture caveat: GoldenBoards.StarPoint evaluates each star separately, and 0.25 * sin(pi) is not 0, so two
-            // neighbouring stars put their shared tip 1 ulp apart: (0.5, 0.25) vs (0.5, 0.25000000000000006) and
-            // (0.25, 0.5) vs (0.24999999999999994, 0.5). A snapped seam is ONE point (stronger than the fixture), so at
-            // those fixture "seam groups" (distinct fixture endpoints within 1e-12 of each other) the drawn board must use
-            // one single bit-identical value everywhere, and that value must be one of the fixture's variants. Every other
-            // endpoint must equal the fixture exactly.
+            // Lines == the golden fixture's lines, order-independent, either orientation, compared with == everywhere.
+            // StarPoint and the snap candidates share the exact CircleDivisions table, so seams between neighbouring
+            // stars are one bit-identical point in both the fixture and the drawing.
             var golden = new List<LineShape>();
             foreach (var l in GoldenBoards.Tiled2x2().Layers)
                 foreach (var sh in l.Shapes)
@@ -98,22 +93,14 @@ namespace GeoART.EngineCheck
 
             var fixturePts = new List<Vec2>();
             foreach (var gl in golden) { AddDistinct(fixturePts, gl.A); AddDistinct(fixturePts, gl.B); }
+            for (int i = 0; i < fixturePts.Count; i++)
+                for (int j = i + 1; j < fixturePts.Count; j++)
+                    Check.That(Vec2.Distance(fixturePts[i], fixturePts[j]) > 1e-9,
+                        $"fixture seam is one point: ({fixturePts[i].X:R},{fixturePts[i].Y:R}) vs ({fixturePts[j].X:R},{fixturePts[j].Y:R})");
             var drawnPts = new List<Vec2>();
             foreach (var ln in lines) { AddDistinct(drawnPts, ln.A); AddDistinct(drawnPts, ln.B); }
-
-            // Seam groups: the drawn value there must be unique and a member of the group.
-            int seamGroups = 0;
-            for (int i = 0; i < fixturePts.Count; i++)
-            {
-                var group = Near(fixturePts, fixturePts[i]);
-                if (group.Count < 2 || !(group[0] == fixturePts[i])) continue;   // singletons, and count each group once
-                seamGroups++;
-                var drawn = Near(drawnPts, fixturePts[i]);
-                Check.That(drawn.Count == 1, $"seam at {fixturePts[i]} is one bit-identical point, got {drawn.Count} values");
-                Check.That(group.Contains(drawn[0]), $"seam value ({drawn[0].X:R},{drawn[0].Y:R}) is one of the fixture's variants");
-            }
-            Check.That(seamGroups == 2, $"expected the fixture's 2 known 1-ulp seam groups, found {seamGroups}");
-            Check.That(drawnPts.Count == fixturePts.Count - seamGroups, $"drawn board has {drawnPts.Count} distinct endpoints");
+            Check.That(drawnPts.Count == fixturePts.Count,
+                $"drawn board has {drawnPts.Count} distinct endpoints, fixture {fixturePts.Count}");
 
             var used = new bool[golden.Count];
             foreach (var ln in lines)
@@ -123,37 +110,42 @@ namespace GeoART.EngineCheck
                 {
                     if (used[g]) continue;
                     var gl = golden[g];
-                    if ((Same(ln.A, gl.A, fixturePts) && Same(ln.B, gl.B, fixturePts))
-                        || (Same(ln.A, gl.B, fixturePts) && Same(ln.B, gl.A, fixturePts))) match = g;
+                    if ((ln.A == gl.A && ln.B == gl.B) || (ln.A == gl.B && ln.B == gl.A)) match = g;
                 }
                 Check.That(match >= 0, $"line ({ln.A.X:R},{ln.A.Y:R})-({ln.B.X:R},{ln.B.Y:R}) is in Tiled2x2 exactly");
                 used[match] = true;
             }
         }
 
-        const double SeamEps = 1e-12;
+        /// <summary>The shared exact division table: exact on the axes, one diagonal constant, close to cos/sin.</summary>
+        public static void CircleDivisionTableIsExact()
+        {
+            double d = CircleDivisions.Diagonal;
+            Check.That(d == System.Math.Sqrt(2) / 2, "Diagonal is sqrt(2)/2 as a double");
+            for (int k = 0; k < CircleDivisions.Count; k++)
+            {
+                double a = k * System.Math.PI / 4;
+                Check.Near(CircleDivisions.Cos(k), System.Math.Cos(a), $"cos {k}", 1e-15);
+                Check.Near(CircleDivisions.Sin(k), System.Math.Sin(a), $"sin {k}", 1e-15);
+                double c = System.Math.Abs(CircleDivisions.Cos(k)), s = System.Math.Abs(CircleDivisions.Sin(k));
+                Check.That(c == 0 || c == 1 || c == d, $"cos {k} uses only 0, 1, Diagonal");
+                Check.That(s == 0 || s == 1 || s == d, $"sin {k} uses only 0, 1, Diagonal");
+                Check.That(CircleDivisions.Point(new Vec2(0.3, 0.4), 0.2, k) == GoldenBoards.StarPoint(new Vec2(0.3, 0.4), 0.2, k),
+                    $"StarPoint {k} uses the table");
+            }
+            Check.That(CircleDivisions.Cos(-1) == CircleDivisions.Cos(7) && CircleDivisions.Sin(9) == CircleDivisions.Sin(1), "k wraps mod 8");
+            // Touching circles share their tangent point bit-for-bit (the property pattern seams rely on).
+            var left = CircleDivisions.Point(new Vec2(0.25, 0.25), 0.25, 0);
+            var right = CircleDivisions.Point(new Vec2(0.75, 0.25), 0.25, 4);
+            Check.That(left == right && left == new Vec2(0.5, 0.25), "k0 of the left circle == k4 of the right circle == (0.5, 0.25)");
+            var below = CircleDivisions.Point(new Vec2(0.25, 0.25), 0.25, 2);
+            var above = CircleDivisions.Point(new Vec2(0.25, 0.75), 0.25, 6);
+            Check.That(below == above && below == new Vec2(0.25, 0.5), "k2 below == k6 above == (0.25, 0.5)");
+        }
 
         static void AddDistinct(List<Vec2> pts, Vec2 p)
         {
             if (!pts.Contains(p)) pts.Add(p);
-        }
-
-        static List<Vec2> Near(List<Vec2> pts, Vec2 p)
-        {
-            var r = new List<Vec2>();
-            foreach (var q in pts) if (Vec2.Distance(p, q) <= SeamEps) r.Add(q);
-            return r;
-        }
-
-        /// <summary>
-        /// Drawn d matches fixture f: d == f, or f is in a fixture seam group (another fixture endpoint within 1e-12)
-        /// and d is one of that group's exact values.
-        /// </summary>
-        static bool Same(Vec2 d, Vec2 f, List<Vec2> fixturePts)
-        {
-            if (d == f) return true;
-            var group = Near(fixturePts, f);
-            return group.Count >= 2 && group.Contains(d);
         }
     }
 }

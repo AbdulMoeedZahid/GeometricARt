@@ -30,9 +30,12 @@ namespace GeoART.Contracts
             return b;
         }
 
-        /// <summary>Point k of the eight circle divisions: center + r * (cos(k*pi/4), sin(k*pi/4)).</summary>
-        public static Vec2 StarPoint(Vec2 center, double radius, int k) =>
-            new Vec2(center.X + radius * Math.Cos(k * Math.PI / 4), center.Y + radius * Math.Sin(k * Math.PI / 4));
+        /// <summary>
+        /// Point k of the eight circle divisions: center + r * (cos(k*pi/4), sin(k*pi/4)), taken from the exact table in
+        /// <see cref="CircleDivisions"/> (the same one the engine's snap candidates use). Before the snapping work this used
+        /// Math.Cos/Math.Sin, which put shared star tips of neighbouring stars 1 ulp apart.
+        /// </summary>
+        public static Vec2 StarPoint(Vec2 center, double radius, int k) => CircleDivisions.Point(center, radius, k);
 
         /// <summary>Sketch 3: guides, circle and the eight-pointed star on the full board (layers bottom to top).</summary>
         public static Board StarOnFullBoard()
