@@ -12,6 +12,10 @@ namespace GeoART.App
     ///   Width           cycles the stroke width Thin -> Medium -> Thick (label shows the current one)
     ///   Grid            switches the tile grid Square <-> Hex (icon and label show the current kind)
     ///   Tiles           cycles tiles per side 1 -> 2 -> 3 -> 4 -> 1 (label "2x2" etc.)
+    ///   Snap            toggles IEditorSession.SetSnapEnabled (orange when on; on by default)
+    ///   HV              toggles IEditorSession.SetOrthoLock: Line tool draws horizontal/vertical lines (orange when on)
+    /// Eight buttons in four groups of two, about 520 reference px tall: fits a 390x844 portrait screen with room for
+    /// the placement row and the coach text.
     /// Icons are drawn procedurally into small textures once in Awake. Every button is a raycast target, so
     /// BoardInputRouter ignores touches that start on it. Visible only while the board is placed (or when the scene
     /// has no IBoardSpace). Event-driven: refreshes on session/placement StateChanged, no per-frame work except a
@@ -24,17 +28,23 @@ namespace GeoART.App
 
         static readonly Color Accent = new Color(1f, 0.42f, 0f, 0.95f);
         static readonly Color Idle = new Color(0.08f, 0.08f, 0.1f, 0.78f);
-        const float ButtonW = 56f, ButtonH = 58f, Spacing = 8f, GroupGap = 14f, EdgeMargin = 8f;
+        // ButtonH went from 58 to 56 when the column grew from 6 to 8 buttons (Snap, HV).
+        const float ButtonW = 56f, ButtonH = 56f, Spacing = 8f, GroupGap = 14f, EdgeMargin = 8f;
+        const int ButtonCount = 8, GroupCount = 4;
 
-        enum Glyph { Line, Circle, Dotted, Width, Square, Hex, Tiles }
-        const int GlyphCount = 7;
+        /// <summary>Column height in reference px: 8 buttons, one spacing inside each pair, a gap between pairs.</summary>
+        public const float ColumnHeight =
+            ButtonCount * ButtonH + (ButtonCount - GroupCount) * Spacing + (GroupCount - 1) * GroupGap;
+
+        enum Glyph { Line, Circle, Dotted, Width, Square, Hex, Tiles, Snap, HV }
+        const int GlyphCount = 9;
 
         IEditorSession _session;
         IBoardSpace _boardSpace;
         Canvas _canvas;
         RectTransform _column;
         Rect _safeArea;
-        Image _lineBg, _circleBg, _dottedBg;
+        Image _lineBg, _circleBg, _dottedBg, _snapBg, _hvBg;
         Text _widthLabel, _gridLabel, _tilesLabel;
         RawImage _gridIcon;
         Texture _squareGlyph, _hexGlyph;
@@ -51,14 +61,14 @@ namespace GeoART.App
             _canvas.sortingOrder = 105;
             var scaler = canvasGo.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(390f, 844f);
-            scaler.matchWidthOrHeight = 0.5f;
+            scaler.referenceResolution = ScreenSnapMetric.ReferenceResolution;   // 390x844, shared with snap tolerance
+            scaler.matchWidthOrHeight = ScreenSnapMetric.MatchWidthOrHeight;
 
             var columnGo = new GameObject("Column", typeof(RectTransform));
             columnGo.transform.SetParent(canvasGo.transform, false);
             _column = (RectTransform)columnGo.transform;
             _column.pivot = new Vector2(1f, 0.5f);
-            _column.sizeDelta = new Vector2(ButtonW, 6 * ButtonH + 3 * Spacing + 2 * GroupGap);
+            _column.sizeDelta = new Vector2(ButtonW, ColumnHeight);
             ApplySafeArea();
 
             var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -75,6 +85,10 @@ namespace GeoART.App
             _gridIcon = gridBg.GetComponentInChildren<RawImage>();
             _squareGlyph = _gridIcon.texture;
             CreateButton("2x2", Glyph.Tiles, font, ref y, CycleGridN, out _tilesLabel);
+            y += GroupGap - Spacing;
+            _snapBg = CreateButton("Snap", Glyph.Snap, font, ref y, ToggleSnap, out _);
+            _hvBg = CreateButton("HV", Glyph.HV, font, ref y, ToggleOrthoLock, out var hvLabel);
+            hvLabel.text = "H/V";
 
             _canvas.enabled = false;
         }
@@ -122,6 +136,8 @@ namespace GeoART.App
             SetColor(_lineBg, tool == ToolId.Line ? Accent : Idle);
             SetColor(_circleBg, tool == ToolId.Circle ? Accent : Idle);
             SetColor(_dottedBg, _session.DottedLine ? Accent : Idle);
+            SetColor(_snapBg, _session.SnapEnabled ? Accent : Idle);
+            SetColor(_hvBg, _session.OrthoLock ? Accent : Idle);
             string width = WidthLabel(_session.Style.Width);
             if (!ReferenceEquals(_widthLabel.text, width)) _widthLabel.text = width;
             RefreshGrid();
@@ -158,6 +174,18 @@ namespace GeoART.App
             if (board == null) return;
             int n = TileGrid.ClampN(board.GridN);
             _session.SetGrid(n >= Board.MaxGridN ? Board.MinGridN : n + 1);
+        }
+
+        void ToggleSnap()
+        {
+            if (_session == null) return;
+            _session.SetSnapEnabled(!_session.SnapEnabled);   // raises StateChanged -> Refresh
+        }
+
+        void ToggleOrthoLock()
+        {
+            if (_session == null) return;
+            _session.SetOrthoLock(!_session.OrthoLock);
         }
 
         static readonly string[] s_TilesLabels = { "1x1", "2x2", "3x3", "4x4" };
@@ -208,7 +236,7 @@ namespace GeoART.App
             irt.anchorMin = irt.anchorMax = new Vector2(0.5f, 1f);
             irt.pivot = new Vector2(0.5f, 1f);
             irt.sizeDelta = new Vector2(30f, 30f);
-            irt.anchoredPosition = new Vector2(0f, -6f);
+            irt.anchoredPosition = new Vector2(0f, -5f);
             var icon = iconGo.GetComponent<RawImage>();
             icon.texture = MakeGlyph(glyph);
             icon.raycastTarget = false;
@@ -302,6 +330,22 @@ namespace GeoART.App
                         d = Mathf.Min(d, SegmentDistance(p, v0, v1));
                     }
                     return d - 0.045f;
+                }
+                case Glyph.Snap:   // a line ending exactly on a ringed dot: "lands on the point"
+                {
+                    var dot = new Vector2(0.68f, 0.68f);
+                    float d = SegmentDistance(p, new Vector2(0.16f, 0.16f), dot) - 0.04f;
+                    d = Mathf.Min(d, Mathf.Abs(Vector2.Distance(p, dot) - 0.17f) - 0.035f);
+                    return Mathf.Min(d, Vector2.Distance(p, dot) - 0.07f);
+                }
+                case Glyph.HV:   // a plus with end ticks: horizontal and vertical only
+                {
+                    float d = Mathf.Min(SegmentDistance(p, new Vector2(0.16f, 0.5f), new Vector2(0.84f, 0.5f)),
+                        SegmentDistance(p, new Vector2(0.5f, 0.16f), new Vector2(0.5f, 0.84f))) - 0.04f;
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.16f, 0.4f), new Vector2(0.16f, 0.6f)) - 0.035f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.84f, 0.4f), new Vector2(0.84f, 0.6f)) - 0.035f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.4f, 0.16f), new Vector2(0.6f, 0.16f)) - 0.035f);
+                    return Mathf.Min(d, SegmentDistance(p, new Vector2(0.4f, 0.84f), new Vector2(0.6f, 0.84f)) - 0.035f);
                 }
                 case Glyph.Tiles:   // 3x3 dots
                 {

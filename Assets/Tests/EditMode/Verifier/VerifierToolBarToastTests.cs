@@ -113,6 +113,55 @@ namespace GeoART.Tests.Verifier
         }
 
         [Test]
+        public void ToolBarSnapAndHVButtonsToggleSession()
+        {
+            Add<ToolBar>();
+            _space.PlaceAtReticle();
+            var snapBg = Find("Snap").GetComponent<Image>();
+            var hvBg = Find("HV").GetComponent<Image>();
+            Assert.AreEqual("H/V", Find("HV").GetComponentInChildren<Text>().text);
+            Color dottedIdle = Find("Dotted").GetComponent<Image>().color;   // Dotted is off by default
+
+            Assert.IsTrue(_session.SnapEnabled, "snapping on by default");
+            Assert.AreNotEqual(dottedIdle, snapBg.color, "Snap is highlighted while on");
+            Assert.AreEqual(dottedIdle, hvBg.color, "H/V idle while off");
+
+            Click(Find("Snap"));
+            Assert.IsFalse(_session.SnapEnabled, "Snap button turns snapping off");
+            Assert.AreEqual(dottedIdle, snapBg.color, "Snap idle when off");
+            Click(Find("Snap"));
+            Assert.IsTrue(_session.SnapEnabled, "and back on");
+
+            Click(Find("HV"));
+            Assert.IsTrue(_session.OrthoLock, "HV button turns the lock on");
+            Assert.AreNotEqual(dottedIdle, hvBg.color, "H/V highlighted while on");
+            _session.SetOrthoLock(false);   // changes from elsewhere also refresh
+            Assert.AreEqual(dottedIdle, hvBg.color);
+        }
+
+        [Test]
+        public void ToolBarEightButtonsFitInsideCanvas()
+        {
+            Add<ToolBar>();
+            _space.PlaceAtReticle();
+            Canvas.ForceUpdateCanvases();
+            var canvas = _go.GetComponentInChildren<Canvas>(true);
+            Vector3[] cc = new Vector3[4], bc = new Vector3[4];
+            ((RectTransform)canvas.transform).GetWorldCorners(cc);
+            string[] names = { "Line", "Circle", "Dotted", "Medium", "Square", "2x2", "Snap", "HV" };
+            float prevTop = float.MaxValue;
+            foreach (var n in names)
+            {
+                ((RectTransform)Find(n).transform).GetWorldCorners(bc);
+                Assert.GreaterOrEqual(bc[0].y, cc[0].y, $"{n} above the bottom edge");
+                Assert.LessOrEqual(bc[2].y, cc[2].y, $"{n} below the top edge");
+                Assert.LessOrEqual(bc[2].x, cc[2].x, $"{n} inside the right edge");
+                Assert.Less(bc[2].y, prevTop, $"{n} is below the previous button (column order)");
+                prevTop = bc[0].y;
+            }
+        }
+
+        [Test]
         public void ToolBarHiddenUntilPlacedThenSwitchesTools()
         {
             Add<ToolBar>();
