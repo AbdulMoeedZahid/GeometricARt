@@ -6,7 +6,20 @@ the difference is noted. Baseline: `grid-and-android` at `9270ba3` (plan commit 
 
 ## 1. Summary
 
-_In progress. Filled in by the final pass (R1)._
+Branch `feature/snap-pattern`, from `grid-and-android` at `9270ba3`. Last code commit `38f2469`; docs `b766144` and the R1 pass of this report.
+
+Snapping is now on by default in the Line and Circle tools. Line starts and ends, circle centres and radius points land **exactly** (`==`) on snap candidates. Candidates are built automatically by `Engine/Snap/SnapIndex.cs` from user points, line endpoints and polygon corners, shape/shape crossings (line/line, line/circle, circle/circle), grid intersections (every square or hex tile corner from `TileGrid`), circle and polygon centres, 8 divisions per circle, and tile edge midpoints and centres. They are drawn as dots in four tiers, each a dark fill with a light outline. Tolerance is 24 reference px measured on screen (`App/ScreenSnapMetric.cs`), so it does not depend on perspective.
+
+**Tap-to-connect:** in the Line tool, tap one dot and then another, and they are joined with a line.
+
+**H/V lock** (ToolBar `H/V` button): new lines come out exactly horizontal or vertical in board axes, with alignment snapping along the axis.
+
+**Snap** (ToolBar button) turns all of this off and on.
+
+A pattern built only by snapping (4 circles and 32 star lines on a 2x2 grid) equals `GoldenBoards.Tiled2x2()` bit-for-bit. This needed the shared exact circle-division table (`Contracts/Model/CircleDivisions.cs`).
+
+**Editor-verified only** (section 9). Engine checks 139/139; Unity EditMode 77/77 and PlayMode 17/17; render check passes, including the Metal, Vulkan and GLES3 shader compiles.
+
 
 ## 2. Files changed
 
@@ -107,6 +120,19 @@ next import; they are not part of this commit.
 
 `EditorSession.cs`, `SnapIndex.cs`, `Intersect.cs`, Contracts and the App are unchanged. No new files under `Assets/`,
 so no .meta files are needed (`OrthoChecks.cs` is outside `Assets/`).
+
+### U4 (verification), D1 (user docs), R1 (this report)
+- **App**
+  - `App/ToolBar.cs`: `ApplySafeArea` now runs again when `Screen.width/height` change, not only when `Screen.safeArea` changes (fields `_screenW`, `_screenH`). Found with the Device Simulator: a first layout made while `Screen` and `Screen.safeArea` disagreed was never corrected.
+- **Editor**
+  - `Editor/Build/ToolsRenderCheck.cs`: also compiles BoardUnlit for Vulkan and GLES3 (Android), not only Metal. The stroke board now runs with snapping off. Adds two snapping scenarios: on the sheet with an open snapped drag and hover ring, and on a dark table with the base hidden and a pending tap ring.
+- **Tests**
+  - `Tests/PlayMode/Verifier/VerifierSnapPlayTests.cs` (new): 5 PlayMode tests. A virtual touchscreen drives the real `BoardInputRouter`, which feeds the real `EditorSession` measuring with the real `ScreenSnapMetric`.
+- **Docs**
+  - `docs/SNAPPING.md` (new): user guide.
+  - `docs/TOOLS.md`: no longer says snapping comes later; points to `SNAPPING.md`.
+  - `docs/SNAP_CHANGE_REPORT.md`: this report.
+  - `docs/SNAP_PATTERN_PLAN.md`: plan, decisions Q1-Q12, progress log, setbacks.
 
 ## 3. Contract changes
 
@@ -464,7 +490,27 @@ through the interface with `out Vec2`. 0 bytes per Move (checked).
 
 ## 5. Invariants
 
-_Filled in by the final pass (R1)._
+Each invariant names the check that guards it. If you change the code and a check fails, read the invariant before "fixing" the check.
+
+1. **Exact coordinates.** A snapped point is the candidate's own `Vec2`, copied and never recomputed. Candidates are source values, for example `LineShape.A`, `CircleShape.Center`, a `TileGrid` point, or `CircleDivisions.Point`. With the H/V lock, the perpendicular coordinate is copied from the anchor.
+   - Guarded by: `SnapToolChecks` (drag and tap `==`), `PatternChecks.SnapBuildsTiled2x2` (`==` on all 64 endpoints), `OrthoChecks` (`A.Y == B.Y`), `VerifierSnapPlayTests` (end to end).
+2. **No allocations per pointer Move.** This holds once the candidate list is up to date. Ghosts and rings are reused instances, there are no LINQ, closure or boxed-enumerator calls, and the H/V search is a struct.
+   - Guarded by: `SnapToolChecks` and `OrthoChecks` allocation checks (`GC.GetAllocatedBytesForCurrentThread() == 0` over 200 Moves).
+   - `BoardView` draws candidate dots in their own mesh, rebuilt on `BoardChanged`/`StateChanged` only, and uses index loops.
+3. **Candidates are never rebuilt per Move.** `SnapIndex.Sync` rebuilds only if `MarkDirty` was called (every `BoardChanged`, through `EditorSession.OnModelChanged`) or the cheap board signature changed. The signature covers the board reference, `GridN`, `GridKind`, layer count, and each layer's Id, Visible, shape count and snap point count.
+   - Guarded by: `SnapChecks.SyncIsLazyAndDetectsChanges`.
+4. **Hidden layers contribute nothing**, neither shapes, user points nor crossings. The H/V axis crossings use the same rule.
+   - Guarded by: `SnapChecks.HiddenLayerContributesNothing`.
+5. **Grid intersections are always present**, for square and hex, even on an empty board, and only from `TileGrid.SnapPoints`. Grid geometry is never re-derived.
+   - Guarded by: `SnapChecks.EmptySquareBoardGridCorners`, `HexCornersMatchTileGridExactly`, `SwitchingGridKindRebuildsCorners`.
+6. **Deterministic tie-breaks.** Nearest wins. On an exactly equal distance the lower `SnapIndex.Priority` wins, then the earlier candidate. Dedup (1e-7) keeps the higher-priority kind and its position.
+   - Guarded by: `SnapChecks.DedupKeepsHighestPriority`, `CandidateOrderIsDeterministicAndByPriority`, and the `SnapToolChecks` tie-break check.
+7. **Tolerances are in screen pixels** whenever `SnapMetric` is set and the point projects. Board units (`FallbackSnapTolerance`) are only the fallback.
+   - Guarded by: the fake non-uniform metrics in `SnapToolChecks` and `OrthoChecks`.
+8. **Engine and Contracts stay pure C#.** `grep -rn "using UnityEngine" Assets/GeoART/Engine Assets/GeoART/Contracts` prints nothing. They compile in the .NET harness.
+9. **Circle divisions come from one exact table** (`CircleDivisions`), shared by `GoldenBoards.StarPoint` and `SnapIndex`.
+   - Guarded by: `PatternChecks.CircleDivisionTableIsExact`.
+
 
 ## 6. Tuning knobs
 
@@ -495,7 +541,27 @@ _Filled in by the final pass (R1)._
 
 ## 7. How to extend
 
-_Filled in by the final pass (R1)._
+- **A new candidate source** (for example the midpoints of drawn lines):
+  1. In `SnapIndex.Rebuild`, add a pass at the right place in the priority order. Sources are added in priority order and dedup keeps the first.
+  2. Use the source's own values (or an exact formula) so `==` keeps holding.
+  3. If it depends on model state the signature does not cover, rely on `MarkDirty` (every `BoardChanged` already calls it).
+  4. Add checks in `SnapChecks`.
+- **A new `SnapKind`:**
+  1. Append it at the END of the enum in `Contracts/Tools/ToolTypes.cs`, so ordinals never change.
+  2. Give it a rank in `SnapIndex.Priority`. Keep the order a strict total order, and keep `Rebuild`'s source order in step with it.
+  3. Pick a dot tier in `BoardView.TierOf`. Unknown kinds fall into tier 0.
+- **A new intersection type** (for example circle/arc):
+  1. Add an allocation-free static to `Engine/Geometry/Intersect.cs` (return a count, `out` points). Snap results to exact endpoints when within `ParamEps`, like the existing functions.
+  2. Call it from `SnapIndex.AddCrossings`.
+  3. If the H/V lock should see it, call it from `TryOrthoEnd`'s (b) loop too.
+- **Shape x grid-line crossings:** set `SnapIndex.IncludeShapeGridCrossings = true`. It is in the signature, so `Sync` rebuilds.
+- **Another division count** (for example 12 per circle): add a second exact table in `CircleDivisions`. Sines and cosines of multiples of 30 degrees need 0, ±1/2, ±√3/2 and ±1. `GoldenBoards` must keep using the same table as `SnapIndex`.
+- **Select/Move/Scale/Duplicate (P3, plan appendix A):**
+  - Reuse `SnapIndex` for targets. Build it from the board minus the selection: mark dirty, and filter the selected shape ids in a new pass.
+  - Reuse `ISnapMetric` and the `TrySnap` pattern for the screen-space tolerance, and `Intersect` for hit-testing.
+  - Move snapping applies the exact delta between a selection key point and a candidate, so moved points stay `==` to candidates.
+  - Keep the Move path allocation-free: the existing allocation checks show the pattern.
+
 
 ## 8. Tests
 
@@ -620,6 +686,53 @@ coordinate computed instead of copied (10 checks), dominant axis ignored (6), ti
 skipped (2), a list allocated per Move (1, 317 KB over 200 Moves), metric ignored (1), clamp removed (1), no re-track
 on toggle (1), tap alignment rule removed (1).
 
+### U4, and how to run everything
+- **PlayMode `VerifierSnapPlayTests`** (all asserted with `==`):
+  - `DragEndSnapsToShapeIntersection`
+  - `DragEndSnapsToGridIntersectionSquareAndHex`
+  - `TapTapConnectsTwoCandidates`
+  - `OrthoLockDrawsExactHorizontalWithAlignmentSnap`
+  - `A0_WarmUp`
+
+  These tests use a virtual touchscreen and a fake linear board space (`[100, 900]` px), not the `Sandbox_A_Flat` scene. That keeps them deterministic and independent of the scene camera. The sandbox was checked by hand (below).
+- **Render check** (`ToolsRenderCheck`): writes `board-snap-{near45cm,far90cm}-msaa{1,4}.png` and `board-snap-dark-*.png`. BoardUnlit compiles for Metal/iOS, Vulkan/Android and GLES3/Android.
+- **Sandbox checks** (Play Mode in `Sandbox_A_Flat`, driven through the live session, real `ScreenSnapMetric`). Screenshots are in `Logs/SnapScreens/`, not committed.
+  - At the default 50-degree tilt: a line end released about 0.008 board units off a line/circle crossing equals it bit-for-bit, and tap-tap joined two circle divisions.
+  - Tilted to 60 degrees from top-down (30-degree pitch), at the far edge: a release 15 px from the grid corner (0.5, 1) was 0.124 board units away and committed exactly to it. Two taps along the far edge committed (0.25, 1) to (0.75, 1) exactly.
+- **Device Simulator** (Unity's generic profiles; the toolbar and sidebar measured against `Screen.safeArea` in Play Mode; screenshots `Logs/SnapScreens/u4_sim_*.png`):
+  - Punch Hole Right 1080x2280 (small Android): all 8 buttons inside the safe area.
+  - Foldable 960x2658 (tall Android): all 8 buttons inside the safe area.
+  - iOS Notch Device 1170x2532 (iPhone): all 8 buttons inside the safe area, clear of the notch and the home indicator.
+  - The layer sidebar is inside the safe area on all three.
+  - iOS Classic 750x1334 was not run. By arithmetic the 522 px column fits its 765 reference px of height.
+- **How to run on Windows (Luis):**
+  - Engine checks: `DOTNET_ROLL_FORWARD=Major DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet run --project tools/enginecheck -c Release` from Git Bash.
+  - Unity: Test Runner, EditMode then PlayMode, with the Game view set to a portrait size such as 390x844. `ToolBarOnRightEdge` fails in a landscape Game view, also on the baseline.
+  - Render check: GeoART > Checks > Board rendering check.
+- **How to run on the Mac (teammates):** the enginecheck command in `tools/enginecheck/EngineCheck.csproj`, the same Test Runner steps, and `PlayerScriptCheck.CompileIOSBatch` before merging to `main`.
+
 ## 9. Known limitations and untested areas
 
-_Filled in by the final pass (R1)._ It must say "Editor-verified only" and list the device checks still owed (plan Q12).
+**Editor-verified only.** Nothing in this change has run on a phone. Luis's phone does not support ARCore (plan Q12). Verification was done with the engine harness, Unity EditMode/PlayMode tests, the render check, Play Mode in `Sandbox_A_Flat`, and the Device Simulator.
+
+**Device checks still owed:**
+
+| Check | What to look for | Owner |
+|---|---|---|
+| Touch tolerance feel | Dots easy to hit at 25-60 cm, near and far edge, board seen at an angle; snapping not too eager when the phone is held flat (see below) | Ratul (Galaxy S24 Ultra) or Haytham, Android (A0) |
+| Toolbar fit on hardware | 8 buttons inside the real safe area (punch-hole, gesture bar), readable, nothing drawn through them | Ratul or Haytham (Android); Mac teammate (iPhone) |
+| Frame rate with candidates | Smooth while dragging with four stars plus all dots | Ratul or Haytham (Android); Mac teammate (iPhone) |
+| Rest of plan 5.5 | Plane found, quick place and corner placement, grid-intersection snapping, H/V lines aligned with the physical sheet | Ratul or Haytham (A0) |
+| iOS build | `PlayerScriptCheck.CompileIOSBatch` and a device build before merging to `main` | Mac teammate |
+
+**Known limitations:**
+- **Grazing angles.** The 24 px tolerance is measured on screen. At a flat viewing angle it covers a lot of board depth: in the sandbox at a 30-degree pitch, 15 px was 0.12 board units (about 5 cm on the 40 cm board). Snapping can feel eager there. Turning Snap off is the escape hatch.
+- **Toggling Snap mid-drag** does not update the ghost until the next Move. Toggling the H/V lock does update it immediately.
+- **H/V lock and a pending tap.** Toggling the lock keeps a pending tap-to-connect start. With the lock on, a non-aligned second tap toasts and connects nothing.
+- **Clamping.** Free (unlocked) line ends are not clamped to [0, 1]. The router only sends on-board points, so this has not mattered. Locked ends are clamped.
+- **Hover cursor.** The cursor outside a gesture (`SetCursor`) shows the raw point, not the snapped one.
+- **Fixed division count.** Circle divisions are fixed at 8, from the exact table.
+- **Not candidates.** Crossings with grid lines (off by default) and quick-menubar `PlaceSnapPoint`/`ClickAtCursor`/`LineBetweenSnapPoints` are still no-ops.
+- **Landscape toolbar.** In a landscape view the 8-button toolbar runs off the screen. The app UI is portrait. The flat sandbox camera fits the whole board either way.
+- **`LayerSidebar`** (outside this task's ownership) re-applies its safe area only when `Screen.safeArea` changes, the pattern `ToolBar` had before U4. Not seen on a device, but worth the same one-line fix.
+- **Fixture coordinates.** `GoldenBoards.StarPoint` values moved by at most 1 ulp (Q1). Code that rebuilds star points with `Math.Cos`/`Math.Sin` and compares with `==` must use `CircleDivisions.Point` instead.
