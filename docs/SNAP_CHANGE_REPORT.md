@@ -8,7 +8,7 @@ the difference is noted. Baseline: `grid-and-android` at `9270ba3` (plan commit 
 
 Branch `feature/snap-pattern`, from `grid-and-android` at `9270ba3`. Last code commit `38f2469`; docs `b766144` and the R1 pass of this report.
 
-Snapping is now on by default in the Line and Circle tools. Line starts and ends, circle centres and radius points land **exactly** (`==`) on snap candidates. Candidates are built automatically by `Engine/Snap/SnapIndex.cs` from user points, line endpoints and polygon corners, shape/shape crossings (line/line, line/circle, circle/circle), grid intersections (every square or hex tile corner from `TileGrid`), circle and polygon centres, 8 divisions per circle, and tile edge midpoints and centres. They are drawn as dots in four tiers, each a dark fill with a light outline. Tolerance is 24 reference px measured on screen (`App/ScreenSnapMetric.cs`), so it does not depend on perspective.
+Snapping is now on by default in the Line and Circle tools. Line starts and ends, circle centres and radius points land **exactly** (`==`) on snap candidates. Candidates are built automatically by `Engine/Snap/SnapIndex.cs` from user points, line endpoints and polygon corners, shape/shape crossings (line/line, line/circle, circle/circle), grid intersections (every square or hex tile corner from `TileGrid`), circle and polygon centres, 8 divisions per circle, and tile edge midpoints and centres. They are drawn as dots in four tiers, each a dark fill with a light outline. Tolerance is 24 reference px measured on screen (`App/ScreenSnapMetric.cs`), so it does not depend on perspective, capped at 0.03 board units on the board (`EditorSession.MaxSnapBoardDistance`, 1.2 cm) so a flat viewing angle cannot pull a point far away.
 
 **Tap-to-connect:** in the Line tool, tap one dot and then another, and they are joined with a line.
 
@@ -18,7 +18,7 @@ Snapping is now on by default in the Line and Circle tools. Line starts and ends
 
 A pattern built only by snapping (4 circles and 32 star lines on a 2x2 grid) equals `GoldenBoards.Tiled2x2()` bit-for-bit. This needed the shared exact circle-division table (`Contracts/Model/CircleDivisions.cs`).
 
-**Editor-verified only** (section 9). Engine checks 139/139; Unity EditMode 77/77 and PlayMode 17/17; render check passes, including the Metal, Vulkan and GLES3 shader compiles.
+**Editor-verified only** (section 9). Engine checks 145/145; Unity EditMode 77/77 and PlayMode 17/17; render check passes, including the Metal, Vulkan and GLES3 shader compiles.
 
 
 ## 2. Files changed
@@ -133,6 +133,15 @@ so no .meta files are needed (`OrthoChecks.cs` is outside `Assets/`).
   - `docs/TOOLS.md`: no longer says snapping comes later; points to `SNAPPING.md`.
   - `docs/SNAP_CHANGE_REPORT.md`: this report.
   - `docs/SNAP_PATTERN_PLAN.md`: plan, decisions Q1-Q12, progress log, setbacks.
+
+### Pre-push follow-up (Luis, 2026-11-03): board-distance cap, LayerSidebar
+- **Engine**
+  - `Engine/EditorSession.Snap.cs`: adds `MaxSnapBoardDistance` (0.03 board units). `TrySnap` requires a candidate to be within the screen tolerance AND within the cap. The H/V lock search applies the cap perpendicular to the axis (candidate (a)) and along it (every offer).
+- **App**
+  - `App/LayerSidebar.cs`: **this file comes from Ratul's `grid-and-android` branch** (the layer sidebar). It got the same one-line safe-area fix as `ToolBar`: it now re-applies when `Screen.width/height` change, not only when `Screen.safeArea` changes (fields `_screenW`, `_screenH`; `Update` and `ApplySafeArea`). Approved by Luis. No behaviour change on a device, where the screen and safe area always agree.
+- **Checks**
+  - `tools/enginecheck/SnapCapChecks.cs` (new): 6 checks.
+  - `tools/enginecheck/SnapToolChecks.cs` (`ScaleOffsetMetricToleranceIsInPixels`) and `tools/enginecheck/OrthoChecks.cs` (`ToleranceIsInScreenSpace`): their "pixels, not board units" cases now use distances inside the cap (0.028 board units instead of 0.04). Each gains an assertion that 0.04 (inside 24 px) stays raw because of the cap.
 
 ## 3. Contract changes
 
@@ -488,6 +497,21 @@ toggles pending off silently. Drags always go through the lock.
 pattern matching on the shape types, and a local `OrthoSearch` struct for the running best. The metric is called
 through the interface with `out Vec2`. 0 bytes per Move (checked).
 
+### Board-distance cap (pre-push follow-up)
+A candidate snaps only if both of these hold:
+- it is within `TolerancePx` on screen, or `FallbackSnapTolerance` in board units without a metric;
+- it is within `EditorSession.MaxSnapBoardDistance` = 0.03 board units on the board (1.2 cm on the 40 cm board).
+
+Among the candidates that pass both, the nearest **on screen** wins, with the same tie-breaks as before. `TrySnap` checks the board distance first, which also skips most projections.
+
+**Why:** with only a screen tolerance, a flat viewing angle compresses board depth. In the sandbox at a 30-degree pitch, 15 px was 0.12 board units, so a release could jump about 5 cm. Near the viewer, pixels are the tighter limit; far away, the cap is.
+
+**H/V lock:** the alignment snap uses the same cap in two places:
+- (a) a candidate must be within the cap perpendicular to the axis, `|candidate.Y - anchor.Y|` for a horizontal line;
+- every offer, from (a) or from (b) crossings, must be within the cap along the axis from the unsnapped end.
+
+**Not affected:** tap detection (`TapSlopFraction`) still uses pixels only. Without a metric, the fallback 0.02 is already inside the cap.
+
 ## 5. Invariants
 
 Each invariant names the check that guards it. If you change the code and a check fails, read the invariant before "fixing" the check.
@@ -506,6 +530,7 @@ Each invariant names the check that guards it. If you change the code and a chec
 6. **Deterministic tie-breaks.** Nearest wins. On an exactly equal distance the lower `SnapIndex.Priority` wins, then the earlier candidate. Dedup (1e-7) keeps the higher-priority kind and its position.
    - Guarded by: `SnapChecks.DedupKeepsHighestPriority`, `CandidateOrderIsDeterministicAndByPriority`, and the `SnapToolChecks` tie-break check.
 7. **Tolerances are in screen pixels** whenever `SnapMetric` is set and the point projects. Board units (`FallbackSnapTolerance`) are only the fallback.
+   Snapping also requires the candidate to be within `MaxSnapBoardDistance` (0.03) on the board (guarded by `SnapCapChecks`).
    - Guarded by: the fake non-uniform metrics in `SnapToolChecks` and `OrthoChecks`.
 8. **Engine and Contracts stay pure C#.** `grep -rn "using UnityEngine" Assets/GeoART/Engine Assets/GeoART/Contracts` prints nothing. They compile in the .NET harness.
 9. **Circle divisions come from one exact table** (`CircleDivisions`), shared by `GoldenBoards.StarPoint` and `SnapIndex`.
@@ -525,6 +550,7 @@ Each invariant names the check that guards it. If you change the code and a chec
 | On-segment / tangency slack | 1e-9 board units | `Engine/Geometry/Intersect.cs` `ParamEps` | E1 |
 | Parallel threshold (sine of angle) | 1e-12 | `Engine/Geometry/Intersect.cs` `ParallelSinEps` | E1 |
 | Snap/tap tolerance | 24 reference px | `App/ScreenSnapMetric.cs` `ToleranceReferencePx` | U1 |
+| Board-distance cap for snapping | 0.03 board units (1.2 cm on the 40 cm board) | `Engine/EditorSession.Snap.cs` `MaxSnapBoardDistance` (also used by the H/V alignment snap) | pre-push |
 | UI reference resolution / match | 390x844, 0.5 | `App/ScreenSnapMetric.cs` `ReferenceResolution`, `MatchWidthOrHeight` (used by ToolBar) | U1 |
 | ToolBar button height | 56 reference px (was 58) | `App/ToolBar.cs` `ButtonH` | U2 |
 | ToolBar column height | 522 reference px | `App/ToolBar.cs` `ColumnHeight` | U2 |
@@ -698,7 +724,7 @@ on toggle (1), tap alignment rule removed (1).
 - **Render check** (`ToolsRenderCheck`): writes `board-snap-{near45cm,far90cm}-msaa{1,4}.png` and `board-snap-dark-*.png`. BoardUnlit compiles for Metal/iOS, Vulkan/Android and GLES3/Android.
 - **Sandbox checks** (Play Mode in `Sandbox_A_Flat`, driven through the live session, real `ScreenSnapMetric`). Screenshots are in `Logs/SnapScreens/`, not committed.
   - At the default 50-degree tilt: a line end released about 0.008 board units off a line/circle crossing equals it bit-for-bit, and tap-tap joined two circle divisions.
-  - Tilted to 60 degrees from top-down (30-degree pitch), at the far edge: a release 15 px from the grid corner (0.5, 1) was 0.124 board units away and committed exactly to it. Two taps along the far edge committed (0.25, 1) to (0.75, 1) exactly.
+  - Tilted to 60 degrees from top-down (30-degree pitch), at the far edge: a release 15 px from the grid corner (0.5, 1) was 0.124 board units away and committed exactly to it. That run was before the board-distance cap; with the cap such a release now stays raw, which is what `SnapCapChecks.FarEdgeCandidateInsidePixelsButBeyondCapDoesNotSnap` checks. Two taps along the far edge committed (0.25, 1) to (0.75, 1) exactly.
 - **Device Simulator** (Unity's generic profiles; the toolbar and sidebar measured against `Screen.safeArea` in Play Mode; screenshots `Logs/SnapScreens/u4_sim_*.png`):
   - Punch Hole Right 1080x2280 (small Android): all 8 buttons inside the safe area.
   - Foldable 960x2658 (tall Android): all 8 buttons inside the safe area.
@@ -710,6 +736,19 @@ on toggle (1), tap alignment rule removed (1).
   - Unity: Test Runner, EditMode then PlayMode, with the Game view set to a portrait size such as 390x844. `ToolBarOnRightEdge` fails in a landscape Game view, also on the baseline.
   - Render check: GeoART > Checks > Board rendering check.
 - **How to run on the Mac (teammates):** the enginecheck command in `tools/enginecheck/EngineCheck.csproj`, the same Test Runner steps, and `PlayerScriptCheck.CompileIOSBatch` before merging to `main`.
+
+### Board-distance cap
+`SnapCapChecks` uses a grazing perspective fake metric (w = 1 + 3y). Each test first asserts the candidate is inside 24 px on screen, so the cap is what decides.
+- `CapIsANamedConstant`: 0.03, and `FallbackSnapTolerance` is inside it.
+- `FarEdgeCandidateInsidePixelsButBeyondCapDoesNotSnap`: a far grid corner about 7 px but 0.06 board units away. The end stays raw.
+- `FarEdgeCandidateWithinCapSnaps`: 0.025 board units away. Snaps exactly.
+- `NearEdgeScreenToleranceStillLimits`: near the viewer, 25.8 px at 0.028 board units stays raw (pixels decide); 18.9 px snaps.
+- `OrthoLockAlignmentRespectsPerpendicularCap`: a point about 4 px but 0.06 board units off the axis does not align the H/V end.
+- `OrthoLockAlignmentWithinCapStillSnaps`: 0.02 off the axis aligns exactly.
+
+Disabling the cap (setting it to 1e9) fails 6 checks: the 5 in `SnapCapChecks` and the cap assertions added to `SnapToolChecks` and `OrthoChecks`.
+
+Flaky once: PlayMode `VerifierInputRouterPlayTests.CircleToolCommitsCircle` failed in one run. The router sent Cancel instead of Up, while the Editor was not marked as running in the background. It passed on the immediate re-run and on every other run. It is upstream of snapping. Re-run before treating it as a regression.
 
 ## 9. Known limitations and untested areas
 
@@ -726,7 +765,7 @@ on toggle (1), tap alignment rule removed (1).
 | iOS build | `PlayerScriptCheck.CompileIOSBatch` and a device build before merging to `main` | Mac teammate |
 
 **Known limitations:**
-- **Grazing angles.** The 24 px tolerance is measured on screen. At a flat viewing angle it covers a lot of board depth: in the sandbox at a 30-degree pitch, 15 px was 0.12 board units (about 5 cm on the 40 cm board). Snapping can feel eager there. Turning Snap off is the escape hatch.
+- **Grazing angles (mitigated).** The 24 px tolerance is measured on screen, and at a flat viewing angle it covers a lot of board depth (sandbox, 30-degree pitch: 15 px was 0.12 board units). The board-distance cap `MaxSnapBoardDistance` (0.03 board units, 1.2 cm) now limits that: far-side snapping reaches at most 1.2 cm on the board, even when the dot is within 24 px. On hardware, check whether 0.03 feels right (device checks above); it is one constant.
 - **Toggling Snap mid-drag** does not update the ghost until the next Move. Toggling the H/V lock does update it immediately.
 - **H/V lock and a pending tap.** Toggling the lock keeps a pending tap-to-connect start. With the lock on, a non-aligned second tap toasts and connects nothing.
 - **Clamping.** Free (unlocked) line ends are not clamped to [0, 1]. The router only sends on-board points, so this has not mattered. Locked ends are clamped.
@@ -734,5 +773,5 @@ on toggle (1), tap alignment rule removed (1).
 - **Fixed division count.** Circle divisions are fixed at 8, from the exact table.
 - **Not candidates.** Crossings with grid lines (off by default) and quick-menubar `PlaceSnapPoint`/`ClickAtCursor`/`LineBetweenSnapPoints` are still no-ops.
 - **Landscape toolbar.** In a landscape view the 8-button toolbar runs off the screen. The app UI is portrait. The flat sandbox camera fits the whole board either way.
-- **`LayerSidebar`** (outside this task's ownership) re-applies its safe area only when `Screen.safeArea` changes, the pattern `ToolBar` had before U4. Not seen on a device, but worth the same one-line fix.
+- **`LayerSidebar`** (from Ratul's `grid-and-android` branch) got the same safe-area fix as `ToolBar` before the push (section 2, pre-push follow-up).
 - **Fixture coordinates.** `GoldenBoards.StarPoint` values moved by at most 1 ulp (Q1). Code that rebuilds star points with `Math.Cos`/`Math.Sin` and compares with `==` must use `CircleDivisions.Point` instead.

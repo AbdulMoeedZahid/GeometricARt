@@ -31,8 +31,10 @@ dot, and a circle centred on a grid corner shows a grid dot; the position is the
 | any | **Snap** button | Turns snapping off/on (default on). Off: no dots, nothing snaps, taps connect nothing. |
 | Line | **H/V** button | Lock on: every new line is exactly horizontal or vertical along the board edges (whichever way you dragged more), and its end lines up with dots in the same row or column. With the lock on, tapping two dots connects them only if they are in the same row or column ("H/V lock is on: tap two points in the same row or column"). Circle tool ignores it. |
 
-"Within reach" is 24 px on a 390x844 reference screen, scaled like the tool bar, measured on screen, so dots are as easy
-to hit at the far edge of a tilted board as at the near edge. A tap is a touch that moves less than 10 reference px.
+"Within reach" means both: within 24 px on a 390x844 reference screen (scaled like the tool bar, measured on screen, so
+dots are as easy to hit at the far edge of a tilted board as at the near edge) **and** within 1.2 cm on the board (0.03
+board units, `EditorSession.MaxSnapBoardDistance`), so a flat viewing angle cannot pull a line end far across the board.
+A tap is a touch that moves less than 10 reference px.
 
 ## Defaults and limits
 - Snap on, H/V lock off, on every new session.
@@ -40,8 +42,8 @@ to hit at the far edge of a tilted board as at the near edge. A tap is a touch t
   four stars in a 2x2 grid) lines up perfectly at shared points.
 - Circle divisions are always 8 per circle (k x 45 degrees).
 - Crossings of drawn shapes with the grid lines are **not** dots (one switch in code: `SnapIndex.IncludeShapeGridCrossings`).
-- When looking at the board at a very flat angle, 24 px covers a lot of board depth, so a touch may snap to a dot farther
-  away (in board terms) than you expect. Turn Snap off for free drawing.
+- When looking at the board at a very flat angle, 24 px covers a lot of board depth; the 1.2 cm board cap keeps snapping
+  local there. Turn Snap off for free drawing.
 - Verified in the Unity Editor only (sandbox, Device Simulator, tests). Device checks are still owed; see the change
   report, section 9.
 
