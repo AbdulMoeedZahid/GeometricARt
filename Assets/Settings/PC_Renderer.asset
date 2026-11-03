@@ -40,7 +40,8 @@ MonoBehaviour:
   m_RendererFeatures:
   - {fileID: 7833122117494664109}
   - {fileID: -1719313352742913481}
-  m_RendererFeatureMap: ad6b866f10d7b46c373a2c709dc523e8
+  - {fileID: 7950019572642437311}
+  m_RendererFeatureMap: ad6b866f10d7b46c373a2c709dc523e8bf58c128ae24546e
   xrSystemData: {fileID: 0}
   postProcessData: {fileID: 11400000, guid: 41439944d30ece34e96484bdb6645b55, type: 2}
   m_AssetVersion: 3
@@ -95,3 +96,16 @@ MonoBehaviour:
     BlurQuality: 0
     Falloff: 100
     SampleCount: -1
+--- !u!114 &7950019572642437311
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 01b019caa33e147829f48e2b15958f84, type: 3}
+  m_Name: ARCommandBufferSupportRendererFeature
+  m_EditorClassIdentifier: Unity.XR.ARFoundation::UnityEngine.XR.ARFoundation.ARCommandBufferSupportRendererFeature
+  m_Active: 1
