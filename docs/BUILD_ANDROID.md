@@ -7,10 +7,10 @@ The app was iPhone-only (ARKit). Android support adds Google's ARCore next to it
 - `Assets/Editor/Build/AndroidSetup.cs`: menu **GeoART > Setup > 3. Configure Android AR Project** (re-runnable). Android
   only: bundle id `edu.usf.cap4111.geometricart`, IL2CPP, ARM64, min API 29 (Android 10; ARCore Required with Vulkan refuses to build below it), ARCore loader enabled for
   Android in XR Plug-in Management, ARCore **Required** (depth optional).
-  Also adds `ARCommandBufferSupportRendererFeature` to the URP renderers: without it ARCore under Vulkan throws
-  every frame and the **camera feed stays black** (seen on a Galaxy S24 Ultra). Harmless for iOS.
-  Graphics API is forced to **OpenGL ES 3**: with Vulkan the session tracked but the camera background was still black
-  on the S24 Ultra even with that feature. Vulkan can be retried later by changing `AndroidSetup.ConfigurePlayer`.
+  Also adds `ARCommandBufferSupportRendererFeature` to the URP renderers. Android renders with Vulkan (the project's
+  graphics APIs: Vulkan, then OpenGL ES 3 as fallback), and without this feature ARCore throws every frame and the
+  **camera feed stays black**. With it, the camera feed, tracking and placement work: **verified on a Galaxy S24 Ultra**
+  (Android 16, ARCore 1.45). Harmless for iOS.
 - `Assets/Editor/Build/AndroidBuild.cs`: menu **GeoART > Build > Build and Run on Android Phone**. Switches to Android,
   builds `Builds/Android/GeometricARt.apk` from `Assets/Scenes/Main.unity`, installs it on the USB-connected phone and
   launches it. It applies Setup 3 itself before every build. Batch: `-buildTarget Android -executeMethod GeoART.EditorTools.AndroidBuild.BuildBatch` (build only).
@@ -38,8 +38,11 @@ The Editor stays on the Android target afterwards; that does not affect `tools/i
   `/Applications/Unity/Hub/Editor/6000.5.10f1/PlaybackEngines/AndroidPlayer/SDK/platform-tools/`); re-accept the USB prompt.
 - **Black camera / app closes at start**: Google Play Services for AR missing or outdated, or the device is not
   ARCore-certified.
-- **Board strokes missing or pink**: the board shader (`BoardUnlit`) was first verified on Metal; check the Console for
-  shader errors for GLES3 and report.
+- **Black camera feed**: check that both `Mobile_Renderer.asset` and `PC_Renderer.asset` list
+  `ARCommandBufferSupportRendererFeature` (the Console's setup line says "AR command buffer feature"). Note: an
+  `adb screencap` may show black even when the camera works on the phone's screen; trust the phone.
+- **ProjectSettings `preloadedAssets` changed after a build**: the Android build pins ARCore's shaders and the input
+  actions there. Do not commit that change; it would also ship them in iOS builds.
 - **Script edits not picked up** (the Console's setup line does not change): Unity sometimes skips recompiling the
   `GeoART.Editor.Build` assembly. Assets > Refresh, and if that is not enough, restart Unity before building.
 - Logs: build with `GEOART_DEV=1` set before launching Unity, then `adb logcat -s Unity`.
