@@ -9,7 +9,8 @@ namespace GeoART.App
 {
     /// <summary>
     /// Middle-left layer sidebar: a slim pill with "+" (add a layer at the top), one dash per layer (top layer at the
-    /// top) and "-" (delete the bottom layer). On a dash:
+    /// top) and "-" (delete the bottom layer). "+" and "-" sit on round chips (neutral and red) behind thin separators so
+    /// they never read as layer dashes. On a dash:
     ///   tap          select the layer (immediately on release)
     ///   double tap   toggle its visibility (second tap within <see cref="DoubleTapSeconds"/> of the first release)
     ///   hold         select + open the opacity popup next to the dash (<see cref="HoldSeconds"/> without moving)
@@ -42,6 +43,10 @@ namespace GeoART.App
         static readonly Color DashColor = new Color(0.93f, 0.93f, 0.96f, 1f);
         static readonly Color Accent = new Color(1f, 0.42f, 0f, 1f);
         static readonly Color Clear = new Color(1f, 1f, 1f, 0f);
+        static readonly Color PlusChipColor = new Color(1f, 1f, 1f, 0.2f);
+        static readonly Color MinusChipColor = new Color(0.84f, 0.19f, 0.19f, 0.85f);   // destructive: Palette.Red
+        static readonly Color SeparatorColor = new Color(1f, 1f, 1f, 0.22f);
+        const float ChipSize = 32f;
 
         sealed class Row
         {
@@ -56,7 +61,7 @@ namespace GeoART.App
         IEditorSession _session;
         Canvas _canvas;
         RectTransform _area, _pill, _rowsArea, _popup, _label;
-        Image _plusGlyphH, _plusGlyphV, _minusGlyph;
+        Image _plusGlyphH, _plusGlyphV, _minusGlyph, _plusChip, _minusChip;
         GameObject _blocker;
         CanvasGroup _labelGroup;
         Text _labelText, _popupTitle, _popupPercent;
@@ -96,13 +101,17 @@ namespace GeoART.App
             var plus = CreateButton("Add layer (+)", OnPlus);
             LayerUiKit.Place(plus, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -Pad),
                 new Vector2(PillWidth - 2 * Pad, ButtonHeight));
-            _plusGlyphH = Glyph(plus, 18f, 3f, 0f);
-            _plusGlyphV = Glyph(plus, 18f, 3f, 90f);
+            _plusChip = Chip(plus, PlusChipColor);
+            _plusGlyphH = Glyph(plus, 16f, 3f, 0f);
+            _plusGlyphV = Glyph(plus, 16f, 3f, 90f);
+            Separator(plus, 0f);
 
             var minus = CreateButton("Delete bottom layer (-)", OnMinus);
             LayerUiKit.Place(minus, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, Pad),
                 new Vector2(PillWidth - 2 * Pad, ButtonHeight));
-            _minusGlyph = Glyph(minus, 18f, 3f, 0f);
+            _minusChip = Chip(minus, MinusChipColor);
+            _minusGlyph = Glyph(minus, 14f, 3f, 0f);
+            Separator(minus, 1f);
 
             _rowsArea = LayerUiKit.NewRect("Rows", _pill);
             _rowsArea.anchorMin = new Vector2(0f, 0f);
@@ -213,6 +222,8 @@ namespace GeoART.App
             SetGlyphAlpha(_plusGlyphH, full ? 0.35f : 0.95f);
             SetGlyphAlpha(_plusGlyphV, full ? 0.35f : 0.95f);
             SetGlyphAlpha(_minusGlyph, n <= 1 ? 0.35f : 0.95f);
+            SetGlyphAlpha(_plusChip, full ? PlusChipColor.a * 0.4f : PlusChipColor.a);
+            SetGlyphAlpha(_minusChip, n <= 1 ? MinusChipColor.a * 0.35f : MinusChipColor.a);
 
             if (_popup.gameObject.activeSelf)
             {
@@ -565,6 +576,23 @@ namespace GeoART.App
                 new Vector2(length, thickness));
             bar.rectTransform.localRotation = Quaternion.Euler(0f, 0f, angle);
             return bar;
+        }
+
+        /// <summary>Round badge behind a button glyph (created before the glyph so it draws underneath).</summary>
+        static Image Chip(RectTransform parent, Color color)
+        {
+            Image chip = LayerUiKit.NewImage("Chip", parent, color, false, ChipSize * 0.5f);
+            LayerUiKit.Place(chip.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero,
+                new Vector2(ChipSize, ChipSize));
+            return chip;
+        }
+
+        /// <summary>Hairline between a button and the dash rows: edgeY 0 = the button's bottom edge, 1 = its top edge.</summary>
+        static void Separator(RectTransform parent, float edgeY)
+        {
+            Image line = LayerUiKit.NewImage("Separator", parent, SeparatorColor, false, 0.5f);
+            LayerUiKit.Place(line.rectTransform, new Vector2(0.5f, edgeY), new Vector2(0.5f, edgeY), Vector2.zero,
+                new Vector2(PillWidth - 18f, 1f));
         }
 
         static void SetGlyphAlpha(Image glyph, float a)

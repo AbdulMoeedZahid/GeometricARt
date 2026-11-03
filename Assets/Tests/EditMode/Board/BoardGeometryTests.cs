@@ -191,6 +191,11 @@ namespace GeoART.Tests
             stub.SetGrid(3);
             Assert.That(stub.Board.GridN, Is.EqualTo(3));
             Assert.That(seen, Is.EqualTo(BoardChangeKind.Grid));
+
+            seen = BoardChangeKind.None;
+            stub.SetGridKind(GridKind.Hex);
+            Assert.That(stub.Board.GridKind, Is.EqualTo(GridKind.Hex));
+            Assert.That(seen, Is.EqualTo(BoardChangeKind.Grid));
         }
     }
 }

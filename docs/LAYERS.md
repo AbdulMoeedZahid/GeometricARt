@@ -13,6 +13,9 @@ Layer sidebar on the middle-left of the screen, plus the engine commands behind 
 | dash | hold 0.45 s | Select + open the opacity popup next to the dash: name, 0-100% slider (applied live), close `x`. A tap anywhere outside closes it. |
 | dash | slide up/down | After more than 8 ref px of movement (before the hold fires) the dash lifts, follows the finger, and the other dashes open a gap. Release commits the move. |
 
+`+` sits on a round translucent-white chip and `-` on a round red chip (destructive), each with a hairline separating it from
+the dash rows, so neither reads as a layer dash. Both chips dim with their glyph when disabled (12 layers / one layer left).
+
 One dash per layer, top layer at the top (reverse of `Board.Layers`). Selected is a long orange dash; a hidden layer is a hollow,
 dimmed dash; a visible dash's alpha follows the layer opacity (30-100%). A short name label appears to the right when the
 selection changes ("Layer 3", "Layer 3 hidden", "Deleted Layer 1").

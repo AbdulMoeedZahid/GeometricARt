@@ -478,7 +478,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 574460befa91c4f0ca9d4e7eeace47be, type: 3}
   m_Name: 
   m_EditorClassIdentifier: GeoART.App::GeoART.App.EngineInstaller
-  fixture: 1
+  fixture: 0
 --- !u!114 &1864578396
 MonoBehaviour:
   m_ObjectHideFlags: 0

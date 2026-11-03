@@ -5,6 +5,9 @@ namespace GeoART.Contracts
 {
     public enum ShapeKind { Line, Circle, Polygon }
 
+    /// <summary>Tiling of the board. New values are appended so ordinals never change.</summary>
+    public enum GridKind { Square, Hex }
+
     /// <summary>
     /// Committed geometry. All fields are value types, so <see cref="Clone"/> is a full deep copy;
     /// commands must store clones, never shared instances (P2 4.2).
@@ -85,6 +88,9 @@ namespace GeoART.Contracts
         public const int MaxGridN = 4;
 
         public int GridN = 2;
+        /// <summary>Square: GridN x GridN equal squares. Hex: GridN x GridN whole hexagons, centred (see <see cref="TileGrid"/>).</summary>
+        public GridKind GridKind = GridKind.Square;
+        /// <summary>Square cells only; use <see cref="TileGrid"/> for hex geometry.</summary>
         public double CellSide => 1.0 / GridN;
         public readonly List<Layer> Layers = new List<Layer>();          // index 0 = BOTTOM
         public EntityId ActiveLayerId;

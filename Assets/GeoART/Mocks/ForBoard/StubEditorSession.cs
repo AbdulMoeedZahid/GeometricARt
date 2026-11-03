@@ -64,6 +64,13 @@ namespace GeoART.Mocks
             BoardChanged?.Invoke(BoardChangeKind.Grid);
         }
 
+        public void SetGridKind(GridKind kind)
+        {
+            _board.GridKind = kind;
+            RebuildCandidates();
+            BoardChanged?.Invoke(BoardChangeKind.Grid);
+        }
+
         public void SetLayerVisible(EntityId id, bool visible)
         {
             var layer = _board.FindLayer(id);
@@ -108,16 +115,7 @@ namespace GeoART.Mocks
         /// <summary>Cell corners, edge midpoints and centres plus user points on visible layers (rendering preview only).</summary>
         void RebuildCandidates()
         {
-            _candidates.Clear();
-            int n = Math.Max(1, _board.GridN);
-            for (int j = 0; j <= 2 * n; j++)
-                for (int i = 0; i <= 2 * n; i++)
-                {
-                    var kind = (i % 2 == 0 && j % 2 == 0) ? SnapKind.CellCorner
-                             : (i % 2 == 1 && j % 2 == 1) ? SnapKind.CellCenter
-                             : SnapKind.CellEdgeMid;
-                    _candidates.Add(new SnapCandidate(new Vec2(i / (2.0 * n), j / (2.0 * n)), kind));
-                }
+            TileGrid.SnapPoints(_board.GridKind, _board.GridN, _candidates);
             foreach (var layer in _board.Layers)
                 if (layer.Visible)
                     foreach (var p in layer.SnapPoints)

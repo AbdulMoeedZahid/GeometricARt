@@ -7,8 +7,9 @@ namespace GeoART.BoardRender
     /// <summary>
     /// Draws the board and the session's model in the transform's local XZ plane (A-2/A-3/A-4).
     /// Three meshes, one draw call each, rebuilt only when dirty:
-    ///   Base    - translucent sheet, outer frame (D-04), dashed cell dividers for GridN (D-07), and the dashed
-    ///             outline of a corner-registered surface when it is larger than the board (empty when showBase is off)
+    ///   Base    - translucent sheet, outer frame (D-04), and the dashed outline of a corner-registered surface when it
+    ///             is larger than the board (skipped when showBase is off), plus the dashed square or hex tile edges
+    ///             from <see cref="TileGrid"/> (D-07; drawn whenever showGrid is on, so also in AR)
     ///   Shapes  - committed lines/circles/polygons on visible layers + user snap points  (BoardChanged)
     ///   Overlay - snap candidates, tool preview ghosts, cursor                            (PreviewChanged/StateChanged)
     /// Binds to the IEditorSession in ServiceHub at Start, or explicitly via <see cref="Bind"/>.
@@ -26,9 +27,12 @@ namespace GeoART.BoardRender
         [SerializeField, Tooltip("Material using the GeoART/BoardUnlit shader with vertex colours on.")]
         Material material;
 
-        [SerializeField, Tooltip("Draw the board itself (sheet, frame, grid dividers, registered-surface outline). " +
+        [SerializeField, Tooltip("Draw the board itself (sheet, frame, registered-surface outline). " +
                                  "Off in AR: the real surface is the board, only the design is drawn on it.")]
         bool showBase = true;
+        [SerializeField, Tooltip("Draw the square/hex tile grid (Board.GridKind, Board.GridN), independent of showBase, " +
+                                 "so the tiles are visible on the real surface in AR too.")]
+        bool showGrid = true;
         [SerializeField] bool showSnapCandidates = true;
         [SerializeField] Color sheetColor = new Color(1f, 1f, 1f, 0.32f);
         [SerializeField] Color frameColor = new Color(0.08f, 0.08f, 0.1f, 1f);
@@ -48,6 +52,8 @@ namespace GeoART.BoardRender
         Part _base, _shapes, _overlay;
         bool _baseDirty = true, _shapesDirty = true, _overlayDirty = true;
         int _lastGridN = -1;
+        GridKind _lastGridKind = (GridKind)(-1);
+        readonly List<(Vec2 A, Vec2 B)> _gridEdges = new List<(Vec2 A, Vec2 B)>(64);
         float _surfaceW = float.NaN, _surfaceH = float.NaN;
         readonly List<Vector3> _poly = new List<Vector3>(16);
 
@@ -152,10 +158,17 @@ namespace GeoART.BoardRender
         void LateUpdate()
         {
             Board board = _session?.Board;
-            int gridN = Mathf.Clamp(board?.GridN ?? 2, Board.MinGridN, Board.MaxGridN);
-            if (gridN != _lastGridN) _baseDirty = true;
+            int gridN = TileGrid.ClampN(board?.GridN ?? 2);
+            GridKind gridKind = board?.GridKind ?? GridKind.Square;
+            if (gridN != _lastGridN || gridKind != _lastGridKind) _baseDirty = true;
 
-            if (_baseDirty) { RebuildBase(gridN); _lastGridN = gridN; _baseDirty = false; }
+            if (_baseDirty)
+            {
+                RebuildBase(gridKind, gridN);
+                _lastGridN = gridN;
+                _lastGridKind = gridKind;
+                _baseDirty = false;
+            }
             if (_shapesDirty) { RebuildShapes(board); _shapesDirty = false; }
             if (_overlayDirty) { RebuildOverlay(); _overlayDirty = false; }
         }
@@ -196,15 +209,27 @@ namespace GeoART.BoardRender
 
         // ---------- rebuilds ----------
 
-        void RebuildBase(int gridN)
+        void RebuildBase(GridKind gridKind, int gridN)
         {
             var mb = _base.Builder;
             mb.Clear();
-            if (!showBase)
+            if (showBase) AddSheetFrameAndSurface(mb);
+            if (showGrid)
             {
-                _base.Apply();
-                return;
+                // Each edge once, so shared hex edges do not double up. With the base on, the frame already draws the
+                // board boundary; in AR (base off) the square grid's outer edges outline the board instead.
+                TileGrid.UniqueEdges(gridKind, gridN, _gridEdges, skipBoardBoundary: showBase);
+                foreach (var (a, b) in _gridEdges)
+                {
+                    float phase = 0f;
+                    mb.AddDashedSegment(P(a, 0f), P(b, 0f), 0.0011f * StrokeScale, dividerColor, Dash, Gap, ref phase);
+                }
             }
+            _base.Apply();
+        }
+
+        void AddSheetFrameAndSurface(BoardMeshBuilder mb)
+        {
             float h = sideMeters * 0.5f;
             Vector3 bl = new Vector3(-h, 0f, -h), br = new Vector3(h, 0f, -h);
             Vector3 tr = new Vector3(h, 0f, h), tl = new Vector3(-h, 0f, h);
@@ -215,15 +240,6 @@ namespace GeoART.BoardRender
             _poly.Add(bl); _poly.Add(br); _poly.Add(tr); _poly.Add(tl);
             mb.AddPolyline(_poly, true, 0.002f * StrokeScale, frameColor);
 
-            for (int i = 1; i < gridN; i++)
-            {
-                double t = (double)i / gridN;
-                float phase = 0f;
-                mb.AddDashedSegment(P(new Vec2(t, 0), 0f), P(new Vec2(t, 1), 0f), 0.0011f * StrokeScale, dividerColor, Dash, Gap, ref phase);
-                phase = 0f;
-                mb.AddDashedSegment(P(new Vec2(0, t), 0f), P(new Vec2(1, t), 0f), 0.0011f * StrokeScale, dividerColor, Dash, Gap, ref phase);
-            }
-
             // Registered surface (D1: the board is centred in it, so the outline is symmetric).
             if (!float.IsNaN(_surfaceW) && (Mathf.Abs(_surfaceW - sideMeters) > 0.002f || Mathf.Abs(_surfaceH - sideMeters) > 0.002f))
             {
@@ -233,7 +249,6 @@ namespace GeoART.BoardRender
                 _poly.Add(new Vector3(sw, 0f, sh)); _poly.Add(new Vector3(-sw, 0f, sh));
                 mb.AddPolyline(_poly, true, 0.0012f * StrokeScale, surfaceOutlineColor, true, Dash, Gap);
             }
-            _base.Apply();
         }
 
         void RebuildShapes(Board board)

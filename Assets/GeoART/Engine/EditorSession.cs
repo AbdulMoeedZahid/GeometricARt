@@ -61,6 +61,14 @@ namespace GeoART.Engine
             RaiseBoardChanged(BoardChangeKind.Grid);
         }
 
+        public void SetGridKind(GridKind kind)
+        {
+            if (kind != GridKind.Square && kind != GridKind.Hex) return;
+            if (_board.GridKind == kind) return;
+            _board.GridKind = kind;
+            RaiseBoardChanged(BoardChangeKind.Grid);
+        }
+
         public void Undo() { }
         public void Redo() { }
 

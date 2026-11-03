@@ -417,6 +417,7 @@ namespace GeoART.Tests.Verifier.PlayMode
             public void SetLayerVisible(EntityId id, bool v) => _s.SetLayerVisible(id, v);
             public void SetLayerOpacity(EntityId id, double o) => _s.SetLayerOpacity(id, o);
             public void SetGrid(int n) => _s.SetGrid(n);
+            public void SetGridKind(GridKind k) => _s.SetGridKind(k);
             public bool CanUndo => _s.CanUndo;
             public bool CanRedo => _s.CanRedo;
             public void Undo() => _s.Undo();
