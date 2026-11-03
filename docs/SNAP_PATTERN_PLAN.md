@@ -279,10 +279,13 @@ The report's "Known limitations" section lists whichever platform has not been d
 - **2026-11-03**: Revised: grid intersections required; Select/Scale/Duplicate moved to P3; change report (R1) added as a required deliverable; golden demo test rebuilt around snapping only.
 - **2026-11-03**: Editor-only verification (Q12): Luis's phone lacks ARCore, so A0 is reassigned to Ratul or Haytham. U4 gains a tilted-camera/far-edge sandbox check and Device Simulator screenshots (small Android, tall Android, iPhone). The report must say "Editor-verified only" and list the device checks still owed.
 - **2026-11-03**: Baseline at `2a0f6b4`: enginecheck 80/80; EditMode 75/75; PlayMode 12/12; console clean. `ToolBarOnRightEdge` failed (74/75) with the Game view at 1920x1080 landscape and passes at 390x844 portrait, so the Game view is set to a custom "GeoART 390x844" size for all test runs.
+- **2026-11-03**: C0 `863c3a9` (contracts; snap state plus `partial void` hooks in the core, so E2 never edits `EditorSession.cs`). U1 `721c036` (`ScreenSnapMetric`, verified in Play Mode with `FlatBoardSpace`: 24 px, board centre at screen centre). U2 `87271f5` (Snap + H/V buttons, 8 buttons fit at 390x844). U3 `cb53ede` (candidate dots by kind in their own mesh part). E1 `7773ca9` (cherry-picked from the worktree branch; 102/102 checks). Unity tests after U3: EditMode 77/77, PlayMode 12/12.
 
 ## 8. Setbacks
 
 - **2026-11-03**: The EditMode test `ToolBarOnRightEdge` depends on the Game view's aspect (its canvas comes from the Game view size). In a 1920x1080 landscape Game view the 400 px column puts the Line button at y=0.897, outside the 0.2..0.8 range the test allows. Not a code defect. Fix: run tests with a portrait 390x844 Game view. Also, the MCP PlayMode test runner flips `ProjectSettings/EditorSettings.asset` `m_EnterPlayModeOptions`; that change is churn and is never committed.
+- **2026-11-03**: The Agent tool's worktree for E1 was created from `main` (`d625c26`), not `feature/snap-pattern`, so the agent first reset its own branch to `863c3a9`. Later subagent prompts tell the agent to check `git log` and reset to the given base SHA before starting.
+- **2026-11-03**: The MCP `manage_camera screenshot` always renders through the camera, which leaves out Screen Space Overlay canvases (ToolBar, sidebar). Workaround in Play Mode (`execute_code`): switch the overlay canvases to Screen Space Camera, render `Camera.main` into a RenderTexture, save the PNG to `Logs/SnapScreens/`, and restore the canvases. These are runtime objects only, and nothing is saved.
 
 ---
 

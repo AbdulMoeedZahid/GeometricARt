@@ -39,6 +39,21 @@ _In progress. Filled in by the final pass (R1)._
 No existing file was changed. Unity will generate `.meta` files for the two new folders and two new scripts on the
 next import; they are not part of this commit.
 
+### U1 (screen snap metric)
+- **App**
+  - `App/ScreenSnapMetric.cs` (new): the App's `ISnapMetric`. It wraps `IBoardSpace.TryBoardToScreen` (resolved lazily from `ServiceHub`) and returns a 24 reference px tolerance times the CanvasScaler factor.
+  - `App/EngineInstaller.cs`: creates the `EditorSession` with `SnapMetric = new ScreenSnapMetric()`.
+
+### U2 (ToolBar toggles)
+- **App**
+  - `App/ToolBar.cs`: adds `Snap` and `HV` buttons as a fourth group, so the column grows from 6 to 8 buttons. `ButtonH` drops from 58 to 56. Adds the `ColumnHeight` constant, takes the scaler constants from `ScreenSnapMetric`, and adds two glyphs.
+- **Tests**
+  - `Tests/EditMode/Verifier/VerifierToolBarToastTests.cs`: adds `ToolBarSnapAndHVButtonsToggleSession` and `ToolBarEightButtonsFitInsideCanvas`.
+
+### U3 (overlay dots)
+- **BoardRender**
+  - `BoardRender/BoardView.cs`: candidate dots move into their own mesh part, `Candidates`, drawn in four tiers by `SnapKind`. The overlay and candidate loops use index loops, with no boxed enumerators.
+
 ## 3. Contract changes
 
 ### C0
@@ -207,6 +222,24 @@ change, never per pointer Move.
 - Every function returns 0 for a zero-length segment or direction, a radius <= 0, or non-finite input, and never
   writes a non-finite point.
 
+### U1: from screen pixels to the engine
+`EngineInstaller.Awake` gives the real session a `ScreenSnapMetric`. `TryToScreen` calls the registered `IBoardSpace` on every query: `FlatBoardSpace` in the Editor sandbox, `ARBoardSpace` on device. The lookup is a dictionary read with no allocation. The board space is resolved lazily because `FlatBoardSpace`/`ARBoardSpace` run `Awake` at the same execution order (-100) as `EngineInstaller`, so they can register in either order. `TolerancePx` = `ToleranceReferencePx` (24) times `ScaleFactor(Screen.width, Screen.height)`. That is the CanvasScaler ScaleWithScreenSize formula for 390x844 with match 0.5, the same scaler the ToolBar uses, so a tolerance of 24 px looks the same size as 24 px of UI. Verified in Play Mode in `Sandbox_A_Flat` at 390x844: tolerance 24 px, and board (0.5, 0.5) projects to screen (195, 422).
+
+### U2: toolbar
+There are four groups of two: Line/Circle, Dotted/Width, Grid kind/Tiles, and Snap/HV. The Snap button calls `SetSnapEnabled(!SnapEnabled)` and HV calls `SetOrthoLock(!OrthoLock)`. Both are orange while on. They refresh on the session's `StateChanged`, so a change made elsewhere (code, tests) updates the colours too. The GameObject names are `Snap` and `HV` (label "H/V"). The existing names `Line`, `Circle`, `Square` and `2x2` are kept.
+
+### U3: candidate rendering
+`BoardView` now has four mesh parts: Base (queue 3000), Shapes (3001), **Candidates** (3002), and Overlay (3003, ghosts and cursor). The Candidates part is rebuilt only on `BoardChanged` and `StateChanged` (the Snap toggle). Overlay is rebuilt on `PreviewChanged`, which fires during a drag, so dragging no longer re-meshes every dot. The dots are drawn lowest tier first, so strong dots sit on top:
+
+| Tier | Kinds | Radius (0.40 m board) | Colour field |
+|---|---|---|---|
+| 0 | `CellEdgeMid`, `CellCenter` | 2.1 mm | `candidateColor` (grey, 50%) |
+| 1 | `CellCorner` (grid intersections) | 2.8 mm | `candidateColor` |
+| 2 | `Center`, `CircleDivision`, `UserPoint` | 3.2 mm | `guideCandidateColor` (blue, 80%) |
+| 3 | `Intersection`, `Endpoint` | 3.8 mm, with a 1.2 mm white halo | `shapeCandidateColor` (strong blue) |
+
+The radii scale with `StrokeScale`, like strokes. The hover ring and the pending tap-to-connect ring are `Preview` shapes from the engine, so they draw in the Overlay with `previewColor` (orange).
+
 ## 5. Invariants
 
 _Filled in by the final pass (R1)._
@@ -223,6 +256,13 @@ _Filled in by the final pass (R1)._
 | Source priority order | UserPoint, Endpoint, Intersection, CellCorner, Center, CircleDivision, CellEdgeMid, CellCenter | `Engine/Snap/SnapIndex.cs` `Priority` (and the source order in `Rebuild`; both must agree) | E1 |
 | On-segment / tangency slack | 1e-9 board units | `Engine/Geometry/Intersect.cs` `ParamEps` | E1 |
 | Parallel threshold (sine of angle) | 1e-12 | `Engine/Geometry/Intersect.cs` `ParallelSinEps` | E1 |
+| Snap/tap tolerance | 24 reference px | `App/ScreenSnapMetric.cs` `ToleranceReferencePx` | U1 |
+| UI reference resolution / match | 390x844, 0.5 | `App/ScreenSnapMetric.cs` `ReferenceResolution`, `MatchWidthOrHeight` (used by ToolBar) | U1 |
+| ToolBar button height | 56 reference px (was 58) | `App/ToolBar.cs` `ButtonH` | U2 |
+| ToolBar column height | 522 reference px | `App/ToolBar.cs` `ColumnHeight` | U2 |
+| Candidate dot radii | 2.1 / 2.8 / 3.2 / 3.8 mm | `BoardRender/BoardView.cs` `MinorGridDotRadius`, `GridDotRadius`, `GuideDotRadius`, `ShapeDotRadius` | U3 |
+| Shape-dot halo | 1.2 mm | `BoardRender/BoardView.cs` `HaloWidth` | U3 |
+| Candidate colours | see section 4, U3 | `BoardRender/BoardView.cs` `candidateColor`, `guideCandidateColor`, `shapeCandidateColor`, `candidateHaloColor` (Inspector) | U3 |
 
 ## 7. How to extend
 
@@ -267,6 +307,12 @@ Mutation spot-check, done once and not in the repo: each of these deliberate bug
 above fail: removing end snapping in `SegmentSegment`, swapping `CellCorner`/`Intersection` priority, dropping
 `Visible` from the signature, removing the bounds filter, a strict tangent test, and disabling dedup.
 
+### U1-U3
+- EditMode `VerifierToolBarToastTests.ToolBarSnapAndHVButtonsToggleSession`: the Snap button turns snapping off and on, and HV turns the lock on. Colours follow the state, including changes made outside the ToolBar.
+- EditMode `VerifierToolBarToastTests.ToolBarEightButtonsFitInsideCanvas`: all 8 buttons are inside the canvas, in column order (run with a 390x844 portrait Game view).
+- The existing `ToolBarOnRightEdge` still passes at 390x844. It **fails in a landscape Game view** (1920x1080) on the baseline too, because it measures against the Game view's size.
+- Screenshot `Logs/SnapScreens/u2_toolbar_ui_390x844.png` (not committed): all 8 buttons fit at 390x844.
+- How to screenshot UI over MCP: the MCP screenshot tool renders through the camera, which leaves out Screen Space Overlay canvases. In Play Mode, switch the canvases to Screen Space Camera for one `Camera.Render` into a RenderTexture, then restore them (see the Progress Log).
 ## 9. Known limitations and untested areas
 
 _Filled in by the final pass (R1)._ It must say "Editor-verified only" and list the device checks still owed (plan Q12).
