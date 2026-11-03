@@ -5,7 +5,8 @@ using UnityEngine;
 namespace GeoART.App
 {
     /// <summary>
-    /// Registers the real <see cref="EditorSession"/> as the scene's IEditorSession. Runs with the module installers
+    /// Registers the real <see cref="EditorSession"/> as the scene's IEditorSession and gives it a
+    /// <see cref="ScreenSnapMetric"/> for screen-space snapping. Runs with the module installers
     /// (-100), before StubSessionInstaller (-50), so the stub then stays out of the way.
     /// </summary>
     [DefaultExecutionOrder(-100)]
@@ -28,7 +29,8 @@ namespace GeoART.App
                 case Fixture.Tiled2x2: board = GoldenBoards.Tiled2x2(); break;
                 default: board = GoldenBoards.Empty(); break;
             }
-            _session = new EditorSession(board);
+            // Screen-space snap/tap tolerances. The metric resolves IBoardSpace lazily, so Awake order does not matter.
+            _session = new EditorSession(board) { SnapMetric = new ScreenSnapMetric() };
             ServiceHub.Register<IEditorSession>(_session);
         }
 
