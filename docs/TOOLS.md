@@ -1,7 +1,10 @@
 # Line and Circle tools
 
-Drawing on the placed board, plus thinner and smoother strokes. Snap points come later (snapping is off: no candidates,
-PlaceSnapPoint / ClickAtCursor / LineBetweenSnapPoints are no-ops). Undo is not implemented.
+Drawing on the placed board, plus thinner and smoother strokes. Snapping is **on by default**: line ends, circle
+centres and radius points jump exactly onto snap points (grid intersections, shape crossings, endpoints, circle
+divisions...), and tapping two points connects them with a line. An H/V lock keeps new lines horizontal or vertical. See
+`docs/SNAPPING.md`. PlaceSnapPoint / ClickAtCursor / LineBetweenSnapPoints (quick menubar) are still no-ops. Undo is
+not implemented.
 
 ## How to draw
 1. Place the board (quick place or corners). The tool bar appears on the right edge, vertically centred.
@@ -9,6 +12,7 @@ PlaceSnapPoint / ClickAtCursor / LineBetweenSnapPoints are no-ops). Undo is not 
    finger while dragging.
 3. **Circle**: touch the centre, drag outwards, lift. The ghost shows the circle and a dotted radius line.
 4. **Dotted** toggles dashed strokes for new shapes (orange when on). **Width** cycles Thin / Medium / Thick for new shapes.
+   **Snap** (orange = on, the default) and **H/V** (orange = on) are at the bottom of the tool bar; see `docs/SNAPPING.md`.
 5. Shapes go into the active layer (the one selected in the left sidebar). If that layer is hidden, nothing is drawn and a
    toast says "Layer is hidden: double-tap it in the sidebar to show it".
 
