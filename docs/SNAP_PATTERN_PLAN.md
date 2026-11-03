@@ -21,7 +21,7 @@ Scope for this task:
 | F1 | Automatic snap candidates: line/line, line/circle, circle/circle intersections; **grid intersections** (tile corners, square and hex); endpoints, centers, circle divisions, user points, tile edge midpoints and centers | **Demo-critical** |
 | F2 | Line and Circle snap to candidates; candidates are visible dots; tap a dot then another dot to connect them with a line (drag still works); Snap on/off toggle | **Demo-critical** |
 | R1 | Change report: `docs/SNAP_CHANGE_REPORT.md` (section 3.6) | **Required** |
-| A0 | Android: **already done** by Ratul on `grid-and-android` (`docs/BUILD_ANDROID.md`). Only verify it on Luis's phone | Verify only |
+| A0 | Android: **already done** by Ratul on `grid-and-android` (`docs/BUILD_ANDROID.md`). Device verification by teammates Ratul (Galaxy S24 Ultra) or Haytham; Luis's phone lacks ARCore (Q12) | Verify only, teammates |
 | F3 | H/V lock: constrain new lines to horizontal or vertical in board axes, with alignment snapping along the axis | Requested, after F1/F2/R1 pass |
 | P3 | Select/Move, Scale, Duplicate, Undo | **Deferred to P3** (appendix A keeps the design) |
 
@@ -143,7 +143,7 @@ Required sections:
 6. **Tuning knobs:** every constant (tolerance px, tap threshold, dedup epsilon, hover ring size, dot sizes) with file and member name.
 7. **How to extend:** steps for adding a new candidate source, a new `SnapKind`, a new intersection type, and how Select/Move/Scale (P3) should reuse `SnapIndex` and `ISnapMetric` (point at appendix A).
 8. **Tests:** enginecheck checks, EditMode/PlayMode tests, render-check scenarios, and how to run each on Windows (Luis) and on the Mac (teammates).
-9. **Known limitations and untested areas:** especially anything verified only in the Editor, or on only one of Android and iPhone.
+9. **Known limitations and untested areas:** especially anything verified only in the Editor, or on only one of Android and iPhone. For this task it must say **"Editor-verified only"** and list the device checks still owed (touch tolerance feel, toolbar fit on hardware, frame rate with candidates) and who owns them (Ratul or Haytham on Android, the Mac teammate on iPhone).
 
 Each ticket's agent appends its subsection to sections 2, 3, 4, 6 and 8 as part of "done". The orchestrator does a final consistency pass against `git diff <baseline>..HEAD` before handing back.
 
@@ -161,7 +161,7 @@ Each ticket lists owned files. A subagent may only edit its owned files, new che
 | U2 | ToolBar: Snap toggle, H/V toggle (column grows from 6 to 8) | `App/ToolBar.cs`, `Tests/EditMode/Verifier/VerifierToolBarToastTests.cs` | C0 | yes |
 | U3 | Overlay: candidate dots by kind, hover ring | `BoardRender/BoardView.cs` | C0 | yes |
 | U4 | PlayMode + render verification | `Tests/PlayMode/Verifier/*`, `Editor/Build/ToolsRenderCheck.cs` | U1-U3, E2, E3 | yes |
-| A0 | Android verification only (already implemented on the baseline) | nothing; report findings | U4 | yes |
+| A0 | Android device verification only, by Ratul or Haytham (Q12) | nothing; report findings | U4 | yes |
 | D1 | User docs | `docs/TOOLS.md` (replace "Snap points come later"), new `docs/SNAPPING.md` | as features land | no |
 | R1 | Change report final pass | `docs/SNAP_CHANGE_REPORT.md` | everything | no |
 
@@ -185,8 +185,9 @@ Each ticket lists owned files. A subagent may only edit its owned files, new che
 **U3.** Dots per 3.5; the overlay refreshes on `BoardChanged`, `StateChanged`, `PreviewChanged` (already handled).
 
 **U4.** Extend `ToolsRenderCheck` with a board showing grid intersections, shape intersections and a hover ring; inspect the PNGs. Add PlayMode tests on the flat sandbox driving `BoardInputRouter` with simulated mouse input (follow `VerifierInputRouterPlayTests`): drag-snap a line to a shape intersection; drag-snap to a grid intersection; tap-tap connect; H/V lock. Run all EditMode and PlayMode tests.
+Because there is no device run on Luis's machine (Q12), also: in `Sandbox_A_Flat`, verify snapping and tap-to-connect with the camera tilted ~60 degrees and at the far board edge; use the Device Simulator to screenshot the ToolBar and layer sidebar on a small Android phone, a tall Android phone and an iPhone, confirming all 8 buttons fit inside the safe area.
 
-**A0.** Verify only, no code: after U4, follow `docs/BUILD_ANDROID.md` on Windows (adb lives under `<Unity install>\Editor\Data\PlaybackEngines\AndroidPlayer\SDK\platform-tools`, not the macOS path in that doc). Run GeoART > Setup > 3, then GeoART > Build > Build and Run on Android Phone. Never commit the `preloadedAssets` change the Android build writes to `ProjectSettings.asset`. If Windows steps differ from the doc, append a Windows section to `BUILD_ANDROID.md`.
+**A0.** Owned by Ratul (Galaxy S24 Ultra) or Haytham, not Luis (Q12). Verify only, no code: after U4, follow `docs/BUILD_ANDROID.md` on Windows (adb lives under `<Unity install>\Editor\Data\PlaybackEngines\AndroidPlayer\SDK\platform-tools`, not the macOS path in that doc). Run GeoART > Setup > 3, then GeoART > Build > Build and Run on Android Phone. Never commit the `preloadedAssets` change the Android build writes to `ProjectSettings.asset`. If Windows steps differ from the doc, append a Windows section to `BUILD_ANDROID.md`.
 
 **D1.** Gestures, defaults, tolerances, and checks in the style of `LAYERS.md`.
 
@@ -201,7 +202,7 @@ C0 ──> E1 ──> E2 ──> E3
  ├──> U1 ─┐
  ├──> U2 ─┼──> U4 (after E2, E3)
  └──> U3 ─┘
-D1 and the report grow with each merge; R1 is the last step; A0 (Android build to Luis's phone) after U4.
+D1 and the report grow with each merge; R1 is the last step; A0 (Android device run by Ratul or Haytham, Q12) after U4.
 ```
 
 - Wave 1 (serial): C0, by the orchestrator or one agent, merged before anything else.
@@ -228,7 +229,7 @@ After every merge, the Unity agent:
 3. Runs EditMode, then PlayMode tests.
 4. Opens `Sandbox_A_Flat.unity`, enters Play Mode, screenshots the Game view at 390x844 (ToolBar fit, candidate dots, hover ring). Exits Play Mode before editing anything.
 5. Runs the render check and reads the PNGs in `Logs/GeoARtRenderCheck/`.
-6. Does **not** switch the Editor to the Android target during feature work (the first switch re-imports everything); the Android build happens once at the end (A0). The iOS script check is the Mac teammate's job.
+6. Does **not** switch the Editor to the Android target during feature work (the first switch re-imports everything); the Android build happens once at the end (A0, on a teammate's machine and phone; Q12). The iOS script check is the Mac teammate's job.
 
 Fallback without MCP: Unity batch mode (`Unity.exe -batchmode -projectPath <repo> -runTests -testPlatform EditMode -testResults <file>`) with the Editor closed.
 
@@ -245,7 +246,9 @@ Never run `SceneBuilder` without checking what it overwrites: it rewrites A-owne
 
 ### 5.5 Device verification
 
-**Luis, Android:** in A0, build `Main.unity` to the Android phone (USB, `docs/BUILD_ANDROID.md`) and check: camera feed and plane found on a textured table; Quick place and corner placement; candidate dots visible and tappable at 25-60 cm; tap-to-connect on a board seen at an angle; snap tolerance at the far edge; grid-intersection snapping; H/V lines aligned with the physical sheet; no drawing through the ToolBar; smooth frame rate with four stars plus candidates. Confirm first that the phone is on Google's ARCore supported-devices list.
+**Luis's phone does not support ARCore (Q12), so Luis does no device testing.** All of his verification happens in the Editor: `Sandbox_A_Flat`, the Device Simulator, PlayMode tests and the render check.
+
+**Ratul (Galaxy S24 Ultra) or Haytham, Android:** in A0, build `Main.unity` to an ARCore-capable Android phone (USB, `docs/BUILD_ANDROID.md`) and check: camera feed and plane found on a textured table; Quick place and corner placement; candidate dots visible and tappable at 25-60 cm; tap-to-connect on a board seen at an angle; snap tolerance at the far edge; grid-intersection snapping; H/V lines aligned with the physical sheet; no drawing through the ToolBar; smooth frame rate with four stars plus candidates. Confirm first that the phone is on Google's ARCore supported-devices list.
 
 **Teammates, iPhone:** the Mac owner builds the same commit for iOS before it merges to `main`, to prove nothing broke there. Luis does no Apple-side work.
 
@@ -266,6 +269,7 @@ The report's "Known limitations" section lists whichever platform has not been d
 | Q9 | Platform for Luis | Android (ARCore) on Windows; no Apple tooling. iOS stays supported by teammates; Android changes must not alter iOS settings |
 | Q10 | Android setup | Ratul's `grid-and-android` implementation (Vulkan first + `ARCommandBufferSupportRendererFeature`, verified on device). Supersedes the earlier `ANDROID_SUPPORT.md` audit |
 | Q11 | Grid intersections source | `TileGrid.SnapPoints` `CellCorner` points, square and hex |
+| Q12 | Device testing | Luis's phone lacks ARCore; device testing by teammates (Ratul, Galaxy S24 Ultra, or Haytham). Luis verifies in the Editor only |
 
 ## 7. Progress log
 
@@ -273,10 +277,12 @@ The report's "Known limitations" section lists whichever platform has not been d
 - **2026-11-03**: Found Ratul's `grid-and-android` branch (TileGrid square/hex, Android build verified). Rebased the plan on it: A0 becomes verify-only, grid intersections come from `TileGrid`, ToolBar grows from 6 buttons.
 - **2026-11-03**: Luis switches to Android. Static audit (`docs/ANDROID_SUPPORT.md`): runtime code is cross-platform; project config is iOS-only. Added A0; removed iOS steps from Luis's workflow.
 - **2026-11-03**: Revised: grid intersections required; Select/Scale/Duplicate moved to P3; change report (R1) added as a required deliverable; golden demo test rebuilt around snapping only.
+- **2026-11-03**: Editor-only verification (Q12): Luis's phone lacks ARCore, so A0 is reassigned to Ratul or Haytham. U4 gains a tilted-camera/far-edge sandbox check and Device Simulator screenshots (small Android, tall Android, iPhone). The report must say "Editor-verified only" and list the device checks still owed.
+- **2026-11-03**: Baseline at `2a0f6b4`: enginecheck 80/80; EditMode 75/75; PlayMode 12/12; console clean. `ToolBarOnRightEdge` failed (74/75) with the Game view at 1920x1080 landscape and passes at 390x844 portrait, so the Game view is set to a custom "GeoART 390x844" size for all test runs.
 
 ## 8. Setbacks
 
-(none yet)
+- **2026-11-03**: The EditMode test `ToolBarOnRightEdge` depends on the Game view's aspect (its canvas comes from the Game view size). In a 1920x1080 landscape Game view the 400 px column puts the Line button at y=0.897, outside the 0.2..0.8 range the test allows. Not a code defect. Fix: run tests with a portrait 390x844 Game view. Also, the MCP PlayMode test runner flips `ProjectSettings/EditorSettings.asset` `m_EnterPlayModeOptions`; that change is churn and is never committed.
 
 ---
 
