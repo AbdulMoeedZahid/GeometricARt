@@ -14,7 +14,7 @@ namespace GeoART.EditorTools
     ///   GEOART_SCENE      scene to build (default Assets/Scenes/Main.unity; e.g. the Sandbox_A_AR scene)
     ///   GEOART_BUNDLE_ID  bundle identifier for this build only (restored afterwards, so it is never committed)
     ///   GEOART_DEV=1      development build (attach the profiler / see logs)
-    /// Builds through <see cref="PreloadedAssetsGuard"/>, so even a failed export leaves ProjectSettings.asset unchanged.
+    /// Builds through <see cref="BuildGuard"/>, so even a failed export leaves ProjectSettings and the URP assets unchanged.
     /// </summary>
     public static class IOSBuild
     {
@@ -58,7 +58,7 @@ namespace GeoART.EditorTools
                     targetGroup = BuildTargetGroup.iOS,
                     options = development ? BuildOptions.Development : BuildOptions.None,
                 };
-                BuildReport report = PreloadedAssetsGuard.BuildPlayer(options);
+                BuildReport report = BuildGuard.BuildPlayer(options);
                 var summary = report.summary;
                 if (summary.result != BuildResult.Succeeded)
                     throw new Exception($"iOS export failed: {summary.result} ({summary.totalErrors} errors). See the Editor log.");

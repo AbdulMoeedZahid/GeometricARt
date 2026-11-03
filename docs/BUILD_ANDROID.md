@@ -64,8 +64,12 @@ Quick compile check without a build: `-buildTarget Android -executeMethod GeoART
   `adb screencap` may show black even when the camera works on the phone's screen; trust the phone.
 - **ProjectSettings `preloadedAssets` changed after a build**: XR Management, ARCore/ARKit and the Input System add
   entries there during a build and only remove them when it succeeds. The GeoART build menus and scripts strip them
-  before and after every build (`PreloadedAssetsGuard`), and the Editor strips leftovers after each script reload. If
+  before and after every build (`BuildGuard`), and the Editor strips leftovers after each script reload. If
   the diff still shows up, do not commit it: the committed value is `preloadedAssets: []`.
+- **`Mobile_RPAsset.asset` / `PC_RPAsset.asset` changed after a build** (`m_PrefilteringMode*`, `m_Prefilter*`): URP
+  recomputes these shader-stripping fields for the target before every build (Android with ARCore keeps one more
+  lighting variant than iOS). `BuildGuard` restores them after GeoART builds; a build from the Build Profiles window
+  can still leave the change. Do not commit it.
 - **`INSTALL_FAILED_UPDATE_INCOMPATIBLE`**: the app on the phone was built on another machine (different debug key).
   `adb uninstall edu.usf.cap4111.geometricart`, then install again.
 - **Script edits not picked up** (the Console's setup line does not change): Unity sometimes skips recompiling the
