@@ -51,8 +51,8 @@ A tap is a touch that moves less than 10 reference px.
 - Engine (no Unity): `DOTNET_ROLL_FORWARD=Major dotnet run --project tools/enginecheck -c Release` (Windows/Mac). Snap
   checks: `SnapChecks` (candidates, geometry), `SnapToolChecks` (snapping, taps), `PatternChecks` (the 2x2 star pattern
   built only by snapping equals `GoldenBoards.Tiled2x2` exactly), `OrthoChecks` (H/V lock).
-- Unity Test Runner: EditMode `VerifierToolBarToastTests` (Snap/H/V buttons, 8-button fit; run with a portrait Game view,
-  e.g. 390x844); PlayMode `VerifierSnapPlayTests` (touch -> router -> snapped commit, exact coordinates).
+- Unity Test Runner: EditMode `VerifierToolBarToastTests` (Snap/H/V buttons, 8-button fit; any Game view size, also the
+  640x480 batch-mode screen); PlayMode `VerifierSnapPlayTests` (touch -> router -> snapped commit, exact coordinates).
 - Render check: **GeoART > Checks > Board rendering check** writes `Logs/GeoARtRenderCheck/board-snap-*.png`.
 - By hand: open `Sandbox_A_Flat`, press Play, draw a circle and a line through it, then drag a new line end near the
   crossing: it lands exactly on the blue dot.

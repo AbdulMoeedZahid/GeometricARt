@@ -15,7 +15,8 @@ namespace GeoART.App
     ///   Snap            toggles IEditorSession.SetSnapEnabled (orange when on; on by default)
     ///   HV              toggles IEditorSession.SetOrthoLock: Line tool draws horizontal/vertical lines (orange when on)
     /// Eight buttons in four groups of two, about 520 reference px tall: fits a 390x844 portrait screen with room for
-    /// the placement row and the coach text.
+    /// the placement row and the coach text. Shorter screens (landscape: Android 16 ignores the portrait lock on large
+    /// screens) shrink the column to stay between the two, see <see cref="ApplySafeArea"/>.
     /// Icons are drawn procedurally into small textures once in Awake. Every button is a raycast target, so
     /// BoardInputRouter ignores touches that start on it. Visible only while the board is placed (or when the scene
     /// has no IBoardSpace). Event-driven: refreshes on session/placement StateChanged, no per-frame work except a
@@ -30,6 +31,9 @@ namespace GeoART.App
         static readonly Color Idle = new Color(0.08f, 0.08f, 0.1f, 0.78f);
         // ButtonH went from 58 to 56 when the column grew from 6 to 8 buttons (Snap, HV).
         const float ButtonW = 56f, ButtonH = 56f, Spacing = 8f, GroupGap = 14f, EdgeMargin = 8f;
+        // Screen-height fractions the column stays clear of: PlacementControls' row ends 11% above the safe-area bottom
+        // (its Re-place button shows while the bar does), DevHud's coach text starts 20% below the top of the screen.
+        const float PlacementRowTop = 0.11f, CoachTextBottom = 0.80f, MinFit = 0.4f;
         const int ButtonCount = 8, GroupCount = 4;
 
         /// <summary>Column height in reference px: 8 buttons, one spacing inside each pair, a gap between pairs.</summary>
@@ -260,16 +264,27 @@ namespace GeoART.App
             return bg;
         }
 
-        /// <summary>Right edge of the safe area, vertically centred in it.</summary>
+        /// <summary>
+        /// Right edge of the safe area, vertically centred in it, but kept inside the band between the placement row and
+        /// the coach text: moved when centring would overlap one of them, and scaled down (never below
+        /// <see cref="MinFit"/>) when the band is shorter than the column, e.g. a landscape window.
+        /// </summary>
         void ApplySafeArea()
         {
             _safeArea = Screen.safeArea;
             _screenW = Screen.width;
             _screenH = Screen.height;
             float w = Mathf.Max(1, Screen.width), h = Mathf.Max(1, Screen.height);
-            var anchor = new Vector2(_safeArea.xMax / w, (_safeArea.yMin + _safeArea.yMax) * 0.5f / h);
-            _column.anchorMin = _column.anchorMax = anchor;
+            float scale = ScreenSnapMetric.ScaleFactor(w, h);   // reference px -> screen px, as the CanvasScaler computes it
+            float margin = EdgeMargin * scale;
+            float bottom = _safeArea.yMin + PlacementRowTop * h + margin;
+            float top = Mathf.Min(_safeArea.yMax, CoachTextBottom * h) - margin;
+            float fit = Mathf.Clamp((top - bottom) / (ColumnHeight * scale), MinFit, 1f);
+            float half = ColumnHeight * scale * fit * 0.5f;
+            float centre = Mathf.Clamp((_safeArea.yMin + _safeArea.yMax) * 0.5f, bottom + half, Mathf.Max(bottom + half, top - half));
+            _column.anchorMin = _column.anchorMax = new Vector2(_safeArea.xMax / w, centre / h);
             _column.anchoredPosition = new Vector2(-EdgeMargin, 0f);
+            _column.localScale = new Vector3(fit, fit, 1f);
         }
 
         // ---------- procedural icons (white on transparent, anti-aliased with a signed distance) ----------

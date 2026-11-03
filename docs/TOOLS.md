@@ -7,7 +7,8 @@ divisions...), and tapping two points connects them with a line. An H/V lock kee
 not implemented.
 
 ## How to draw
-1. Place the board (quick place or corners). The tool bar appears on the right edge, vertically centred.
+1. Place the board (quick place or corners). The tool bar appears on the right edge, vertically centred (on short or
+   landscape screens it shrinks to stay between the placement row and the coach text).
 2. **Line** (default tool): touch the board at the start point, drag, lift at the end point. An orange ghost follows the
    finger while dragging.
 3. **Circle**: touch the centre, drag outwards, lift. The ghost shows the circle and a dotted radius line.
