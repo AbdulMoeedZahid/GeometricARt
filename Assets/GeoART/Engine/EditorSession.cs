@@ -18,7 +18,12 @@ namespace GeoART.Engine
         StrokeStyle _style = StrokeStyle.Default;
         string _toolHint = "";
         readonly List<Shape> _preview = new List<Shape>();
-        readonly List<SnapCandidate> _candidates = new List<SnapCandidate>();   // snapping comes later: always empty
+        // ---- Snapping state (C0). The snap partial (EditorSession.Snap.cs) fills _candidates lazily in EnsureCandidates
+        // and reacts to OnModelChanged / OnSnapSettingsChanged; until it exists the list stays empty.
+        readonly List<SnapCandidate> _candidates = new List<SnapCandidate>();
+        static readonly SnapCandidate[] NoCandidates = new SnapCandidate[0];
+        bool _snapEnabled = true;
+        bool _orthoLock;
 
         public EditorSession(Board board = null)
         {
@@ -29,8 +34,59 @@ namespace GeoART.Engine
         public Board Board => _board;
         public Selection Selection { get; } = new Selection();
         public IReadOnlyList<Shape> Preview => _preview;
-        public IReadOnlyList<SnapCandidate> SnapCandidates => _candidates;
         public string ToolHint => _toolHint;
+
+        /// <summary>
+        /// Board -> screen measure for snap tolerances and tap detection, set by the App (ScreenSnapMetric). Null (console
+        /// harness, flat tests) means board units: tolerance <see cref="FallbackSnapTolerance"/> with identity projection.
+        /// Concrete property, not on IEditorSession, so wiring needs no contract change.
+        /// </summary>
+        public ISnapMetric SnapMetric { get; set; }
+
+        /// <summary>Snap tolerance in board units when <see cref="SnapMetric"/> is null.</summary>
+        public const double FallbackSnapTolerance = 0.02;
+
+        /// <summary>On by default. When off, <see cref="SnapCandidates"/> is empty and nothing snaps.</summary>
+        public bool SnapEnabled => _snapEnabled;
+
+        /// <summary>Line tool H/V lock (board axes). Off by default.</summary>
+        public bool OrthoLock => _orthoLock;
+
+        /// <summary>Visible snap candidates (for the dots); empty when snapping is off. Never rebuilt per pointer Move.</summary>
+        public IReadOnlyList<SnapCandidate> SnapCandidates
+        {
+            get
+            {
+                if (!_snapEnabled) return NoCandidates;
+                EnsureCandidates();
+                return _candidates;
+            }
+        }
+
+        public void SetSnapEnabled(bool on)
+        {
+            if (_snapEnabled == on) return;
+            _snapEnabled = on;
+            OnSnapSettingsChanged();
+            RaiseStateChanged();
+        }
+
+        public void SetOrthoLock(bool on)
+        {
+            if (_orthoLock == on) return;
+            _orthoLock = on;
+            OnSnapSettingsChanged();
+            RaiseStateChanged();
+        }
+
+        /// <summary>Snap partial: bring _candidates up to date (lazy, dirty-flag driven). Absent = stays empty.</summary>
+        partial void EnsureCandidates();
+
+        /// <summary>Snap partial: SnapEnabled or OrthoLock changed (e.g. clear a pending tap-to-connect start).</summary>
+        partial void OnSnapSettingsChanged();
+
+        /// <summary>Snap partial: the model changed (called before BoardChanged listeners run), e.g. mark candidates dirty.</summary>
+        partial void OnModelChanged(BoardChangeKind kind);
         public bool CanUndo => false;
         public bool CanRedo => false;
 
@@ -105,7 +161,11 @@ namespace GeoART.Engine
             RaiseStateChanged();
         }
 
-        void RaiseBoardChanged(BoardChangeKind kind) => BoardChanged?.Invoke(kind);
+        void RaiseBoardChanged(BoardChangeKind kind)
+        {
+            OnModelChanged(kind);
+            BoardChanged?.Invoke(kind);
+        }
         void RaiseStateChanged() => StateChanged?.Invoke();
         void RaisePreviewChanged() => PreviewChanged?.Invoke();
         void RaiseToast(string message) => Toast?.Invoke(message);

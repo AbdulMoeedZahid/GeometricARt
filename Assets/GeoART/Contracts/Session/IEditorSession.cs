@@ -13,6 +13,7 @@ namespace GeoART.Contracts
         ToolId ActiveTool { get; }
         StampKind ActiveStamp { get; }
         bool SnapEnabled { get; }
+        bool OrthoLock { get; }                                   // Line tool: new lines horizontal/vertical in board axes
         bool DottedLine { get; }
         StrokeStyle Style { get; set; }                           // palette colour + width (Settings)
         Selection Selection { get; }
@@ -35,6 +36,7 @@ namespace GeoART.Contracts
         void SetTool(ToolId t);
         void SetStamp(StampKind k);
         void SetSnapEnabled(bool on);
+        void SetOrthoLock(bool on);                               // raises StateChanged when it changes
 
         // layers + grid
         EntityId AddLayer();

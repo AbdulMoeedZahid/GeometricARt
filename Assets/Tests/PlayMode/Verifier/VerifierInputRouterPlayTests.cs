@@ -410,6 +410,8 @@ namespace GeoART.Tests.Verifier.PlayMode
             public void SetTool(ToolId t) => _s.SetTool(t);
             public void SetStamp(StampKind k) => _s.SetStamp(k);
             public void SetSnapEnabled(bool on) => _s.SetSnapEnabled(on);
+            public bool OrthoLock => _s.OrthoLock;
+            public void SetOrthoLock(bool on) => _s.SetOrthoLock(on);
             public EntityId AddLayer() => _s.AddLayer();
             public void SelectLayer(EntityId id) => _s.SelectLayer(id);
             public void MoveLayer(EntityId id, int i) => _s.MoveLayer(id, i);

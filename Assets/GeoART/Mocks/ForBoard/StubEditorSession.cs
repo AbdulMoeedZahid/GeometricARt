@@ -57,6 +57,15 @@ namespace GeoART.Mocks
             StateChanged?.Invoke();
         }
 
+        public bool OrthoLock { get; private set; }
+
+        public void SetOrthoLock(bool on)
+        {
+            if (OrthoLock == on) return;
+            OrthoLock = on;
+            StateChanged?.Invoke();
+        }
+
         public void SetGrid(int n)
         {
             _board.GridN = Math.Max(Board.MinGridN, Math.Min(Board.MaxGridN, n));
