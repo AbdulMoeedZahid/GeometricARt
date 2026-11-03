@@ -186,7 +186,7 @@ namespace GeoART.EditorTools
             var app = new GameObject("App");
             var hud = app.AddComponent<DevHud>();
             SetField(hud, "showFps", true);
-            AddEditorApp(app, (int)EngineInstaller.Fixture.StarOnFullBoard);
+            AddEditorApp(app, (int)EngineInstaller.Fixture.Empty);   // clean start: just the board and its grid
 
             EditorSceneManager.SaveScene(scene, path);
         }

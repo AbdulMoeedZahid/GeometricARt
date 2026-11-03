@@ -10,6 +10,8 @@ namespace GeoART.App
     ///   Line / Circle   select the tool; the active one is filled with the accent orange
     ///   Dotted          toggles IEditorSession.ToggleDottedLine (orange when on)
     ///   Width           cycles the stroke width Thin -> Medium -> Thick (label shows the current one)
+    ///   Grid            switches the tile grid Square <-> Hex (icon and label show the current kind)
+    ///   Tiles           cycles tiles per side 1 -> 2 -> 3 -> 4 -> 1 (label "2x2" etc.)
     /// Icons are drawn procedurally into small textures once in Awake. Every button is a raycast target, so
     /// BoardInputRouter ignores touches that start on it. Visible only while the board is placed (or when the scene
     /// has no IBoardSpace). Event-driven: refreshes on session/placement StateChanged, no per-frame work except a
@@ -24,7 +26,8 @@ namespace GeoART.App
         static readonly Color Idle = new Color(0.08f, 0.08f, 0.1f, 0.78f);
         const float ButtonW = 56f, ButtonH = 58f, Spacing = 8f, GroupGap = 14f, EdgeMargin = 8f;
 
-        enum Glyph { Line, Circle, Dotted, Width }
+        enum Glyph { Line, Circle, Dotted, Width, Square, Hex, Tiles }
+        const int GlyphCount = 7;
 
         IEditorSession _session;
         IBoardSpace _boardSpace;
@@ -32,8 +35,10 @@ namespace GeoART.App
         RectTransform _column;
         Rect _safeArea;
         Image _lineBg, _circleBg, _dottedBg;
-        Text _widthLabel;
-        Texture2D[] _textures = new Texture2D[5];
+        Text _widthLabel, _gridLabel, _tilesLabel;
+        RawImage _gridIcon;
+        Texture _squareGlyph, _hexGlyph;
+        readonly Texture2D[] _textures = new Texture2D[GlyphCount + 1];   // glyphs, then the rounded sprite
         Sprite _rounded;
 
         void Awake()
@@ -53,7 +58,7 @@ namespace GeoART.App
             columnGo.transform.SetParent(canvasGo.transform, false);
             _column = (RectTransform)columnGo.transform;
             _column.pivot = new Vector2(1f, 0.5f);
-            _column.sizeDelta = new Vector2(ButtonW, 4 * ButtonH + 2 * Spacing + GroupGap);
+            _column.sizeDelta = new Vector2(ButtonW, 6 * ButtonH + 3 * Spacing + 2 * GroupGap);
             ApplySafeArea();
 
             var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -64,6 +69,12 @@ namespace GeoART.App
             y += GroupGap - Spacing;
             _dottedBg = CreateButton("Dotted", Glyph.Dotted, font, ref y, () => _session?.ToggleDottedLine(), out _);
             CreateButton("Medium", Glyph.Width, font, ref y, CycleWidth, out _widthLabel);
+            y += GroupGap - Spacing;
+            _hexGlyph = MakeGlyph(Glyph.Hex);
+            var gridBg = CreateButton("Square", Glyph.Square, font, ref y, ToggleGridKind, out _gridLabel);
+            _gridIcon = gridBg.GetComponentInChildren<RawImage>();
+            _squareGlyph = _gridIcon.texture;
+            CreateButton("2x2", Glyph.Tiles, font, ref y, CycleGridN, out _tilesLabel);
 
             _canvas.enabled = false;
         }
@@ -72,14 +83,22 @@ namespace GeoART.App
         {
             ServiceHub.TryResolve(out _session);
             ServiceHub.TryResolve(out _boardSpace);
-            if (_session != null) _session.StateChanged += Refresh;
+            if (_session != null)
+            {
+                _session.StateChanged += Refresh;
+                _session.BoardChanged += OnBoardChanged;
+            }
             if (_boardSpace != null) _boardSpace.StateChanged += OnPlacementChanged;
             Refresh();
         }
 
         void OnDestroy()
         {
-            if (_session != null) _session.StateChanged -= Refresh;
+            if (_session != null)
+            {
+                _session.StateChanged -= Refresh;
+                _session.BoardChanged -= OnBoardChanged;
+            }
             if (_boardSpace != null) _boardSpace.StateChanged -= OnPlacementChanged;
             if (_rounded != null) Destroy(_rounded);
             foreach (var t in _textures)
@@ -105,7 +124,45 @@ namespace GeoART.App
             SetColor(_dottedBg, _session.DottedLine ? Accent : Idle);
             string width = WidthLabel(_session.Style.Width);
             if (!ReferenceEquals(_widthLabel.text, width)) _widthLabel.text = width;
+            RefreshGrid();
         }
+
+        void OnBoardChanged(BoardChangeKind kind)
+        {
+            if ((kind & (BoardChangeKind.Grid | BoardChangeKind.Reset)) != 0) RefreshGrid();
+        }
+
+        void RefreshGrid()
+        {
+            Board board = _session?.Board;
+            if (board == null) return;
+            bool hex = board.GridKind == GridKind.Hex;
+            string kind = hex ? "Hex" : "Square";
+            if (!ReferenceEquals(_gridLabel.text, kind)) _gridLabel.text = kind;
+            Texture icon = hex ? _hexGlyph : _squareGlyph;
+            if (_gridIcon.texture != icon) _gridIcon.texture = icon;
+            string tiles = TilesLabel(TileGrid.ClampN(board.GridN));
+            if (!ReferenceEquals(_tilesLabel.text, tiles)) _tilesLabel.text = tiles;
+        }
+
+        void ToggleGridKind()
+        {
+            Board board = _session?.Board;
+            if (board == null) return;
+            _session.SetGridKind(board.GridKind == GridKind.Hex ? GridKind.Square : GridKind.Hex);
+        }
+
+        void CycleGridN()
+        {
+            Board board = _session?.Board;
+            if (board == null) return;
+            int n = TileGrid.ClampN(board.GridN);
+            _session.SetGrid(n >= Board.MaxGridN ? Board.MinGridN : n + 1);
+        }
+
+        static readonly string[] s_TilesLabels = { "1x1", "2x2", "3x3", "4x4" };
+
+        static string TilesLabel(int n) => s_TilesLabels[n - 1];
 
         void CycleWidth()
         {
@@ -227,6 +284,33 @@ namespace GeoART.App
                     Vector2 s0 = a + ab * ((k + 0.08f) / 4f), s1 = a + ab * ((k + 0.62f) / 4f);
                     return SegmentDistance(p, s0, s1) - 0.05f;
                 }
+                case Glyph.Square:   // 2x2 squares
+                {
+                    float d = Mathf.Abs(BoxDistance(p, new Vector2(0.5f, 0.5f), 0.32f));
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.5f, 0.18f), new Vector2(0.5f, 0.82f)));
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.18f, 0.5f), new Vector2(0.82f, 0.5f)));
+                    return d - 0.035f;
+                }
+                case Glyph.Hex:   // one pointy-top hexagon outline
+                {
+                    float d = float.MaxValue;
+                    for (int k = 0; k < 6; k++)
+                    {
+                        float a0 = Mathf.PI / 6f + k * Mathf.PI / 3f, a1 = a0 + Mathf.PI / 3f;
+                        var v0 = new Vector2(0.5f + 0.36f * Mathf.Cos(a0), 0.5f + 0.36f * Mathf.Sin(a0));
+                        var v1 = new Vector2(0.5f + 0.36f * Mathf.Cos(a1), 0.5f + 0.36f * Mathf.Sin(a1));
+                        d = Mathf.Min(d, SegmentDistance(p, v0, v1));
+                    }
+                    return d - 0.045f;
+                }
+                case Glyph.Tiles:   // 3x3 dots
+                {
+                    float d = float.MaxValue;
+                    for (int j = 0; j < 3; j++)
+                    for (int i = 0; i < 3; i++)
+                        d = Mathf.Min(d, Vector2.Distance(p, new Vector2(0.22f + 0.28f * i, 0.22f + 0.28f * j)));
+                    return d - 0.075f;
+                }
                 default:   // Width: three bars of increasing thickness
                 {
                     float d1 = SegmentDistance(p, new Vector2(0.18f, 0.76f), new Vector2(0.82f, 0.76f)) - 0.02f;
@@ -235,6 +319,13 @@ namespace GeoART.App
                     return Mathf.Min(d1, Mathf.Min(d2, d3));
                 }
             }
+        }
+
+        /// <summary>Signed distance to an axis-aligned square of half-side <paramref name="half"/>.</summary>
+        static float BoxDistance(Vector2 p, Vector2 center, float half)
+        {
+            Vector2 q = new Vector2(Mathf.Abs(p.x - center.x) - half, Mathf.Abs(p.y - center.y) - half);
+            return Vector2.Max(q, Vector2.zero).magnitude + Mathf.Min(Mathf.Max(q.x, q.y), 0f);
         }
 
         static float SegmentDistance(Vector2 p, Vector2 a, Vector2 b)
@@ -262,7 +353,7 @@ namespace GeoART.App
             }
             tex.SetPixels32(px);
             tex.Apply(false, true);
-            _textures[4 + slot] = tex;
+            _textures[GlyphCount + slot] = tex;
             return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0,
                 SpriteMeshType.FullRect, new Vector4(radius + 1, radius + 1, radius + 1, radius + 1));
         }

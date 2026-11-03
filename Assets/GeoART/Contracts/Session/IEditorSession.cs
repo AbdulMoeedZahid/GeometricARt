@@ -43,7 +43,8 @@ namespace GeoART.Contracts
         void DeleteBottomLayer();
         void SetLayerVisible(EntityId id, bool visible);
         void SetLayerOpacity(EntityId id, double opacity);       // clamped to [0,1]
-        void SetGrid(int n);
+        void SetGrid(int n);                                      // tiles per side, clamped to [MinGridN, MaxGridN]
+        void SetGridKind(GridKind kind);                          // square or hex tiles; read back from Board.GridKind
 
         // history + lifecycle
         bool CanUndo { get; }

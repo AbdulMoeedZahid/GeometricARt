@@ -87,6 +87,32 @@ namespace GeoART.Tests.Verifier
             ExecuteEvents.Execute(go, new PointerEventData(_es) { button = PointerEventData.InputButton.Left }, ExecuteEvents.pointerClickHandler);
 
         [Test]
+        public void ToolBarGridButtonsSwitchKindAndCycleTiles()
+        {
+            Add<ToolBar>();
+            _space.PlaceAtReticle();
+            var kindLabel = Find("Square").GetComponentInChildren<Text>();
+            var tilesLabel = Find("2x2").GetComponentInChildren<Text>();
+
+            Click(Find("Square"));
+            Assert.AreEqual(GridKind.Hex, _session.Board.GridKind);
+            Assert.AreEqual("Hex", kindLabel.text, "label follows the kind");
+            Click(Find("Square"));
+            Assert.AreEqual(GridKind.Square, _session.Board.GridKind);
+
+            Click(Find("2x2"));
+            Assert.AreEqual(3, _session.Board.GridN);
+            Assert.AreEqual("3x3", tilesLabel.text);
+            Click(Find("2x2"));
+            Click(Find("2x2"));
+            Assert.AreEqual(Board.MinGridN, _session.Board.GridN, "4 wraps to 1");
+            Assert.AreEqual("1x1", tilesLabel.text);
+
+            _session.SetGridKind(GridKind.Hex);   // changes from elsewhere also refresh the labels
+            Assert.AreEqual("Hex", kindLabel.text);
+        }
+
+        [Test]
         public void ToolBarHiddenUntilPlacedThenSwitchesTools()
         {
             Add<ToolBar>();
