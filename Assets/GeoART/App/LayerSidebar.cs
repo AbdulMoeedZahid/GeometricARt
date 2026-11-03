@@ -68,6 +68,7 @@ namespace GeoART.App
         Slider _slider;
         readonly List<Row> _rows = new List<Row>();          // pool; index = relay tag
         Rect _safeArea;
+        int _screenW, _screenH;   // ApplySafeArea depends on the screen size too, not just the safe area
         float _scale = 1f, _rowH = RowMax, _pillH;
         int _count;
         bool _animating;
@@ -159,7 +160,11 @@ namespace GeoART.App
 
         void Update()
         {
-            if (Screen.safeArea != _safeArea) { ApplySafeArea(); Layout(); }
+            if (Screen.safeArea != _safeArea || Screen.width != _screenW || Screen.height != _screenH)
+            {
+                ApplySafeArea();
+                Layout();
+            }
             float now = Time.unscaledTime;
 
             if (_press != null && !_dragging && !_holdFired)
@@ -730,6 +735,8 @@ namespace GeoART.App
         void ApplySafeArea()
         {
             _safeArea = Screen.safeArea;
+            _screenW = Screen.width;
+            _screenH = Screen.height;
             _scale = LayerUiKit.ScaleFactor();
             float w = Mathf.Max(1, Screen.width), h = Mathf.Max(1, Screen.height);
             _area.anchorMin = new Vector2(_safeArea.xMin / w, _safeArea.yMin / h);
