@@ -14,6 +14,7 @@ namespace GeoART.EditorTools
     ///   GEOART_DEV=1        development build (logs via adb logcat, profiler)
     /// Batch (builds only): Unity -batchmode -projectPath . -buildTarget Android
     ///   -executeMethod GeoART.EditorTools.AndroidBuild.BuildBatch
+    /// Builds through <see cref="PreloadedAssetsGuard"/>, so even a failed build leaves ProjectSettings.asset unchanged.
     /// </summary>
     public static class AndroidBuild
     {
@@ -48,7 +49,7 @@ namespace GeoART.EditorTools
             if (development) options |= BuildOptions.Development;
             if (installAndRun) options |= BuildOptions.AutoRunPlayer;
 
-            BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+            BuildReport report = PreloadedAssetsGuard.BuildPlayer(new BuildPlayerOptions
             {
                 scenes = new[] { scene },
                 locationPathName = apk,
