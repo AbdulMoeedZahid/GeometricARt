@@ -70,6 +70,19 @@ next import; they are not part of this commit.
 `EditorSession.cs`, `SnapIndex.cs`, `Intersect.cs` and Contracts are unchanged. Unity will generate
 `EditorSession.Snap.cs.meta` on the next import; it is not part of this commit.
 
+### Q1 follow-up (exact circle divisions)
+- **Contracts**
+  - `Contracts/Model/CircleDivisions.cs` (new): exact cos/sin table for the 8 circle divisions.
+  - `Contracts/Fixtures/GoldenBoards.cs`: `StarPoint` now reads from the table. **Team note: this changes fixture
+    coordinates by at most 1 ulp** (e.g. (0.5, 0.25000000000000006) becomes (0.5, 0.25)). Nothing visible changes. A
+    test that recomputes star points with `Math.Cos`/`Math.Sin` and compares with `==` would now need
+    `CircleDivisions.Point` instead. None of the current tests do.
+- **Engine**
+  - `Engine/Snap/SnapIndex.cs`: circle-division candidates come from `CircleDivisions.Point`.
+- **Checks**
+  - `tools/enginecheck/PatternChecks.cs`: `SnapBuildsTiled2x2` is exact everywhere (seam exception removed). Adds
+    `CircleDivisionTableIsExact`.
+
 ## 3. Contract changes
 
 ### C0
@@ -149,6 +162,20 @@ Behaviour changes behind existing members: `Pointer` snaps and handles taps; `Pr
 open; `SetSnapEnabled(false)`, `SetTool`, `ClearBoard`/`LoadBoard` and `Cancel` clear the pending start;
 `SnapCandidates` is now filled.
 
+### Q1 follow-up
+```csharp
+// Contracts/Model/CircleDivisions.cs (new)
+public static class CircleDivisions
+{
+    public const int Count = 8;
+    public const double Diagonal = 0.70710678118654752440;   // sqrt(2)/2, used for both cos(45) and sin(45)
+    public static double Cos(int k);                        // k mod 8, from the exact table {1, D, 0, -D, -1, -D, 0, D}
+    public static double Sin(int k);                        // {0, D, 1, D, 0, -D, -1, -D}
+    public static Vec2 Point(Vec2 center, double radius, int k);   // center + radius * (Cos(k), Sin(k))
+}
+// GoldenBoards.StarPoint(center, radius, k) == CircleDivisions.Point(center, radius, k)  (signature unchanged)
+```
+
 ## 4. How it works
 
 ### C0: extension points in the shared core
@@ -174,7 +201,7 @@ When snapping is off, `SnapCandidates` returns a shared empty array and never ca
 | 2 | `Intersection` | every pair of drawn primitives (see below); optionally primitives x grid lines |
 | 3 | `CellCorner` | grid intersections: the `CellCorner` entries of `TileGrid.SnapPoints(board.GridKind, board.GridN, list)` |
 | 4 | `Center` | `CircleShape.Center`, `PolygonShape.Center` |
-| 5 | `CircleDivision` | per circle, k = 0..7: `new Vec2(c.X + r * Math.Cos(k * Math.PI / 4), c.Y + r * Math.Sin(k * Math.PI / 4))` (same expression as `GoldenBoards.StarPoint`) |
+| 5 | `CircleDivision` | per circle, k = 0..7: `CircleDivisions.Point(c, r, k)`, the exact table shared with `GoldenBoards.StarPoint` (see "Exact circle divisions" below; E1 originally used `Math.Cos`/`Math.Sin`) |
 | 6 | `CellEdgeMid` | `TileGrid.SnapPoints` entries of that kind |
 | 7 | `CellCenter` | `TileGrid.SnapPoints` entries of that kind |
 
@@ -332,6 +359,15 @@ exists. Outside a gesture it holds only the pending ring (or nothing). All five 
 called through the interface with `out Vec2` (no boxing), rings and ghosts are reused, `StrokeStyle` is a struct.
 `SnapMetric` is read once per snap; tap measurement uses the metric captured at Down.
 
+### Exact circle divisions (Q1 follow-up)
+Division point k of a circle is `center + r * (cos, sin)(k * 45 degrees)`. With `Math.Cos`/`Math.Sin`, the axis values
+are not exact (`Math.Sin(Math.PI)` is about 1.2e-16). The two 45-degree values also come out 1 ulp apart:
+`Math.Cos(pi/4)` is not `Math.Sin(pi/4)`. So two touching circles produced their shared point at two slightly
+different coordinates. `CircleDivisions` replaces this with a table built from 0, +-1 and one `Diagonal` constant. As
+a result, the left circle's k = 0 point and the right circle's k = 4 point are the same double pair, and pattern seams
+are exact by construction. `GoldenBoards.StarPoint` and `SnapIndex` both call `CircleDivisions.Point`, so a fixture
+built from `StarPoint` and a drawing built by snapping agree with `==`.
+
 ## 5. Invariants
 
 _Filled in by the final pass (R1)._
@@ -343,7 +379,7 @@ _Filled in by the final pass (R1)._
 | Snap tolerance without a screen metric | 0.02 board units | `Engine/EditorSession.cs` `FallbackSnapTolerance` | C0 |
 | Dedup radius (candidates closer than this merge) | 1e-7 board units | `Engine/Snap/SnapIndex.cs` `DedupEpsilon` | E1 |
 | Off-board slack (keep if in [-slack, 1 + slack]) | 1e-9 board units | `Engine/Snap/SnapIndex.cs` `BoundsSlack` | E1 |
-| Division points per circle | 8 (k * pi/4) | `Engine/Snap/SnapIndex.cs` `CircleDivisions` (the angle expression is fixed at pi/4 to match `GoldenBoards.StarPoint`; changing the count also needs that expression changed) | E1 |
+| Division points per circle | 8 (k * 45 degrees) | `Contracts/Model/CircleDivisions.cs` `Count` + the exact `s_Cos`/`s_Sin` tables (`SnapIndex.CircleDivisions` mirrors `Count`). Not a free knob: another count needs a new exact table and changes `GoldenBoards` | E1, Q1 |
 | Shape x grid-line crossings as candidates | false | `Engine/Snap/SnapIndex.cs` `IncludeShapeGridCrossings` (instance field) | E1 |
 | Source priority order | UserPoint, Endpoint, Intersection, CellCorner, Center, CircleDivision, CellEdgeMid, CellCenter | `Engine/Snap/SnapIndex.cs` `Priority` (and the source order in `Rebuild`; both must agree) | E1 |
 | On-segment / tangency slack | 1e-9 board units | `Engine/Geometry/Intersect.cs` `ParamEps` | E1 |
@@ -441,18 +477,14 @@ units on the default 2x2 square grid. "Exact" means compared with `==`.
   (+0.003, -0.002) off, radius snapped to the cell's right edge midpoint from (-0.002, +0.003) off), then each star's
   two squares by tap-to-connect, every tap 0.003 inward plus 0.0015 sideways from the division point. Asserts exactly
   4 circles with exact centres and radius == 0.25, exactly 32 lines, and an order- and orientation-independent `==`
-  match with `GoldenBoards.Tiled2x2()`, with one exception explained next.
+  match with `GoldenBoards.Tiled2x2()` using `==` on every endpoint. It also asserts that the fixture has no two
+  endpoints within 1e-9 of each other: every seam is a single point.
 
-  **Fixture caveat (deviation from the plan's literal wording).** `GoldenBoards.Tiled2x2` builds each star separately
-  with `StarPoint`, and `0.25 * sin(pi)` and `0.25 * cos(pi/2)` are not 0. So at two seams the fixture has the shared
-  tip at two values 1 ulp apart: (0.5, 0.25) and (0.5, 0.25000000000000006); (0.25, 0.5) and (0.24999999999999994, 0.5).
-  A snapped seam is one point (dedup merges them, and the tangent-circle `Intersection` there is exact), so a
-  literal `==` against both variants cannot pass for any snapping design. The check therefore requires: every
-  endpoint not at those seams `==` the fixture; at each fixture "seam group" (distinct fixture endpoints within
-  1e-12) the drawn board uses exactly one bit-identical value, and it is one of the fixture's variants; exactly 2
-  such groups. That is stronger than the fixture at the seams (it proves they are seamless). Fixing the fixture needs
-  a change outside E2 (`GoldenBoards.StarPoint` in Contracts together with the matching expression in
-  `SnapIndex.Rebuild`); it was reported as an open question, not made here.
+  History: E2 first shipped with a 1-ulp "seam group" exception, because `StarPoint` used `Math.Cos`/`Math.Sin`
+  (`0.25 * sin(pi)` is not 0). Luis approved replacing that with the exact `CircleDivisions` table (decision Q1,
+  2026-11-03). The exception is gone and the check is exact everywhere.
+- `PatternChecks.CircleDivisionTableIsExact`: the table uses only 0, +-1 and one `Diagonal` constant; it is within
+  1e-15 of cos/sin; `StarPoint` uses it; k wraps mod 8; touching circles share their tangent point bit-for-bit.
 
 Existing checks opted out of snapping (`s.SetSnapEnabled(false)` right after the session is created, no assertion
 changed):

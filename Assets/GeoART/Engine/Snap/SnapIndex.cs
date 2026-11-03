@@ -29,8 +29,8 @@ namespace GeoART.Engine
         /// <summary>A candidate is kept when -BoundsSlack &lt;= x, y &lt;= 1 + BoundsSlack.</summary>
         public const double BoundsSlack = 1e-9;
 
-        /// <summary>Division points per circle, at angles k * 2pi / CircleDivisions (k * pi/4 for 8).</summary>
-        public const int CircleDivisions = 8;
+        /// <summary>Division points per circle, at k * 45 degrees from the exact table in Contracts.CircleDivisions.</summary>
+        public const int CircleDivisions = Contracts.CircleDivisions.Count;
 
         /// <summary>
         /// When true, visible shapes are also intersected with the grid lines (<see cref="TileGrid.UniqueEdges"/>),
@@ -218,9 +218,8 @@ namespace GeoART.Engine
                     if (!(layer.Shapes[i] is CircleShape circle) || !IsDrawable(circle)) continue;
                     Vec2 c = circle.Center;
                     double r = circle.Radius;
-                    for (int k = 0; k < CircleDivisions; k++)   // same expression as GoldenBoards.StarPoint
-                        Add(new Vec2(c.X + r * Math.Cos(k * Math.PI / 4), c.Y + r * Math.Sin(k * Math.PI / 4)),
-                            SnapKind.CircleDivision);
+                    for (int k = 0; k < CircleDivisions; k++)   // exact table, shared with GoldenBoards.StarPoint
+                        Add(Contracts.CircleDivisions.Point(c, r, k), SnapKind.CircleDivision);
                 }
             }
 
