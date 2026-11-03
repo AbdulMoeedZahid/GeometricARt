@@ -44,6 +44,9 @@ namespace GeoART.Mocks
 
         Camera Cam => viewCamera != null ? viewCamera : Camera.main;
 
+        /// <summary>The board transform (BoardView), for helpers such as <see cref="FlatCameraFit"/>.</summary>
+        public Transform BoardTransform => board != null ? board : transform;
+
         public void PlaceAtReticle() { }
         public void Reset() { }
 
