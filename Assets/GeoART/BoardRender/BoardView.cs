@@ -40,13 +40,18 @@ namespace GeoART.BoardRender
         [SerializeField] Color frameColor = new Color(0.08f, 0.08f, 0.1f, 1f);
         [SerializeField] Color dividerColor = new Color(0.2f, 0.2f, 0.25f, 0.85f);
         [SerializeField] Color snapPointColor = new Color(0.08f, 0.08f, 0.1f, 1f);
-        [SerializeField, Tooltip("Grid candidates (tile corners, edge midpoints, centres): subtle.")]
-        Color candidateColor = new Color(0.25f, 0.25f, 0.3f, 0.5f);
-        [SerializeField, Tooltip("Construction candidates (centres, circle divisions, user points): medium.")]
-        Color guideCandidateColor = new Color(0.15f, 0.3f, 0.65f, 0.8f);
-        [SerializeField, Tooltip("Shape candidates (intersections, endpoints): strong, with a light halo.")]
-        Color shapeCandidateColor = new Color(0.05f, 0.35f, 0.85f, 1f);
-        [SerializeField] Color candidateHaloColor = new Color(1f, 1f, 1f, 0.85f);
+        // Snap candidate dots: a dark fill inside a light outline, so every dot reads on the light sheet, on dark strokes
+        // and on a dark real surface in AR. Grid dots are smaller and translucent; shape dots are the largest and opaque.
+        [SerializeField, Tooltip("Fill of grid dots (tile corners; edge midpoints and centres use it at lower alpha).")]
+        Color gridDotFill = new Color(0.1f, 0.1f, 0.13f, 0.85f);
+        [SerializeField, Tooltip("Outline of grid dots.")]
+        Color gridDotOutline = new Color(1f, 1f, 1f, 0.95f);
+        [SerializeField, Tooltip("Fill of construction dots (centres, circle divisions, user points).")]
+        Color guideDotFill = new Color(0.1f, 0.27f, 0.68f, 1f);
+        [SerializeField, Tooltip("Fill of shape dots (intersections, endpoints): the strongest.")]
+        Color shapeDotFill = new Color(0.02f, 0.18f, 0.62f, 1f);
+        [SerializeField, Tooltip("Outline of construction and shape dots.")]
+        Color dotOutline = new Color(1f, 1f, 1f, 1f);
         [SerializeField] Color previewColor = new Color(1f, 0.55f, 0.1f, 0.9f);
         [SerializeField] Color cursorColor = new Color(1f, 0.42f, 0f, 1f);
         [SerializeField] Color surfaceOutlineColor = new Color(0.1f, 0.8f, 1f, 0.9f);
@@ -56,12 +61,15 @@ namespace GeoART.BoardRender
         const float CandidatesLift = 0.0012f;
         const float OverlayLift = 0.0016f;
 
-        // Candidate dot radii in metres at the 0.40 m board (times StrokeScale). Before snapping: one size, 2.5 mm.
-        const float MinorGridDotRadius = 0.0021f;   // CellEdgeMid, CellCenter
-        const float GridDotRadius = 0.0028f;        // CellCorner (grid intersections)
-        const float GuideDotRadius = 0.0032f;       // Center, CircleDivision, UserPoint
-        const float ShapeDotRadius = 0.0038f;       // Intersection, Endpoint
-        const float HaloWidth = 0.0012f;            // light ring under shape dots so they read on top of dark strokes
+        // Candidate dot fill radii and outline widths in metres at the 0.40 m board (times StrokeScale).
+        // Before snapping: one size, 2.5 mm, no outline.
+        const float MinorGridDotRadius = 0.0019f;   // CellEdgeMid, CellCenter
+        const float GridDotRadius = 0.0025f;        // CellCorner (grid intersections)
+        const float GuideDotRadius = 0.0030f;       // Center, CircleDivision, UserPoint
+        const float ShapeDotRadius = 0.0036f;       // Intersection, Endpoint
+        const float GridOutlineWidth = 0.0009f;     // light ring around grid dots
+        const float DotOutlineWidth = 0.0011f;      // light ring around construction and shape dots
+        const float MinorGridAlpha = 0.6f;          // edge midpoints / centres: grid colours at this alpha
 
         IEditorSession _session;
         bool _subscribed;
@@ -332,18 +340,33 @@ namespace GeoART.BoardRender
                         Vector3 p = P(c.Position, CandidatesLift);
                         switch (tier)
                         {
-                            case 0: mb.AddDisc(p, MinorGridDotRadius * s, candidateColor, 10); break;
-                            case 1: mb.AddDisc(p, GridDotRadius * s, candidateColor, 12); break;
-                            case 2: mb.AddDisc(p, GuideDotRadius * s, guideCandidateColor, 12); break;
+                            case 0:
+                                AddDot(mb, p, MinorGridDotRadius * s, GridOutlineWidth * s,
+                                    Faded(gridDotFill, MinorGridAlpha), Faded(gridDotOutline, MinorGridAlpha), 10);
+                                break;
+                            case 1:
+                                AddDot(mb, p, GridDotRadius * s, GridOutlineWidth * s, gridDotFill, gridDotOutline, 12);
+                                break;
+                            case 2:
+                                AddDot(mb, p, GuideDotRadius * s, DotOutlineWidth * s, guideDotFill, dotOutline, 14);
+                                break;
                             default:
-                                mb.AddDisc(p, (ShapeDotRadius + HaloWidth) * s, candidateHaloColor, 14);
-                                mb.AddDisc(p, ShapeDotRadius * s, shapeCandidateColor, 14);
+                                AddDot(mb, p, ShapeDotRadius * s, DotOutlineWidth * s, shapeDotFill, dotOutline, 16);
                                 break;
                         }
                     }
             }
             _candidates.Apply();
         }
+
+        /// <summary>A dot: light outline disc, then the dark fill on top.</summary>
+        static void AddDot(BoardMeshBuilder mb, Vector3 p, float radius, float outline, Color fill, Color ring, int segments)
+        {
+            mb.AddDisc(p, radius + outline, ring, segments);
+            mb.AddDisc(p, radius, fill, segments);
+        }
+
+        static Color Faded(Color c, float alpha) => new Color(c.r, c.g, c.b, c.a * alpha);
 
         void RebuildOverlay()
         {

@@ -24,7 +24,7 @@ namespace GeoART.EditorTools
     ///   Prefabs/Board/ARPlane.prefab        detected plane, no visual (planes are raycast targets only, never drawn)
     ///   Scenes/Main.unity                   startup scene for the iPhone build (DevHud + temporary PlacementControls)
     ///   Scenes/Sandbox/Sandbox_A_AR.unity   Main + star fixture, to check rendering on the device
-    ///   Scenes/Sandbox/Sandbox_A_Flat.unity Editor-only board with the star fixture and a perspective camera
+    ///   Scenes/Sandbox/Sandbox_A_Flat.unity Editor-only board with the star fixture and a perspective camera (FlatCameraFit)
     /// Menu: GeoART/Setup/2. Batch: -executeMethod GeoART.EditorTools.SceneBuilder.BuildBatch
     /// </summary>
     public static class SceneBuilder
@@ -180,6 +180,9 @@ namespace GeoART.EditorTools
             camGo.transform.position = new Vector3(0f, 0.36f, -0.3f);
             camGo.transform.LookAt(Vector3.zero);
             cam.GetUniversalAdditionalCameraData().renderPostProcessing = false;
+            // Keeps the tilt above but moves the camera so the whole board fits any Game view aspect (portrait or
+            // landscape), clear of the ToolBar and layer sidebar.
+            camGo.AddComponent<FlatCameraFit>();
 
             PrefabUtility.InstantiatePrefab(flatRootPrefab, scene);
             CreateEventSystem();
