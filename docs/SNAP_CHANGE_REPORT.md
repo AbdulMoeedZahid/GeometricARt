@@ -83,6 +83,17 @@ next import; they are not part of this commit.
   - `tools/enginecheck/PatternChecks.cs`: `SnapBuildsTiled2x2` is exact everywhere (seam exception removed). Adds
     `CircleDivisionTableIsExact`.
 
+### Q3/Q4 follow-up (dot visibility, sandbox camera)
+- **BoardRender**
+  - `BoardRender/BoardView.cs`: candidate dots are now a dark fill inside a light outline, in 4 tiers (new colour fields, see section 4, U3).
+- **Mocks**
+  - `Mocks/ForBoard/FlatCameraFit.cs` (new): fits the flat-sandbox camera so the whole board is visible at any aspect ratio.
+  - `Mocks/ForBoard/FlatBoardSpace.cs`: adds `BoardTransform` (read-only) for `FlatCameraFit`.
+- **Editor**
+  - `Editor/Build/SceneBuilder.cs`: `BuildFlatScene` adds `FlatCameraFit` to the camera, so a regenerated `Sandbox_A_Flat` keeps the fit.
+- **Scenes**
+  - `Scenes/Sandbox/Sandbox_A_Flat.unity`: `FlatCameraFit` on Main Camera (the only scene change).
+
 ## 3. Contract changes
 
 ### C0
@@ -289,14 +300,16 @@ There are four groups of two: Line/Circle, Dotted/Width, Grid kind/Tiles, and Sn
 ### U3: candidate rendering
 `BoardView` now has four mesh parts: Base (queue 3000), Shapes (3001), **Candidates** (3002), and Overlay (3003, ghosts and cursor). The Candidates part is rebuilt only on `BoardChanged` and `StateChanged` (the Snap toggle). Overlay is rebuilt on `PreviewChanged`, which fires during a drag, so dragging no longer re-meshes every dot. The dots are drawn lowest tier first, so strong dots sit on top:
 
-| Tier | Kinds | Radius (0.40 m board) | Colour field |
-|---|---|---|---|
-| 0 | `CellEdgeMid`, `CellCenter` | 2.1 mm | `candidateColor` (grey, 50%) |
-| 1 | `CellCorner` (grid intersections) | 2.8 mm | `candidateColor` |
-| 2 | `Center`, `CircleDivision`, `UserPoint` | 3.2 mm | `guideCandidateColor` (blue, 80%) |
-| 3 | `Intersection`, `Endpoint` | 3.8 mm, with a 1.2 mm white halo | `shapeCandidateColor` (strong blue) |
+| Tier | Kinds | Fill radius (0.40 m board) | Outline | Colour fields |
+|---|---|---|---|---|
+| 0 | `CellEdgeMid`, `CellCenter` | 1.9 mm | 0.9 mm | `gridDotFill` / `gridDotOutline`, both at 60% alpha (`MinorGridAlpha`) |
+| 1 | `CellCorner` (grid intersections) | 2.5 mm | 0.9 mm | `gridDotFill` (dark, 85%) / `gridDotOutline` (white, 95%) |
+| 2 | `Center`, `CircleDivision`, `UserPoint` | 3.0 mm | 1.1 mm | `guideDotFill` (blue) / `dotOutline` (white) |
+| 3 | `Intersection`, `Endpoint` | 3.6 mm | 1.1 mm | `shapeDotFill` (deep blue) / `dotOutline` (white) |
 
-The radii scale with `StrokeScale`, like strokes. The hover ring and the pending tap-to-connect ring are `Preview` shapes from the engine, so they draw in the Overlay with `previewColor` (orange).
+Each dot is a light outline disc with a dark fill disc on top (`BoardView.AddDot`). The dark fill reads on the light sheet and the light rim reads on dark strokes and on a dark real surface in AR (decision Q3, 2026-11-03; the first U3 version used one colour per tier and was too faint on the grey sheet). Checked with 4x renders of `Sandbox_A_Flat` with the sheet on and with `showBase` off (dark background). The colour field names are new, so the old `candidateColor` value serialized in `BoardRoot.prefab` / `FlatBoardRoot.prefab` is ignored.
+
+The radii and outlines scale with `StrokeScale`, like strokes. The hover ring and the pending tap-to-connect ring are `Preview` shapes from the engine, so they draw in the Overlay with `previewColor` (orange).
 
 ### E2: snapping in the tools and tap-to-connect
 
@@ -368,6 +381,9 @@ a result, the left circle's k = 0 point and the right circle's k = 4 point are t
 are exact by construction. `GoldenBoards.StarPoint` and `SnapIndex` both call `CircleDivisions.Point`, so a fixture
 built from `StarPoint` and a drawing built by snapping agree with `==`.
 
+### Q4: flat sandbox camera fit
+Before, the sandbox camera sat 0.47 m from the board at a 50-degree tilt, framed for a landscape Game view; in the 390x844 portrait view only the middle half of the board's width was visible. `FlatCameraFit` (on the camera) keeps the camera's viewing direction (re-aimed at the board centre) and bisects the distance (0.05..20 m, 40 steps) until all four board corners project inside the screen's safe area minus margins for the UI: left 72, right 76, top 24, bottom 24 reference px (390x844, match 0.5, like the ToolBar). It runs on Start, whenever `Screen.width/height/safeArea` change, and on `Refit()` (call it after changing the camera tilt). Verified at 390x844 (camera ends ~1.36 m away, whole board visible) and 844x390 (whole board visible; in landscape the portrait-only ToolBar column runs off the bottom, which is expected). Device scenes are unaffected: the component is only on the flat sandbox camera.
+
 ## 5. Invariants
 
 _Filled in by the final pass (R1)._
@@ -388,9 +404,10 @@ _Filled in by the final pass (R1)._
 | UI reference resolution / match | 390x844, 0.5 | `App/ScreenSnapMetric.cs` `ReferenceResolution`, `MatchWidthOrHeight` (used by ToolBar) | U1 |
 | ToolBar button height | 56 reference px (was 58) | `App/ToolBar.cs` `ButtonH` | U2 |
 | ToolBar column height | 522 reference px | `App/ToolBar.cs` `ColumnHeight` | U2 |
-| Candidate dot radii | 2.1 / 2.8 / 3.2 / 3.8 mm | `BoardRender/BoardView.cs` `MinorGridDotRadius`, `GridDotRadius`, `GuideDotRadius`, `ShapeDotRadius` | U3 |
-| Shape-dot halo | 1.2 mm | `BoardRender/BoardView.cs` `HaloWidth` | U3 |
-| Candidate colours | see section 4, U3 | `BoardRender/BoardView.cs` `candidateColor`, `guideCandidateColor`, `shapeCandidateColor`, `candidateHaloColor` (Inspector) | U3 |
+| Candidate dot fill radii | 1.9 / 2.5 / 3.0 / 3.6 mm | `BoardRender/BoardView.cs` `MinorGridDotRadius`, `GridDotRadius`, `GuideDotRadius`, `ShapeDotRadius` | U3, Q3 |
+| Candidate dot outlines | 0.9 mm (grid), 1.1 mm (others); minor grid alpha 0.6 | `BoardRender/BoardView.cs` `GridOutlineWidth`, `DotOutlineWidth`, `MinorGridAlpha` | U3, Q3 |
+| Candidate colours | dark fills, white outlines (section 4, U3) | `BoardRender/BoardView.cs` `gridDotFill`, `gridDotOutline`, `guideDotFill`, `shapeDotFill`, `dotOutline` (Inspector) | U3, Q3 |
+| Sandbox camera fit margins | left 72, right 76, top 24, bottom 24 reference px | `Mocks/ForBoard/FlatCameraFit.cs` `leftPx`, `rightPx`, `topPx`, `bottomPx` (Inspector) | Q4 |
 | Hover ring / pending ring radius | 0.012 board units (about 4.8 mm), Thin, solid, current colour | `Engine/EditorSession.Snap.cs` `HoverRingRadius` (style in `EditorSession.Tools.cs` `RingStyle`) | E2 |
 | Tap slop | 10/24 of the snap tolerance (10 reference px with the App metric; 0.00833 board units without) | `Engine/EditorSession.Snap.cs` `TapSlopFraction` | E2 |
 | Shortest line a tap-to-connect commits | 0.01 board units (same as drags) | `Engine/EditorSession.Tools.cs` `MinStrokeLength` (existing) | E2 |
