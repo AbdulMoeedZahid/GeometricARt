@@ -44,6 +44,7 @@ namespace GeoART.App
         Canvas _canvas;
         RectTransform _column;
         Rect _safeArea;
+        int _screenW, _screenH;   // ApplySafeArea depends on the screen size too, not just the safe area
         Image _lineBg, _circleBg, _dottedBg, _snapBg, _hvBg;
         Text _widthLabel, _gridLabel, _tilesLabel;
         RawImage _gridIcon;
@@ -121,7 +122,7 @@ namespace GeoART.App
 
         void LateUpdate()
         {
-            if (Screen.safeArea != _safeArea) ApplySafeArea();
+            if (Screen.safeArea != _safeArea || Screen.width != _screenW || Screen.height != _screenH) ApplySafeArea();
         }
 
         void OnPlacementChanged(PlacementState _) => Refresh();
@@ -263,6 +264,8 @@ namespace GeoART.App
         void ApplySafeArea()
         {
             _safeArea = Screen.safeArea;
+            _screenW = Screen.width;
+            _screenH = Screen.height;
             float w = Mathf.Max(1, Screen.width), h = Mathf.Max(1, Screen.height);
             var anchor = new Vector2(_safeArea.xMax / w, (_safeArea.yMin + _safeArea.yMax) * 0.5f / h);
             _column.anchorMin = _column.anchorMax = anchor;
