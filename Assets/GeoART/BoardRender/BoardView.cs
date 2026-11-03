@@ -6,12 +6,14 @@ namespace GeoART.BoardRender
 {
     /// <summary>
     /// Draws the board and the session's model in the transform's local XZ plane (A-2/A-3/A-4).
-    /// Three meshes, one draw call each, rebuilt only when dirty:
+    /// Four meshes, one draw call each, rebuilt only when dirty:
     ///   Base    - translucent sheet, outer frame (D-04), and the dashed outline of a corner-registered surface when it
     ///             is larger than the board (skipped when showBase is off), plus the dashed square or hex tile edges
     ///             from <see cref="TileGrid"/> (D-07; drawn whenever showGrid is on, so also in AR)
     ///   Shapes  - committed lines/circles/polygons on visible layers + user snap points  (BoardChanged)
-    ///   Overlay - snap candidates, tool preview ghosts, cursor                            (PreviewChanged/StateChanged)
+    ///   Candidates - snap candidate dots, tinted and sized by SnapKind tier               (BoardChanged/StateChanged)
+    ///   Overlay - tool preview ghosts (incl. the engine's snap hover ring), cursor         (PreviewChanged/StateChanged)
+    /// Candidates have their own mesh so a drag (PreviewChanged every frame) never rebuilds hundreds of dots.
     /// Binds to the IEditorSession in ServiceHub at Start, or explicitly via <see cref="Bind"/>.
     /// The side can change at runtime (<see cref="SetSideMeters"/>, corner placement); stroke widths scale with it,
     /// clamped by <see cref="StrokeScaleFor"/>, so the design keeps the same look on screen at any board size.
@@ -38,19 +40,33 @@ namespace GeoART.BoardRender
         [SerializeField] Color frameColor = new Color(0.08f, 0.08f, 0.1f, 1f);
         [SerializeField] Color dividerColor = new Color(0.2f, 0.2f, 0.25f, 0.85f);
         [SerializeField] Color snapPointColor = new Color(0.08f, 0.08f, 0.1f, 1f);
-        [SerializeField] Color candidateColor = new Color(0.25f, 0.25f, 0.3f, 0.5f);
+        [SerializeField, Tooltip("Grid candidates (tile corners, edge midpoints, centres): subtle.")]
+        Color candidateColor = new Color(0.25f, 0.25f, 0.3f, 0.5f);
+        [SerializeField, Tooltip("Construction candidates (centres, circle divisions, user points): medium.")]
+        Color guideCandidateColor = new Color(0.15f, 0.3f, 0.65f, 0.8f);
+        [SerializeField, Tooltip("Shape candidates (intersections, endpoints): strong, with a light halo.")]
+        Color shapeCandidateColor = new Color(0.05f, 0.35f, 0.85f, 1f);
+        [SerializeField] Color candidateHaloColor = new Color(1f, 1f, 1f, 0.85f);
         [SerializeField] Color previewColor = new Color(1f, 0.55f, 0.1f, 0.9f);
         [SerializeField] Color cursorColor = new Color(1f, 0.42f, 0f, 1f);
         [SerializeField] Color surfaceOutlineColor = new Color(0.1f, 0.8f, 1f, 0.9f);
 
         // Heights above the board plane (metres) so layers never z-fight with each other.
         const float ShapesLift = 0.0008f;
+        const float CandidatesLift = 0.0012f;
         const float OverlayLift = 0.0016f;
+
+        // Candidate dot radii in metres at the 0.40 m board (times StrokeScale). Before snapping: one size, 2.5 mm.
+        const float MinorGridDotRadius = 0.0021f;   // CellEdgeMid, CellCenter
+        const float GridDotRadius = 0.0028f;        // CellCorner (grid intersections)
+        const float GuideDotRadius = 0.0032f;       // Center, CircleDivision, UserPoint
+        const float ShapeDotRadius = 0.0038f;       // Intersection, Endpoint
+        const float HaloWidth = 0.0012f;            // light ring under shape dots so they read on top of dark strokes
 
         IEditorSession _session;
         bool _subscribed;
-        Part _base, _shapes, _overlay;
-        bool _baseDirty = true, _shapesDirty = true, _overlayDirty = true;
+        Part _base, _shapes, _candidates, _overlay;
+        bool _baseDirty = true, _shapesDirty = true, _candidatesDirty = true, _overlayDirty = true;
         int _lastGridN = -1;
         GridKind _lastGridKind = (GridKind)(-1);
         readonly List<(Vec2 A, Vec2 B)> _gridEdges = new List<(Vec2 A, Vec2 B)>(64);
@@ -70,7 +86,8 @@ namespace GeoART.BoardRender
             }
             _base = new Part(transform, "Base", material, 3000);
             _shapes = new Part(transform, "Shapes", material, 3001);
-            _overlay = new Part(transform, "Overlay", material, 3002);
+            _candidates = new Part(transform, "Candidates", material, 3002);
+            _overlay = new Part(transform, "Overlay", material, 3003);
         }
 
         void Start()
@@ -91,6 +108,7 @@ namespace GeoART.BoardRender
         {
             _base?.Dispose();
             _shapes?.Dispose();
+            _candidates?.Dispose();
             _overlay?.Dispose();
         }
 
@@ -103,7 +121,7 @@ namespace GeoART.BoardRender
             MarkAllDirty();
         }
 
-        public void MarkAllDirty() => _baseDirty = _shapesDirty = _overlayDirty = true;
+        public void MarkAllDirty() => _baseDirty = _shapesDirty = _candidatesDirty = _overlayDirty = true;
 
         /// <summary>Runtime board side (quick place 0.40 m, or the corner-fitted square). Clamped to [0.05, 3] m.</summary>
         public void SetSideMeters(float side)
@@ -148,12 +166,18 @@ namespace GeoART.BoardRender
         void OnBoardChanged(BoardChangeKind kind)
         {
             _shapesDirty = true;
-            _overlayDirty = true;   // candidates depend on geometry and grid
+            _candidatesDirty = true;   // candidates depend on geometry, layer visibility and grid
+            _overlayDirty = true;
             if ((kind & (BoardChangeKind.Grid | BoardChangeKind.Reset)) != 0) _baseDirty = true;
         }
 
         void OnPreviewChanged() => _overlayDirty = true;
-        void OnStateChanged() => _overlayDirty = true;
+
+        void OnStateChanged()
+        {
+            _candidatesDirty = true;   // Snap toggled on/off
+            _overlayDirty = true;
+        }
 
         void LateUpdate()
         {
@@ -170,6 +194,7 @@ namespace GeoART.BoardRender
                 _baseDirty = false;
             }
             if (_shapesDirty) { RebuildShapes(board); _shapesDirty = false; }
+            if (_candidatesDirty) { RebuildCandidates(); _candidatesDirty = false; }
             if (_overlayDirty) { RebuildOverlay(); _overlayDirty = false; }
         }
 
@@ -272,19 +297,64 @@ namespace GeoART.BoardRender
             _shapes.Apply();
         }
 
+        /// <summary>Candidate tiers: 0 minor grid, 1 grid intersections, 2 construction points, 3 shape points.</summary>
+        static int TierOf(SnapKind kind)
+        {
+            switch (kind)
+            {
+                case SnapKind.Intersection:
+                case SnapKind.Endpoint: return 3;
+                case SnapKind.Center:
+                case SnapKind.CircleDivision:
+                case SnapKind.UserPoint: return 2;
+                case SnapKind.CellCorner: return 1;
+                default: return 0;   // CellEdgeMid, CellCenter, None
+            }
+        }
+
+        /// <summary>
+        /// Dots for every snap candidate, low tiers first so strong dots sit on top. Index loops over the
+        /// IReadOnlyList (no boxed enumerator). Runs on BoardChanged/StateChanged only, not per pointer Move.
+        /// </summary>
+        void RebuildCandidates()
+        {
+            var mb = _candidates.Builder;
+            mb.Clear();
+            IReadOnlyList<SnapCandidate> list = _session?.SnapCandidates;
+            if (showSnapCandidates && list != null && _session.SnapEnabled)
+            {
+                float s = StrokeScale;
+                for (int tier = 0; tier <= 3; tier++)
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        SnapCandidate c = list[i];
+                        if (TierOf(c.Kind) != tier || !c.Position.IsFinite) continue;
+                        Vector3 p = P(c.Position, CandidatesLift);
+                        switch (tier)
+                        {
+                            case 0: mb.AddDisc(p, MinorGridDotRadius * s, candidateColor, 10); break;
+                            case 1: mb.AddDisc(p, GridDotRadius * s, candidateColor, 12); break;
+                            case 2: mb.AddDisc(p, GuideDotRadius * s, guideCandidateColor, 12); break;
+                            default:
+                                mb.AddDisc(p, (ShapeDotRadius + HaloWidth) * s, candidateHaloColor, 14);
+                                mb.AddDisc(p, ShapeDotRadius * s, shapeCandidateColor, 14);
+                                break;
+                        }
+                    }
+            }
+            _candidates.Apply();
+        }
+
         void RebuildOverlay()
         {
             var mb = _overlay.Builder;
             mb.Clear();
             if (_session != null)
             {
-                if (showSnapCandidates && _session.SnapEnabled && _session.SnapCandidates != null)
-                    foreach (var c in _session.SnapCandidates)
-                        mb.AddDisc(P(c.Position, OverlayLift), 0.0025f * StrokeScale, candidateColor, 10);
-
-                if (_session.Preview != null)
-                    foreach (var ghost in _session.Preview)
-                        if (ghost != null) AddShape(mb, ghost, previewColor, OverlayLift);
+                IReadOnlyList<Shape> preview = _session.Preview;   // index loop: no enumerator allocation per frame
+                if (preview != null)
+                    for (int i = 0; i < preview.Count; i++)
+                        if (preview[i] != null) AddShape(mb, preview[i], previewColor, OverlayLift);
 
                 if (_session.Cursor is Vec2 cursor && cursor.IsFinite)
                 {
