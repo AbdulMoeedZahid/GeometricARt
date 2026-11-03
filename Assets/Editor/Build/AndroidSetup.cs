@@ -5,7 +5,6 @@ using UnityEditor.XR.ARCore;
 using UnityEditor.XR.Management;
 using UnityEditor.XR.Management.Metadata;
 using UnityEngine;
-using UnityEngine.Rendering;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.Management;
 
@@ -22,7 +21,7 @@ namespace GeoART.EditorTools
     public static class AndroidSetup
     {
         const string ARCoreLoaderType = "UnityEngine.XR.ARCore.ARCoreLoader";
-        const int MinApiLevel = 29;   // Android 10; ARCore refuses "Required" + Vulkan below it, and 29 is a safe floor anyway
+        const int MinApiLevel = 29;   // Android 10: ARCore refuses to build "Required" + Vulkan below it
 
         [MenuItem("GeoART/Setup/3. Configure Android AR Project", priority = 3)]
         public static void Configure()
@@ -30,12 +29,13 @@ namespace GeoART.EditorTools
             ConfigurePlayer();
             ConfigureXRManagement();
             ConfigureARCore();
-            // Needed if Vulkan is ever re-enabled (without it ARCore throws every frame). It only injects a plugin callback,
-            // so it is harmless under OpenGL ES and for ARKit on the shared renderers.
+            // Android renders with Vulkan (graphics APIs: Vulkan, then OpenGL ES 3 fallback). Under Vulkan ARCore needs this,
+            // or it throws every frame and the camera feed stays black (verified on a Galaxy S24 Ultra). It only injects a
+            // plugin callback, so it is harmless under OpenGL ES and for ARKit on the shared renderers.
             ProjectSetup.AddRendererFeature<ARCommandBufferSupportRendererFeature>();
             AssetDatabase.SaveAssets();
             Debug.Log("[GeoART] Android AR project configured: IL2CPP ARM64, API " + MinApiLevel +
-                      "+, OpenGL ES 3, ARCore loader (Android), ARCore required, AR command buffer feature on URP renderers.");
+                      "+, ARCore loader (Android), ARCore required, AR command buffer feature on URP renderers.");
         }
 
         public static void ConfigureBatch() => ProjectSetup.RunBatch(Configure);
@@ -47,11 +47,6 @@ namespace GeoART.EditorTools
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;   // ARCore ships 64-bit only on new devices
             if ((int)PlayerSettings.Android.minSdkVersion < MinApiLevel)
                 PlayerSettings.Android.minSdkVersion = (AndroidSdkVersions)MinApiLevel;
-
-            // OpenGL ES 3 only. Under Vulkan (the Auto default) the ARCore session tracks but the camera background stays
-            // black (Galaxy S24 Ultra, ARCore 6.5, URP 17.5), even with ARCommandBufferSupportRendererFeature added.
-            PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
-            PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[] { GraphicsDeviceType.OpenGLES3 });
         }
 
         static void ConfigureXRManagement()
