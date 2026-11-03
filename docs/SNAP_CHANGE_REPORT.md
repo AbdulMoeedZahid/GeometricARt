@@ -94,6 +94,20 @@ next import; they are not part of this commit.
 - **Scenes**
   - `Scenes/Sandbox/Sandbox_A_Flat.unity`: `FlatCameraFit` on Main Camera (the only scene change).
 
+### E3 (H/V lock)
+- **Engine**
+  - `Engine/EditorSession.Snap.cs`: adds the private lock query `TryOrthoEnd` (with helpers `OnAxis`, `Clamp01`,
+    `TryScreenDirection` and the private struct `OrthoSearch`), and lock handling inside `OnSnapSettingsChanged`
+    (it detects a lock toggle and calls `OnOrthoLockToggled`).
+  - `Engine/EditorSession.Tools.cs`: Move/Up go through `ResolvePoint` (locked end for the Line tool with the lock on,
+    plain snap otherwise); `OnOrthoLockToggled` re-tracks an open Line gesture; `Tap` refuses a non-aligned pair with
+    the lock on. Adds `OrthoLockToast`.
+- **Checks**
+  - `tools/enginecheck/OrthoChecks.cs` (new): 13 checks.
+
+`EditorSession.cs`, `SnapIndex.cs`, `Intersect.cs`, Contracts and the App are unchanged. No new files under `Assets/`,
+so no .meta files are needed (`OrthoChecks.cs` is outside `Assets/`).
+
 ## 3. Contract changes
 
 ### C0
@@ -186,6 +200,16 @@ public static class CircleDivisions
 }
 // GoldenBoards.StarPoint(center, radius, k) == CircleDivisions.Point(center, radius, k)  (signature unchanged)
 ```
+
+### E3
+No Contracts or `IEditorSession` change. One new public member on the concrete `EditorSession`:
+```csharp
+// Engine/EditorSession.Tools.cs
+public const string OrthoLockToast = "H/V lock is on: tap two points in the same row or column";
+```
+Behaviour changes behind existing members: with `OrthoLock` on, `Pointer` constrains the Line tool's end to the
+anchor's board X or Y axis; `SetOrthoLock` during an open Line gesture updates `Preview`/`Cursor` at once and raises
+`PreviewChanged`; a tap-to-connect pair that shares neither X nor Y raises `Toast(OrthoLockToast)` and commits nothing.
 
 ## 4. How it works
 
@@ -384,6 +408,60 @@ built from `StarPoint` and a drawing built by snapping agree with `==`.
 ### Q4: flat sandbox camera fit
 Before, the sandbox camera sat 0.47 m from the board at a 50-degree tilt, framed for a landscape Game view; in the 390x844 portrait view only the middle half of the board's width was visible. `FlatCameraFit` (on the camera) keeps the camera's viewing direction (re-aimed at the board centre) and bisects the distance (0.05..20 m, 40 steps) until all four board corners project inside the screen's safe area minus margins for the UI: left 72, right 76, top 24, bottom 24 reference px (390x844, match 0.5, like the ToolBar). It runs on Start, whenever `Screen.width/height/safeArea` change, and on `Refit()` (call it after changing the camera tilt). Verified at 390x844 (camera ends ~1.36 m away, whole board visible) and 844x390 (whole board visible; in landscape the portrait-only ToolBar column runs off the bottom, which is expected). Device scenes are unaffected: the component is only on the flat sandbox camera.
 
+### E3: H/V lock
+
+"Horizontal" and "vertical" mean the board's own X and Y axes (decision Q1), so the lock stays fixed to the real
+surface whatever the camera angle. Only the Line tool uses it; the Circle tool ignores it, and with the lock off
+everything behaves exactly as in E2.
+
+**Start.** Down snaps normally (`TrySnap`), giving the anchor `_anchor`.
+
+**End, on every Move and on Up (`TryOrthoEnd(raw)`):**
+1. Axis. `dx = raw.X - anchor.X`, `dy = raw.Y - anchor.Y` in board units. `|dx| >= |dy|` is horizontal (so an exact
+   tie is horizontal), else vertical. This is decided again on every Move.
+2. Unsnapped end. Horizontal: `new Vec2(clamp01(raw.X), anchor.Y)`. Vertical: `new Vec2(anchor.X, clamp01(raw.Y))`.
+   The perpendicular coordinate is always the anchor's own value, copied, never computed, so a committed line has
+   `A.Y == B.Y` (or `A.X == B.X`) exactly.
+3. Snapping off: stop here. The lock still constrains; nothing aligns.
+4. Measuring space (same rule as `TrySnap`). If `SnapMetric` is set and the unsnapped end projects, distances are in
+   screen px with tolerance `TolerancePx`. The axis line's screen image is the line through the projected unsnapped end
+   and the projection of a second axis point: the board edge farther along the axis (at least 0.5 board units away,
+   which keeps the direction well conditioned), or the anchor if that edge does not project. A projective map sends a
+   line to a line, so this is the true image. If neither second point projects (or the two images are within 1e-9 px)
+   the whole step uses board units with `FallbackSnapTolerance`, where the axis direction is (1, 0) or (0, 1).
+5. Offers along the axis. Each offer is just an along-axis value `t` in [0, 1]; its point is `OnAxis(t)` (again the
+   anchor's perpendicular coordinate copied).
+   - (a) Candidates: each `SnapCandidate` whose along-axis coordinate is in [0, 1] is projected; if its perpendicular
+     distance to the axis image `|cross(axisDir, q - s0)|` is `<= tol`, it offers its own X (horizontal) or Y
+     (vertical), copied exactly, with its `SnapIndex.Priority`.
+   - (b) Crossings: the infinite axis line (origin = anchor, dir = (1, 0) or (0, 1)) against every shape of every
+     visible layer: lines with `Intersect.LineSegment`, polygon edges (vertices from `SnapIndex.PolygonVertex`, same
+     drawability test as `SnapIndex`) with `Intersect.LineSegment`, circles with `Intersect.LineCircle`. Each crossing
+     with along-axis coordinate in [0, 1] offers that coordinate with the `Intersection` priority. Only the along-axis
+     value is used; the crossing's other coordinate is discarded.
+6. Choice. For each offer, `d2` is the squared distance between the projected offer point and the projected unsnapped
+   end (board units without a metric). Offers with `d2 > tol^2` are dropped. The smallest `d2` wins; on an exactly equal
+   `d2` the lower priority value wins; then the first offer ((a) in candidate-list order before (b) in layer/shape
+   order). If nothing qualifies, the end is the unsnapped end from step 2.
+
+**Feedback.** The ghost line runs from the anchor to the end, the cursor sits on the end, and the hover ring
+(`HoverRingRadius`, as in E2) marks the end when it aligned in step 6.
+
+**Toggling during a gesture.** `SetOrthoLock` calls `OnSnapSettingsChanged`, which compares the lock with the value it
+last saw. On a change with an open Line gesture, `OnOrthoLockToggled` re-runs `ResolvePoint` on the last raw pointer
+position, updates end, cursor and hover ring, and rebuilds the ghost (one `PreviewChanged`). Circle gestures and idle
+sessions get no `PreviewChanged`. `SetSnapEnabled` mid-gesture is unchanged from E2 (no re-track).
+
+**Taps with the lock on.** Tap detection and the pending start are unchanged. When the second tap's candidate `q`
+differs from the pending `p`: if `p.X == q.X` or `p.Y == q.Y` (exact) the line commits as in E2; otherwise nothing is
+committed, pending is cleared, and `Toast(OrthoLockToast)` is raised. The alignment test comes before the
+`MinStrokeLength` test, so a too-short non-aligned pair also gets the toast. Tapping the same candidate again still
+toggles pending off silently. Drags always go through the lock.
+
+**Allocation.** Step 4 to 6 run each Move with no caching: index loops over the candidate list, layers and shapes,
+pattern matching on the shape types, and a local `OrthoSearch` struct for the running best. The metric is called
+through the interface with `out Vec2`. 0 bytes per Move (checked).
+
 ## 5. Invariants
 
 _Filled in by the final pass (R1)._
@@ -411,6 +489,9 @@ _Filled in by the final pass (R1)._
 | Hover ring / pending ring radius | 0.012 board units (about 4.8 mm), Thin, solid, current colour | `Engine/EditorSession.Snap.cs` `HoverRingRadius` (style in `EditorSession.Tools.cs` `RingStyle`) | E2 |
 | Tap slop | 10/24 of the snap tolerance (10 reference px with the App metric; 0.00833 board units without) | `Engine/EditorSession.Snap.cs` `TapSlopFraction` | E2 |
 | Shortest line a tap-to-connect commits | 0.01 board units (same as drags) | `Engine/EditorSession.Tools.cs` `MinStrokeLength` (existing) | E2 |
+| H/V lock alignment tolerance | no new constant: `TolerancePx` with a metric, `FallbackSnapTolerance` without (both for distance off the axis and along it) | `Engine/EditorSession.Snap.cs` `TryOrthoEnd` | E3 |
+| H/V lock dominant-axis tie | abs(dx) == abs(dy) goes horizontal | `Engine/EditorSession.Snap.cs` `TryOrthoEnd` | E3 |
+| Shortest usable screen image of the axis (else board units) | 1e-9 px | `Engine/EditorSession.Snap.cs` `TryScreenDirection` (literal) | E3 |
 
 ## 7. How to extend
 
@@ -516,6 +597,29 @@ position rounded to float (4 checks), tap path skipped (10), pending not cleared
 later candidate (1), a list allocated per snap (1, 288 KB over 200 Moves), `OnModelChanged` not marking dirty (1),
 metric ignored (3).
 - How to screenshot UI over MCP: the MCP screenshot tool renders through the camera, which leaves out Screen Space Overlay canvases. In Play Mode, switch the canvases to Screen Space Camera for one `Camera.Render` into a RenderTexture, then restore them (see the Progress Log).
+
+### E3
+13 new checks in `tools/enginecheck/OrthoChecks.cs` (the harness total went from 126 to 139). No metric and the
+default empty 2x2 square grid unless noted; "exact" means `==`.
+- `DiagonalDragCommitsExactlyHorizontalOrVertical`: diagonal drags commit B == (0.83, 0.12) with `A.Y == B.Y`, and B == (0.1, 0.88) with `A.X == B.X`.
+- `DominantAxisFollowsEachMoveAndTieGoesHorizontal`: one gesture's ghost flips horizontal, vertical, horizontal as the pointer moves; leftward and downward drags; an exact `|dx| == |dy|` tie goes horizontal in both (+,+) and (-,-).
+- `ClampsToBoard`: on-board events past the right, left and top edges end at x = 1, x = 0 and y = 1.
+- `AlignmentSnapToOffAxisCandidate`: a user point 0.017 off the axis gives B == (0.613, 0.12) (X from the candidate, Y from the anchor), ghost, cursor and hover ring on it; 0.047 along or 0.026 off the axis does not align; with Snap off the lock still constrains.
+- `AxisCircleIntersectionSnapBeatsFartherCandidate`: B.X is the axis/circle crossing within 1e-12 and B.Y == anchor Y, chosen over a farther user point (better priority, 0.008 away); the right-hand crossing too; a circle on a hidden layer gives nothing.
+- `AxisLineAndPolygonEdgeIntersectionSnap`: horizontal axis meets a slanted line at x = 0.420125 (1e-12); vertical axis meets a hexagon's lower edge at the independently computed y (1e-12) with X exact.
+- `EndsOnGridIntersection`: square grid ends on (0.75, 0.5) and (0.25, 1) exactly; hex grid from one corner to the nearest corner on the same row, both exact.
+- `LockOffRestoresFreeLines`: after turning the lock off a diagonal drag is free again and point snapping works as in E2.
+- `CircleToolUnaffected`: with the lock on, circles keep diagonal radii and normal snapping; toggling the lock mid-Circle gesture raises no `PreviewChanged`.
+- `ToleranceIsInScreenSpace`: perspective metric (12 px): 0.017 off the axis near y = 0.12 (14 px) does not align though board units would; 0.025 off near y = 0.9 (8.4 px) aligns though board units would not; affine scale 500: 0.04 along the axis (20 px) aligns, board units would not.
+- `TogglingLockMidGestureUpdatesGhost`: lock on mid-drag moves ghost, cursor and hover ring to the aligned end with exactly one `PreviewChanged`; off restores the free ghost; the Up commits the re-tracked end; an idle toggle touches no preview.
+- `TapToConnectWithLock`: a row pair and a column pair commit; a diagonal pair commits nothing, toasts `OrthoLockToast` once and clears pending; the same pair commits with the lock off.
+- `LockedMovePathAllocatesNothing`: three lines, a circle and a hexagon, with and without the perspective metric: an untimed pass shows the sweep covers both axes and alignment snaps, then 200 locked Moves allocate 0 bytes.
+
+Mutation spot-check, done once and not in the repo; each deliberate bug made at least one check fail: perpendicular
+coordinate computed instead of copied (10 checks), dominant axis ignored (6), tie sent vertical (1), (b) crossings
+skipped (2), a list allocated per Move (1, 317 KB over 200 Moves), metric ignored (1), clamp removed (1), no re-track
+on toggle (1), tap alignment rule removed (1).
+
 ## 9. Known limitations and untested areas
 
 _Filled in by the final pass (R1)._ It must say "Editor-verified only" and list the device checks still owed (plan Q12).

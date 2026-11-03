@@ -21,6 +21,12 @@ namespace GeoART.Engine
     /// in Preview). A tap on a different candidate commits a line between the two exact candidate positions and clears
     /// pending; a tap on the same candidate clears it. A tap off any candidate, a drag, Cancel, a tool switch, a board
     /// replace or turning snapping off clears pending.
+    ///
+    /// H/V lock (E3, <see cref="OrthoLock"/>, Line tool only): the start snaps as usual; the end is the anchor plus the
+    /// drag along the dominant board axis (|dx| &gt;= |dy| horizontal), copying the anchor's other coordinate exactly,
+    /// clamped to the board and alignment-snapped along the axis (TryOrthoEnd in EditorSession.Snap.cs). Toggling it
+    /// mid-gesture re-tracks the ghost at once. With the lock on, tap-to-connect commits only a pair that shares X or Y
+    /// exactly; any other pair commits nothing, clears pending and raises <see cref="OrthoLockToast"/>.
     /// </summary>
     public sealed partial class EditorSession
     {
@@ -29,6 +35,7 @@ namespace GeoART.Engine
 
         public const string HiddenLayerToast = "Layer is hidden: double-tap it in the sidebar to show it";
         public const string ComingSoonToast = "Coming soon";
+        public const string OrthoLockToast = "H/V lock is on: tap two points in the same row or column";
 
         ToolId _tool = ToolId.Line;
         Vec2? _cursor;
@@ -140,9 +147,37 @@ namespace GeoART.Engine
             }
             if (e.BoardPos == _lastRaw && !dropped) return;
             _lastRaw = e.BoardPos;
-            bool hit = TrySnap(e.BoardPos, out SnapCandidate c);
-            Vec2 p = hit ? c.Position : e.BoardPos;
+            Vec2 p = ResolvePoint(e.BoardPos, out bool hit);
             if (p == _current && hit == _hoverOn && !dropped) return;   // nothing visible changed
+            _current = p;
+            _cursor = p;
+            _hoverOn = hit;
+            RebuildGhost();
+        }
+
+        /// <summary>
+        /// The current point for a raw pointer position: the H/V-locked end for the Line tool with the lock on, else
+        /// the plain snap. <paramref name="hit"/> is true if it snapped (hover ring).
+        /// </summary>
+        Vec2 ResolvePoint(Vec2 raw, out bool hit)
+        {
+            if (_gestureTool == ToolId.Line && _orthoLock)
+            {
+                hit = TryOrthoEnd(raw, out Vec2 end);
+                return end;
+            }
+            hit = TrySnap(raw, out SnapCandidate c);
+            return hit ? c.Position : raw;
+        }
+
+        /// <summary>
+        /// The H/V lock was toggled: an open Line gesture re-tracks from its last raw pointer position at once (ghost,
+        /// cursor, hover ring) and raises PreviewChanged. Circle gestures and idle sessions are unaffected.
+        /// </summary>
+        void OnOrthoLockToggled()
+        {
+            if (!_gestureOpen || _gestureTool != ToolId.Line) return;
+            Vec2 p = ResolvePoint(_lastRaw, out bool hit);
             _current = p;
             _cursor = p;
             _hoverOn = hit;
@@ -234,6 +269,11 @@ namespace GeoART.Engine
             Vec2 a = _pending;
             _hasPending = false;
             if (a == q) return;                         // same candidate again: toggle off
+            if (_orthoLock && a.X != q.X && a.Y != q.Y)
+            {
+                RaiseToast(OrthoLockToast);             // H/V lock: only a pair in the same row or column connects
+                return;
+            }
             if (Vec2.Distance(a, q) < MinStrokeLength) return;
 
             Layer layer = _board.FindLayer(_gestureLayer);
