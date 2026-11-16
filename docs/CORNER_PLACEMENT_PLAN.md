@@ -12,7 +12,7 @@
 | 6.3 `tools/mathcheck` | Implemented; 30/30 checks pass on the Mac with Unity's bundled .NET 8 SDK |
 | 6.5/6.6 export, sign and install | Left to the user (full `tools/ios_build.sh --sandbox`) |
 | 7 Device checklist C-01 to C-14 | Pending |
-| D8 vertical surfaces | Deferred: the `allowVerticalSurfaces` flag exists, is off, and is not wired into plane detection |
+| D8 vertical surfaces | Implemented: `allowVerticalSurfaces` is on and plane detection is `Horizontal \| Vertical` (see BOARD_PLACEMENT.md, Vertical surfaces) |
 | 4.9 optional `simulateCornerPlacement` | Deferred |
 | D1 future aspect-ratio board, 3-corner mode, thick-canvas height offset | Deferred (post-P2) |
 **Owner:** A (AR/board). **Edit target:** `/home/macharradm/MO/GeoARt-A-stage/` (mirrors the repo root). Commit happens on the Mac.

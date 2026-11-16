@@ -54,6 +54,31 @@ finger every frame and filters the board point with a One Euro filter (`Engine/O
 - Visual check without the phone: `-executeMethod GeoART.EditorTools.ToolsRenderCheck.RunBatch` (no `-nographics`)
   compiles the shader for Metal and writes PNGs of a test board at 45 cm and 90 cm to `Logs/GeoARtRenderCheck/`.
 
+## Colours (ColorBar, BoardAppearance)
+
+A slim colour bar sits at the bottom-left, just above the placement buttons, once the board is placed. It ends left of the tool column.
+
+- **Shape colour:** 5 round swatches, Black, White, Red, Green, Blue (the D-08 `Palette` values). The selected swatch has an orange ring. The colour applies to **new** lines, circles and polygons, exactly like the Width button. Shapes you already drew keep their colour, so one pattern can mix colours. The preview while dragging stays orange, as before. Default: Black.
+- **Board colour:** the Board button switches the board's **guide lines** between **Black** (default, the original look) and **White** (for dark surfaces). Only the dashed grid and outline (and the frame and user snap points) change colour. Nothing is filled: the real surface stays visible under the board.
+
+Reference colours:
+
+| What | Black (default) | White |
+|---|---|---|
+| Grid and outline (dashed) | #333340 at 85% | #EDEDF2 at 85% |
+| Frame (flat scene only) | #141419 | #F2F2F7 |
+| Default shape colour (`Palette.Black`) | #141418 | #141418 |
+
+## Circles stay on the board
+
+Like lines, a circle can no longer leave the board: its radius is capped at the distance from its centre to the nearest board edge, in the preview (circle and radius line) and in the committed circle. A circle whose centre is on the edge draws nothing. Circles that fit are unchanged (radius = drag distance, snapping as before). Engine checks: `tools/enginecheck/CircleBoundsChecks.cs`.
+
+Notes for developers:
+
+- The guide colour is a display setting (`BoardAppearance.Guides` in Contracts), not part of the `Board` model, so undo, layers, snapping and fixtures do not see it. It is static (reset on SubsystemRegistration with `ServiceHub`), because `BoardView` stays inactive until placement.
+- `SceneBuilder` adds `ColorBar` next to `ToolBar`. Scenes saved earlier (Main.unity) get one at runtime on the `ToolBar`'s GameObject.
+- Tests: `VerifierColorTests` (EditMode).
+
 ## Files
 - `Assets/GeoART/Engine/EditorSession.Tools.cs`: tools, gestures, ghosts, cursor, dotted toggle.
 - `Assets/GeoART/Engine/OneEuroFilter2D.cs` (new): the smoothing filter.

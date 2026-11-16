@@ -19,6 +19,12 @@ namespace GeoART.BoardRender
         /// <summary>Ray must be within about 75 degrees of the plane normal (15 degrees from grazing).</summary>
         public const float MinAimCos = 0.26f;
         public const float MaxAimDistance = 2.5f, MaxSteadySpread = 0.008f;
+        /// <summary>
+        /// Vertical surfaces only: the steadiness limit grows with aim distance (about 0.9 degrees of hand tremor), because
+        /// walls are aimed at from 0.5-2 m where the same tremor moves the aim point several times more than on a table.
+        /// Tables keep the fixed <see cref="MaxSteadySpread"/>.
+        /// </summary>
+        public const float WallSteadySpreadPerMeter = 0.016f;
 
         // While no corner exists, a new plane farther than this from the old one (or tilted more) is a different surface.
         const float PlaneJumpDistance = 0.02f;
@@ -35,6 +41,7 @@ namespace GeoART.BoardRender
         int _aimSampleCount, _aimSampleHead;
         bool _aimValid, _hasLastAim;
         Vector3 _aimPoint, _lastAimPoint;
+        float _aimDistance;
         CornerIssue _aimIssue = CornerIssue.NoSurface;
 
         bool _hasValidFit;
@@ -66,6 +73,10 @@ namespace GeoART.BoardRender
         /// <summary>The last valid aim point, kept while the aim is invalid so views can draw it greyed.</summary>
         public bool HasLastAim => _hasLastAim;
         public Vector3 LastAimPoint => _lastAimPoint;
+
+        /// <summary>Allowed aim spread for a corner: fixed on tables, distance-scaled on vertical surfaces.</summary>
+        public float SteadySpreadLimit =>
+            BoardGeometry.IsVerticalNormal(_normal) ? Mathf.Max(MaxSteadySpread, _aimDistance * WallSteadySpreadPerMeter) : MaxSteadySpread;
 
         /// <summary>Only when CornerCount == 4.</summary>
         public bool HasValidFit => _hasValidFit;
@@ -132,6 +143,7 @@ namespace GeoART.BoardRender
             if (t > MaxAimDistance) { SetAimInvalid(CornerIssue.TooFar); return; }
 
             Vector3 hit = ray.origin + dir * t;
+            _aimDistance = t;
             _aimValid = true;
             _aimIssue = CornerIssue.None;
             _aimPoint = hit;
@@ -165,7 +177,8 @@ namespace GeoART.BoardRender
             Vector3 mean = Vector3.zero;
             for (int i = 0; i < SteadyFrames; i++) mean += _aimSamples[i];
             mean /= SteadyFrames;
-            float maxSq = MaxSteadySpread * MaxSteadySpread;
+            float spread = SteadySpreadLimit;
+            float maxSq = spread * spread;
             for (int i = 0; i < SteadyFrames; i++)
                 if ((_aimSamples[i] - mean).sqrMagnitude > maxSq) return FailAction(CornerIssue.Unsteady, -1);
 

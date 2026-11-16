@@ -154,11 +154,11 @@ namespace GeoART.EngineCheck
             Check.That(c.Center == new Vec2(0.25, 0.25), $"centre exact, got {P(c.Center)}");
             Check.That(c.Radius == 0.25, $"radius to the edge midpoint is exactly 0.25, got {c.Radius:R}");
 
-            // Diagonal: radius == distance to the candidate, bit for bit.
-            Drag(s, 0.248, 0.253, 0.503, 0.496);
+            // Diagonal: radius == distance to the candidate, bit for bit (centred mid-board so it fits on the board).
+            Drag(s, 0.498, 0.503, 0.753, 0.746);
             var d = (CircleShape)s.ActiveLayer.Shapes[1];
-            Check.That(d.Center == new Vec2(0.25, 0.25), "second centre exact");
-            Check.That(d.Radius == Vec2.Distance(new Vec2(0.25, 0.25), new Vec2(0.5, 0.5)), $"radius exact, got {d.Radius:R}");
+            Check.That(d.Center == new Vec2(0.5, 0.5), $"second centre exact, got {P(d.Center)}");
+            Check.That(d.Radius == Vec2.Distance(new Vec2(0.5, 0.5), new Vec2(0.75, 0.75)), $"radius exact, got {d.Radius:R}");
         }
 
         public static void TieBreakIsDeterministic()

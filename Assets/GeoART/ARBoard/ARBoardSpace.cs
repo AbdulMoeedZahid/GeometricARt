@@ -12,8 +12,8 @@ namespace GeoART.ARBoard
     /// <summary>
     /// Device implementation of <see cref="IBoardSpace"/> and <see cref="ICornerPlacement"/> (A-2, A-3, A-5).
     ///
-    ///   Scanning       -> no horizontal plane under the screen centre (or the session is not tracking yet)
-    ///   PlaneFound     -> QuickPlace: reticle shown on an upward-facing plane; PlaceAtReticle() places a 0.40 m board.
+    ///   Scanning       -> no table or wall plane under the screen centre (or the session is not tracking yet)
+    ///   PlaneFound     -> QuickPlace: reticle shown on the plane; PlaceAtReticle() places a 0.40 m board.
     ///                     Corners: aim marker under the crosshair; TryAddCorner() takes corner 1 and locks the plane.
     ///   PickingCorners -> 1..4 corners picked (Corners mode). With 4 corners and a valid rectangle fit (CanConfirm),
     ///                     ConfirmCorners() places the largest centred square of the fitted rectangle.
@@ -27,6 +27,11 @@ namespace GeoART.ARBoard
     /// more than 1 s while picking clears the corners (TrackingInterrupted).
     /// After placement, screen points are projected by intersecting the camera ray with the placed board's plane,
     /// never by raycasting detected planes (P2 4.3).
+    ///
+    /// Surfaces: upward-facing horizontal planes (tables) and, with allowVerticalSurfaces (on by default), vertical
+    /// planes (walls, projector screens, whiteboards, a board held upright). Whichever plane is under the crosshair is
+    /// used; corner 1 locks it. On a vertical surface the board top is world up projected onto the surface (never
+    /// sideways or upside down); on a table the edge nearest the user is the bottom, as before.
     /// </summary>
     [DefaultExecutionOrder(-100)]
     [DisallowMultipleComponent]
@@ -35,6 +40,8 @@ namespace GeoART.ARBoard
         [Header("AR (found in the scene if left empty)")]
         [SerializeField] ARRaycastManager raycastManager;
         [SerializeField] ARPlaneManager planeManager;
+        [SerializeField, Tooltip("Feature points for finding walls before plane detection does (added at runtime if missing).")]
+        ARPointCloudManager pointCloudManager;
         [SerializeField] Camera arCamera;
         [SerializeField] XROrigin xrOrigin;
 
@@ -55,16 +62,21 @@ namespace GeoART.ARBoard
         [Header("Corner placement")]
         [SerializeField, Tooltip("Corners registers the board to a real sheet; QuickPlace restores the one-tap 40 cm flow.")]
         PlacementMode defaultMode = PlacementMode.Corners;
-        [SerializeField, Tooltip("Deferred (CORNER_PLACEMENT_PLAN D8): also accept vertical planes. Keep OFF for P2; " +
-                                 "SceneBuilder still requests horizontal plane detection only.")]
-        bool allowVerticalSurfaces;
+        [SerializeField, Tooltip("Also accept vertical planes (walls, screens, upright boards). Needs the ARPlaneManager " +
+                                 "to detect Horizontal | Vertical (SceneBuilder does). OFF = tables only, as in P2.")]
+        bool allowVerticalSurfaces = true;
         [SerializeField, Tooltip("Child holding CornerPickerView; drawn while picking corners.")]
         CornerPickerView cornerView;
 
         const float ActionIssueSeconds = 3f;
         const float TrackingGraceSeconds = 1f;
         const float PlaneExtensionMargin = 0.75f;   // fallback hits must lie within the plane's extents + this
+        const float WallExtensionMargin = 1.5f;     // walls are large and their detected polygons small (tables keep 0.75)
         const int MaxSubsumeHops = 8;
+        const float WallHoldSeconds = 0.3f;          // keep a wall estimate through brief gaps in feature points
+        const float MinPointConfidence = 0.2f;       // ARCore feature point confidence (ARKit has none)
+        const float AdoptPlaneDistance = 0.05f;      // an estimated wall upgrades to a detected plane this close...
+        static readonly float s_AdoptPlaneCos = Mathf.Cos(10f * Mathf.Deg2Rad);   // ...and this parallel
 
         static readonly List<ARRaycastHit> s_Hits = new List<ARRaycastHit>();
 
@@ -74,6 +86,7 @@ namespace GeoART.ARBoard
         bool _registered;
 
         readonly CornerPickSession _picker = new CornerPickSession();
+        readonly WallEstimator _wall = new WallEstimator();
         ARPlane _candidatePlane, _lockedPlane;
         Pose _aimPose;
         bool _aimValid, _tracking;
@@ -83,6 +96,7 @@ namespace GeoART.ARBoard
         float _notTrackingSince = -1f;
         RectFrame _previewFrame;
         bool _previewValid;
+        bool _vertical;   // the surface being aimed at, picked on, or placed on is vertical
 
         CornerIssue _actionIssue;
         int _actionIssueCorner = -1;
@@ -91,7 +105,7 @@ namespace GeoART.ARBoard
         // Last values seen by CornersChanged listeners.
         CornerIssue _lastIssue;
         int _lastIssueCorner = -1, _lastCount, _lastVersion;
-        bool _lastCanAdd, _lastCanConfirm;
+        bool _lastCanAdd, _lastCanConfirm, _lastVertical;
         PlacementMode _lastMode;
 
         public PlacementState State => _state;
@@ -108,6 +122,13 @@ namespace GeoART.ARBoard
             if (xrOrigin == null) xrOrigin = FindAnyObjectByType<XROrigin>();
             if (arCamera == null) arCamera = xrOrigin != null && xrOrigin.Camera != null ? xrOrigin.Camera : Camera.main;
             if (boardView == null && boardRoot != null) boardView = boardRoot.GetComponent<BoardView>();
+            if (allowVerticalSurfaces && pointCloudManager == null)
+            {
+                pointCloudManager = FindAnyObjectByType<ARPointCloudManager>();
+                // Scenes built before wall support have no point cloud manager; it needs the XROrigin's GameObject.
+                if (pointCloudManager == null && xrOrigin != null)
+                    pointCloudManager = xrOrigin.gameObject.AddComponent<ARPointCloudManager>();
+            }
 
             _sideMeters = sideMeters;
             _mode = _lastMode = defaultMode;
@@ -149,6 +170,7 @@ namespace GeoART.ARBoard
         void OnApplicationPause(bool paused)
         {
             // The world origin can move while the app is in the background, so picked corners are no longer valid.
+            if (paused) _wall.Clear();
             if (paused && !IsPlaced && _picker.CornerCount > 0)
             {
                 ClearCorners();
@@ -175,6 +197,7 @@ namespace GeoART.ARBoard
             else
             {
                 _notTrackingSince = -1f;
+                if (allowVerticalSurfaces) CollectFeaturePoints(Time.unscaledTime);
                 Ray centerRay = arCamera.ScreenPointToRay(new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f));
                 if (_picker.CornerCount == 0) UpdateAcquire(centerRay);
                 else UpdatePicking(centerRay);
@@ -208,10 +231,17 @@ namespace GeoART.ARBoard
                 planeManager.enabled = true;
                 planeManager.SetTrackablesActive(true);
             }
+            if (pointCloudManager != null && allowVerticalSurfaces)
+            {
+                pointCloudManager.enabled = true;
+                pointCloudManager.SetTrackablesActive(true);
+            }
+            _wall.Clear();
 
             _picker.Clear();
             _lockedPlane = _candidatePlane = null;
             _aimValid = _previewValid = false;
+            _vertical = false;
             _notTrackingSince = -1f;
             _sideMeters = sideMeters;
             _surfaceW = _surfaceH = float.NaN;
@@ -288,6 +318,7 @@ namespace GeoART.ARBoard
         public double SurfaceWidthMeters => CanConfirm ? _previewFrame.Width : IsPlaced ? _surfaceW : double.NaN;
         public double SurfaceHeightMeters => CanConfirm ? _previewFrame.Height : IsPlaced ? _surfaceH : double.NaN;
         public double BoardSideMeters => CanConfirm ? _previewFrame.SquareSide : _sideMeters;
+        public bool IsVerticalSurface => _vertical;
 
         public event Action CornersChanged;
 
@@ -368,6 +399,8 @@ namespace GeoART.ARBoard
             _previewValid = false;
             _picker.SetAimInvalid(CornerIssue.NoSurface);
 
+            _wall.ResetFilter();
+            if (Time.unscaledTime - _notTrackingSince > TrackingGraceSeconds) _wall.Clear();   // the world may have shifted
             if (_picker.CornerCount > 0 && Time.unscaledTime - _notTrackingSince > TrackingGraceSeconds)
             {
                 ClearCorners();
@@ -382,7 +415,12 @@ namespace GeoART.ARBoard
             bool corners = _mode == PlacementMode.Corners;
             _aimValid = AcquireSurface(centerRay, corners, out Vector3 hit, out Vector3 normal, out _candidatePlane);
             if (_aimValid)
-                _aimPose = new Pose(hit + normal * liftMeters, BoardGeometry.FacingRotation(normal, arCamera.transform.forward));
+            {
+                // Tables: unchanged FacingRotation. Walls: upright (top = world up on the wall).
+                _aimPose = new Pose(hit + normal * liftMeters, BoardGeometry.SurfaceRotation(normal, arCamera.transform.forward));
+                _vertical = BoardGeometry.IsVerticalNormal(normal);
+            }
+            else _vertical = false;
 
             if (!corners)
             {
@@ -412,9 +450,11 @@ namespace GeoART.ARBoard
             // Follow merges to the surviving plane; bounded so a subsumedBy cycle can never hang the frame.
             for (int i = 0; i < MaxSubsumeHops && _lockedPlane != null && _lockedPlane.subsumedBy != null; i++)
                 _lockedPlane = _lockedPlane.subsumedBy;
+            if (_lockedPlane == null && _vertical) _lockedPlane = FindDetectedWall(_picker.PlanePoint, _picker.PlaneNormal);
             if (_lockedPlane != null && _lockedPlane.trackingState == TrackingState.Tracking)
                 _picker.SetPlane(_lockedPlane.transform.position, _lockedPlane.normal);   // same plane as infinitePlane
             _picker.UpdateAim(centerRay);
+            _vertical = BoardGeometry.IsVerticalNormal(_picker.PlaneNormal);
 
             _previewValid = _picker.CornerCount == CornerPickSession.RequiredCorners && _picker.HasValidFit &&
                             _picker.TryGetPlacement(TowardTopNow(), liftMeters, out _, out _previewFrame);
@@ -428,8 +468,9 @@ namespace GeoART.ARBoard
         }
 
         /// <summary>
-        /// Surface under the screen centre: ARKit polygon raycast first; in Corners mode, if that misses, the nearest
-        /// tracked plane whose infinite extension the ray hits close to the plane (paper corners off the polygon).
+        /// Surface under the screen centre: ARKit polygon raycast first; if that misses, the nearest tracked plane whose
+        /// infinite extension the ray hits close to the plane (tables: Corners mode only; walls: both modes); and last,
+        /// for walls only, a vertical plane estimated from feature points (walls are detected late by ARKit/ARCore).
         /// </summary>
         bool AcquireSurface(Ray ray, bool allowExtension, out Vector3 hit, out Vector3 normal, out ARPlane plane)
         {
@@ -454,23 +495,76 @@ namespace GeoART.ARBoard
                 }
             }
 
-            if (!allowExtension || planeManager == null) return false;
-            float bestT = float.MaxValue;
+            if (planeManager != null)
+            {
+                float bestT = float.MaxValue;
+                foreach (var p in planeManager.trackables)
+                {
+                    if (p.trackingState != TrackingState.Tracking || p.subsumedBy != null || !Allowed(p)) continue;
+                    // Tables: extension in Corners mode only, as before. Walls: in both modes (their polygons are small).
+                    if (!allowExtension && p.alignment != PlaneAlignment.Vertical) continue;
+                    Plane infinite = p.infinitePlane;
+                    if (Mathf.Abs(Vector3.Dot(ray.direction, infinite.normal)) < CornerPickSession.MinAimCos) continue;
+                    if (!infinite.Raycast(ray, out float t) || t <= 0f || t > CornerPickSession.MaxAimDistance || t >= bestT) continue;
+                    Vector3 point = ray.GetPoint(t);
+                    float reach = Mathf.Max(p.extents.x, p.extents.y) +
+                                  (p.alignment == PlaneAlignment.Vertical ? WallExtensionMargin : PlaneExtensionMargin);
+                    if ((point - p.center).sqrMagnitude > reach * reach) continue;
+                    bestT = t;
+                    hit = point;
+                    normal = p.normal;
+                    plane = p;
+                }
+                if (plane != null) return true;
+            }
+
+            // No detected plane: a wall estimated from feature points (vertical surfaces only, never tables).
+            return allowVerticalSurfaces && TryEstimateWall(ray, out hit, out normal);
+        }
+
+        /// <summary>
+        /// Wall from feature points (narrow, then wide cone), filtered over time, bridging gaps up to WallHoldSeconds;
+        /// on plain wall areas, a wall remembered from a textured spot found earlier.
+        /// </summary>
+        bool TryEstimateWall(Ray ray, out Vector3 hit, out Vector3 normal) =>
+            _wall.TryEstimate(ray, Time.unscaledTime, WallHoldSeconds, out hit, out normal);
+
+        void CollectFeaturePoints(float now)
+        {
+            if (pointCloudManager == null || !pointCloudManager.enabled) return;
+            foreach (var cloud in pointCloudManager.trackables)
+            {
+                var positions = cloud.positions;
+                var ids = cloud.identifiers;
+                if (!positions.HasValue || !ids.HasValue) continue;
+                var pos = positions.Value;
+                var id = ids.Value;
+                var confidence = cloud.confidenceValues;
+                bool hasConfidence = confidence.HasValue && confidence.Value.IsCreated && confidence.Value.Length >= pos.Length;
+                var conf = hasConfidence ? confidence.Value : default;
+                Transform space = cloud.transform;   // positions are relative to the point cloud's transform
+                int count = Mathf.Min(pos.Length, id.Length);
+                for (int i = 0; i < count; i++)
+                {
+                    if (hasConfidence && conf[i] < MinPointConfidence) continue;
+                    _wall.Observe(id[i], space.TransformPoint(pos[i]), now);
+                }
+            }
+            _wall.Prune(now);
+        }
+
+        /// <summary>A tracked vertical plane that coincides with an estimated wall, so ARKit/ARCore refinement applies.</summary>
+        ARPlane FindDetectedWall(Vector3 point, Vector3 normal)
+        {
+            if (planeManager == null) return null;
             foreach (var p in planeManager.trackables)
             {
-                if (p.trackingState != TrackingState.Tracking || p.subsumedBy != null || !Allowed(p)) continue;
-                Plane infinite = p.infinitePlane;
-                if (Mathf.Abs(Vector3.Dot(ray.direction, infinite.normal)) < CornerPickSession.MinAimCos) continue;
-                if (!infinite.Raycast(ray, out float t) || t <= 0f || t > CornerPickSession.MaxAimDistance || t >= bestT) continue;
-                Vector3 point = ray.GetPoint(t);
-                float reach = Mathf.Max(p.extents.x, p.extents.y) + PlaneExtensionMargin;
-                if ((point - p.center).sqrMagnitude > reach * reach) continue;
-                bestT = t;
-                hit = point;
-                normal = p.normal;
-                plane = p;
+                if (p.trackingState != TrackingState.Tracking || p.subsumedBy != null || p.alignment != PlaneAlignment.Vertical) continue;
+                if (Vector3.Dot(p.normal, normal) < s_AdoptPlaneCos) continue;
+                if (Mathf.Abs(Vector3.Dot(point - p.transform.position, p.normal)) > AdoptPlaneDistance) continue;
+                return p;
             }
-            return plane != null;
+            return null;
         }
 
         bool Allowed(ARPlane plane) =>
@@ -480,7 +574,7 @@ namespace GeoART.ARBoard
         Vector3 TowardTopNow()
         {
             Vector3 n = _picker.PlaneNormal;
-            bool gravityUp = allowVerticalSurfaces && Mathf.Abs(Vector3.Dot(n, Vector3.up)) < 0.5f;
+            bool gravityUp = allowVerticalSurfaces && BoardGeometry.IsVerticalNormal(n);
             Transform cam = arCamera.transform;
             return CornerPickSession.TowardTop(n, cam.forward, cam.up, gravityUp);
         }
@@ -494,6 +588,7 @@ namespace GeoART.ARBoard
             _anchorObject.AddComponent<ARAnchor>();   // ARAnchorManager in the scene turns this into an ARKit anchor
 
             _sideMeters = side;
+            _vertical = BoardGeometry.IsVerticalNormal(pose.rotation * Vector3.up);
             _surfaceW = surfaceW;
             _surfaceH = surfaceH;
             if (boardView != null)
@@ -520,6 +615,12 @@ namespace GeoART.ARBoard
                 planeManager.SetTrackablesActive(false);
                 planeManager.enabled = false;
             }
+            if (disablePlaneDetectionWhenPlaced && pointCloudManager != null)
+            {
+                pointCloudManager.SetTrackablesActive(false);
+                pointCloudManager.enabled = false;
+            }
+            _wall.Clear();
             SetState(PlacementState.Placed);
             EvaluateSession(ARSession.state);
             RaiseCornersChanged();
@@ -582,7 +683,7 @@ namespace GeoART.ARBoard
             GetIssue(out var issue, out int corner);
             if (issue == _lastIssue && corner == _lastIssueCorner && CanAddCorner == _lastCanAdd &&
                 CanConfirm == _lastCanConfirm && _picker.CornerCount == _lastCount && _picker.Version == _lastVersion &&
-                _mode == _lastMode)
+                _mode == _lastMode && _vertical == _lastVertical)
                 return;
             RaiseCornersChanged();
         }
@@ -595,6 +696,7 @@ namespace GeoART.ARBoard
             _lastCount = _picker.CornerCount;
             _lastVersion = _picker.Version;
             _lastMode = _mode;
+            _lastVertical = _vertical;
             CornersChanged?.Invoke();
         }
 

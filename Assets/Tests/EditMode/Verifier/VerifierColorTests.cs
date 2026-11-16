@@ -1,0 +1,254 @@
+using System;
+using System.Reflection;
+using GeoART.App;
+using GeoART.BoardRender;
+using GeoART.Contracts;
+using GeoART.Engine;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
+
+namespace GeoART.Tests.Verifier
+{
+    /// <summary>
+    /// VERIFIER: colour options. ColorBar (5 shape colours for new shapes, board guide lines Black/White toggle, hidden
+    /// until placed, clear of the ToolBar column) and BoardView's guide-line colour (dashed grid and outline only, no
+    /// fill: Black is the original look, White is light).
+    /// </summary>
+    public sealed class VerifierColorTests
+    {
+        sealed class Space : IBoardSpace
+        {
+            public bool Placed;
+            public PlacementState State => Placed ? PlacementState.Placed : PlacementState.Scanning;
+            public event Action<PlacementState> StateChanged;
+            public bool IsPlaced => Placed;
+            public void PlaceAtReticle() { Placed = true; StateChanged?.Invoke(State); }
+            public void Reset() { Placed = false; StateChanged?.Invoke(State); }
+            public bool TryScreenToBoard(Vec2 px, out Vec2 b) { b = default; return false; }
+            public bool TryBoardToScreen(Vec2 b, out Vec2 px) { px = default; return false; }
+        }
+
+        static readonly Color32 BlackGrid = new Color(0.2f, 0.2f, 0.25f, 0.85f);     // original dividerColor
+        static readonly Color32 WhiteGrid = new Color(0.93f, 0.93f, 0.95f, 0.85f);
+        static readonly Color32 Sheet = new Color(1f, 1f, 1f, 0.32f);               // flat scene's translucent sheet
+
+        EditorSession _session;
+        Space _space;
+        GameObject _go, _esGo, _boardGo;
+        EventSystem _es;
+
+        [SetUp]
+        public void SetUp()
+        {
+            ServiceHub.Clear();
+            BoardAppearance.ResetForNewSession();
+            _session = new EditorSession();
+            _space = new Space();
+            ServiceHub.Register<IEditorSession>(_session);
+            ServiceHub.Register<IBoardSpace>(_space);
+            _esGo = new GameObject("EventSystem", typeof(EventSystem));
+            _es = _esGo.GetComponent<EventSystem>();
+            EsEnable(_es, true);
+            _go = new GameObject("App");
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            if (_go != null) UnityEngine.Object.DestroyImmediate(_go);
+            if (_esGo != null) { EsEnable(_es, false); UnityEngine.Object.DestroyImmediate(_esGo); }
+            if (_boardGo != null)
+            {
+                foreach (var mf in _boardGo.GetComponentsInChildren<MeshFilter>(true))
+                    if (mf.sharedMesh != null) UnityEngine.Object.DestroyImmediate(mf.sharedMesh);
+                foreach (var mr in _boardGo.GetComponentsInChildren<MeshRenderer>(true))
+                    if (mr.sharedMaterial != null) UnityEngine.Object.DestroyImmediate(mr.sharedMaterial);
+                UnityEngine.Object.DestroyImmediate(_boardGo);
+            }
+            BoardAppearance.ResetForNewSession();
+            ServiceHub.Clear();
+        }
+
+        static void EsEnable(EventSystem es, bool on)
+        {
+            if (es == null) return;
+            var m = typeof(EventSystem).GetMethod(on ? "OnEnable" : "OnDisable", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            m?.Invoke(es, null);
+        }
+
+        static void Call(object target, string method)
+        {
+            var m = target.GetType().GetMethod(method, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            Assert.NotNull(m, $"{target.GetType().Name}.{method} not found");
+            m.Invoke(target, null);
+        }
+
+        static void SetField(object target, string field, object value)
+        {
+            var f = target.GetType().GetField(field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            Assert.NotNull(f, $"{target.GetType().Name}.{field} not found");
+            f.SetValue(target, value);
+        }
+
+        ColorBar AddColorBar()
+        {
+            var c = _go.AddComponent<ColorBar>();
+            Call(c, "Awake");
+            Call(c, "Start");
+            return c;
+        }
+
+        GameObject Find(string name)
+        {
+            foreach (var t in _go.GetComponentsInChildren<Transform>(true))
+                if (t.name == name) return t.gameObject;
+            Assert.Fail($"no child named {name}");
+            return null;
+        }
+
+        void Click(GameObject go) =>
+            ExecuteEvents.Execute(go, new PointerEventData(_es) { button = PointerEventData.InputButton.Left }, ExecuteEvents.pointerClickHandler);
+
+        // ---------- ColorBar ----------
+
+        [Test]
+        public void ColorBar_HiddenUntilPlaced_AndBlocksTouches()
+        {
+            AddColorBar();
+            var canvas = _go.GetComponentInChildren<Canvas>(true);
+            Assert.IsFalse(canvas.enabled, "hidden before placement");
+            _space.PlaceAtReticle();
+            Assert.IsTrue(canvas.enabled, "shown once placed");
+            foreach (var name in new[] { "Pill", "Black", "White", "Red", "Green", "Blue", "Board" })
+                Assert.IsTrue(Find(name).GetComponent<Graphic>().raycastTarget, $"{name} blocks drawing under it");
+            _space.Reset();
+            Assert.IsFalse(canvas.enabled, "hidden again after re-place");
+        }
+
+        [Test]
+        public void ColorBar_SwatchSetsColorForNewShapes_KeepsWidthAndDash()
+        {
+            AddColorBar();
+            _space.PlaceAtReticle();
+            _session.Style = new StrokeStyle(Palette.Black, LineWidth.Thick, LineStyle.Dotted);
+            Assert.That(Find("Black").GetComponent<Image>().color.a, Is.GreaterThan(0.5f), "black ringed by default");
+
+            Click(Find("Red"));
+            Assert.AreEqual(Palette.Red, _session.Style.Color);
+            Assert.AreEqual(LineWidth.Thick, _session.Style.Width, "width kept");
+            Assert.AreEqual(LineStyle.Dotted, _session.Style.Dash, "dash kept");
+            Assert.That(Find("Red").GetComponent<Image>().color.a, Is.GreaterThan(0.5f), "red ringed");
+            Assert.That(Find("Black").GetComponent<Image>().color.a, Is.EqualTo(0f), "black no longer ringed");
+
+            foreach (var (name, color) in new[] { ("White", Palette.White), ("Green", Palette.Green), ("Blue", Palette.Blue), ("Black", Palette.Black) })
+            {
+                Click(Find(name));
+                Assert.AreEqual(color, _session.Style.Color, name);
+            }
+        }
+
+        [Test]
+        public void ColorBar_ExistingShapesKeepTheirColor()
+        {
+            AddColorBar();
+            _session.ActiveLayer.Shapes.Add(new LineShape(_session.Board.NewId(), new Vec2(0.1, 0.1), new Vec2(0.9, 0.9), StrokeStyle.Default));
+            Click(Find("Blue"));
+            Assert.AreEqual(Palette.Black, _session.ActiveLayer.Shapes[0].Style.Color);
+        }
+
+        [Test]
+        public void ColorBar_BoardButtonTogglesBlackAndWhite()
+        {
+            AddColorBar();
+            _space.PlaceAtReticle();
+            Assert.AreEqual(BoardGuideColor.Black, BoardAppearance.Guides, "black (original look) by default");
+            Text label = Find("Label").GetComponent<Text>();
+            Assert.AreEqual("Black", label.text);
+
+            Click(Find("Board"));
+            Assert.AreEqual(BoardGuideColor.White, BoardAppearance.Guides);
+            Assert.AreEqual("White", label.text);
+            Click(Find("Board"));
+            Assert.AreEqual(BoardGuideColor.Black, BoardAppearance.Guides);
+            Assert.AreEqual("Black", label.text);
+        }
+
+        [Test]
+        public void ColorBar_EndsLeftOfTheToolBarColumn()
+        {
+            // Reference layout (390 px wide): ToolBar buttons sit EdgeMargin from the right edge.
+            var buttonW = (float)typeof(ToolBar).GetField("ButtonW", BindingFlags.NonPublic | BindingFlags.Static).GetRawConstantValue();
+            var toolMargin = (float)typeof(ToolBar).GetField("EdgeMargin", BindingFlags.NonPublic | BindingFlags.Static).GetRawConstantValue();
+            float toolLeft = 390f - toolMargin - buttonW;
+            Assert.That(ColorBar.EdgeMargin + ColorBar.PillWidth, Is.LessThanOrEqualTo(toolLeft - 8f), "clear of the tool column");
+            Assert.That(ColorBar.BottomFraction, Is.GreaterThan(0.11f), "above the placement row (4-11%)");
+        }
+
+        // ---------- BoardView guide-line colour ----------
+
+        BoardView NewBoardView(bool showBase)
+        {
+            _boardGo = new GameObject("Board");
+            var view = _boardGo.AddComponent<BoardView>();
+            SetField(view, "showBase", showBase);
+            Call(view, "Awake");
+            view.Bind(_session);
+            return view;
+        }
+
+        Color32[] BaseColors(BoardView view)
+        {
+            view.MarkAllDirty();
+            Call(view, "LateUpdate");
+            return _boardGo.transform.Find("Base").GetComponent<MeshFilter>().sharedMesh.colors32;
+        }
+
+        static bool Has(Color32[] colors, Color32 c)
+        {
+            foreach (var x in colors)
+                if (x.r == c.r && x.g == c.g && x.b == c.b && x.a == c.a) return true;
+            return false;
+        }
+
+        static bool HasOpaque(Color32[] colors)
+        {
+            foreach (var x in colors)
+                if (x.a == 255) return true;
+            return false;
+        }
+
+        [Test]
+        public void Guides_BlackByDefault_IsTheOriginalDashedLook_InAR()
+        {
+            var view = NewBoardView(showBase: false);   // AR prefab
+            Color32[] colors = BaseColors(view);
+            Assert.Greater(colors.Length, 0, "dashed grid and outline drawn");
+            Assert.IsTrue(Has(colors, BlackGrid), "original grid colour");
+            Assert.IsFalse(HasOpaque(colors), "nothing filled: no opaque board over the surface");
+        }
+
+        [Test]
+        public void Guides_White_RecoloursGridOnly()
+        {
+            var view = NewBoardView(showBase: false);
+            int vertsBlack = BaseColors(view).Length;
+            BoardAppearance.SetGuides(BoardGuideColor.White);
+            Color32[] colors = BaseColors(view);
+            Assert.IsTrue(Has(colors, WhiteGrid), "white grid");
+            Assert.IsFalse(Has(colors, BlackGrid), "black grid gone");
+            Assert.AreEqual(vertsBlack, colors.Length, "same dashed geometry, only the colour changes");
+            Assert.IsFalse(HasOpaque(colors), "still nothing filled");
+        }
+
+        [Test]
+        public void Guides_FlatScene_KeepsTranslucentSheet()
+        {
+            var view = NewBoardView(showBase: true);
+            Assert.IsTrue(Has(BaseColors(view), Sheet), "sheet as before");
+            BoardAppearance.SetGuides(BoardGuideColor.White);
+            Assert.IsTrue(Has(BaseColors(view), Sheet), "sheet unchanged with white guides");
+        }
+    }
+}
