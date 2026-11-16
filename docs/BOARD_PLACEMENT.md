@@ -44,7 +44,39 @@ Tips: aim from roughly above each corner. Corners off ARKit's plane polygon are 
 
 To get the old behaviour exactly, set `ARBoardSpace.defaultMode = QuickPlace` on `BoardRoot.prefab` (or use the Mode button).
 
+## Vertical surfaces (walls, screens, whiteboards)
+
+The same corner flow (and Quick place) works on a **vertical** surface: a wall, a projector screen, a whiteboard, a framed picture, or a board someone holds upright. There is no Table/Wall switch: AR plane detection looks for horizontal **and** vertical planes, and whichever plane is under the **+** is used. Tapping corner 1 locks that plane, so corners 2 to 4 cannot jump to the floor or to a different wall.
+
+### On the phone
+
+1. Stand about 30-80 cm from the wall and move the phone slowly across it. The coach text reads "Move your phone slowly over a textured table or wall". Once the wall is found it reads "Aim the + at a corner on the wall and tap (1 of 4)".
+2. Aim the **+** at each of the 4 corners of the area (poster, screen, whiteboard) and tap, as on a table. Face the wall roughly straight on: if the view is too oblique the coach text says "Face the wall more directly: view is too flat".
+3. After the 4th corner, tap or press **Place board**. The board is the largest centred square inside the rectangle, as on a table.
+
+How a wall is found (so it starts as reliably as a table): ARKit/ARCore detect vertical planes later and less often than horizontal ones, so `ARBoardSpace` uses three sources, in order:
+
+1. A detected plane under the **+** (same as tables).
+2. A detected wall plane's extension, in both modes (wall polygons are small; for tables this stays Corners-only, as before).
+3. A wall **estimated from feature points** (`WallEstimator`), with a wider search when points are sparse, and **remembered walls** for plain areas (see Limits): points in a cone around the **+** are fitted with a vertical plane (RANSAC, then least squares), filtered over time and held through short gaps. It only ever returns vertical surfaces and rejects floors, table tops, clutter, posts and door frames, so tables are unaffected. Once a corner is picked on an estimated wall, the wall switches to ARKit/ARCore's detected plane as soon as one appears there.
+
+An `ARPointCloudManager` (no visuals) supplies the feature points. `SceneBuilder` adds it, and `ARBoardSpace` adds one at runtime if the scene has none. Like plane detection, it is switched off once the board is placed and on again with **Re-place board**.
+
+On walls, the "Hold steady" check allows about 0.9° of hand tremor (8 mm at 0.5 m, 16 mm at 1 m, 24 mm at 1.5 m), because walls are aimed at from farther away. Tables keep the fixed 8 mm.
+
+Orientation: on a wall the board's **top always points up** (world up projected onto the wall), so the pattern is never sideways or upside down, whether you hold the phone above, below or to the side. On a table nothing changes: the edge nearest you is the bottom. Quick place (40 cm) also places an upright board on a wall.
+
+Limits:
+
+- Tip: move the phone **sideways** along the wall for a second or two before aiming. Feature points (and wall planes) come from sideways parallax, not from pushing the phone toward the wall.
+- **Plain white walls:** the tracker only sees surfaces where there is visual detail, so the crosshair cannot appear on a blank patch by itself. Aim once at **any textured spot on the same wall** (its edge or corner, a socket, a light switch, a picture, the border of the screen or whiteboard). The wall is then remembered, and the crosshair stays on it when you move to the plain area, up to about 1.5 m sideways and 1.2 m up or down from where it was found. If nothing appears after 5 s, the coach text says so. A completely featureless wall with no edge in view still cannot be found.
+- A board held up by hand is detected like any other vertical plane, but the placed board is anchored in the room: if the board is moved afterwards, use **Re-place board**.
+- Only horizontal (upward) and vertical planes are accepted. Tilted easels count as vertical while they are within about 30° of upright and ARKit/ARCore classify them as vertical.
+- To go back to tables only, set `ARBoardSpace.allowVerticalSurfaces = false` on `BoardRoot.prefab` and `requestedDetectionMode = Horizontal` in `SceneBuilder.BuildARScene` (and on the ARPlaneManager in `Main.unity`).
+
 ### Contract additions for C and D (additive)
+
+- `ICornerPlacement.IsVerticalSurface` (new): true while the surface being aimed at, picked on, or holding the placed board is vertical; changes raise `CornersChanged`. Use it for coach text ("wall" vs "table"). `FlatBoardSpace` returns false. Board space, drawing, snapping and layers do not depend on it: projection always uses the board's own plane.
 
 - `PlacementState` has one new value, **appended at the end**: `PickingCorners`. The board is **not placed** in this state: `IsPlaced` is false and `TryScreenToBoard` returns false. D's input already blocks drawing unless `IsPlaced`, so D needs no change. C's coach text needs a case for it.
 - New `ICornerPlacement` (`Assets/GeoART/Contracts/Board/ICornerPlacement.cs`), registered in `ServiceHub` by `ARBoardSpace` and, as a no-op (QuickPlace, never picking), by `FlatBoardSpace`. It is optional for consumers, so resolve it with `ServiceHub.TryResolve`. It provides the mode, the corner count, `CanAddCorner`/`CanConfirm`, `Issue` + `IssueCorner` (0-based, pick order), the live edge length, the surface and board size, the actions `TryAddCorner`/`UndoCorner`/`ClearCorners`/`ConfirmCorners`/`SetMode`, and a `CornersChanged` event (not raised per frame for the edge length). `IBoardSpace` still owns `State`/`StateChanged`.
@@ -53,7 +85,7 @@ To get the old behaviour exactly, set `ARBoardSpace.defaultMode = QuickPlace` on
 
 ### Checks
 
-- EditMode (Unity GUI: Window > General > Test Runner > EditMode > Run All): `BoardGeometryTests`, `CornerRectFitTests`, `CornerPickSessionTests`.
+- EditMode (Unity GUI: Window > General > Test Runner > EditMode > Run All): `BoardGeometryTests`, `CornerRectFitTests`, `CornerPickSessionTests`, `WallEstimatorTests`.
 - Pure math without Unity, on the Mac:
   ```bash
   cd "/Users/root1/Desktop/Undergraduate Degree/Fall 26/CAP 4111/GeometricARt" && DOTNET_CLI_HOME=$HOME/GeoARtTmp/dotnethome DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 /Applications/Unity/Hub/Editor/6000.5.10f1/Unity.app/Contents/Resources/Scripting/DotNetSdk/dotnet run --project tools/mathcheck -c Release

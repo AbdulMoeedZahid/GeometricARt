@@ -302,10 +302,11 @@ namespace GeoART.EngineCheck
         {
             var s = Locked();
             s.SetTool(ToolId.Circle);
-            Drag(s, 0.1, 0.12, 0.83, 0.47);
+            // Inside the board (a circle is capped at the nearest edge, see CircleBoundsChecks).
+            Drag(s, 0.41, 0.43, 0.63, 0.57);
             var c = (CircleShape)s.ActiveLayer.Shapes[0];
-            Check.That(c.Center == new Vec2(0.1, 0.12), "centre raw");
-            Check.That(c.Radius == Vec2.Distance(new Vec2(0.1, 0.12), new Vec2(0.83, 0.47)), $"diagonal radius, got {c.Radius:R}");
+            Check.That(c.Center == new Vec2(0.41, 0.43), "centre raw");
+            Check.That(c.Radius == Vec2.Distance(new Vec2(0.41, 0.43), new Vec2(0.63, 0.57)), $"diagonal radius, got {c.Radius:R}");
             Drag(s, 0.252, 0.247, 0.497, 0.252);
             var d = (CircleShape)s.ActiveLayer.Shapes[1];
             Check.That(d.Center == new Vec2(0.25, 0.25) && d.Radius == 0.25, "normal snapping in the Circle tool");
@@ -313,14 +314,14 @@ namespace GeoART.EngineCheck
             // Toggling the lock during a Circle gesture changes nothing.
             int previews = 0;
             s.PreviewChanged += () => previews++;
-            s.Pointer(Ev(PointerPhase.Down, 0.1, 0.12));
-            s.Pointer(Ev(PointerPhase.Move, 0.6, 0.4));
+            s.Pointer(Ev(PointerPhase.Down, 0.41, 0.43));
+            s.Pointer(Ev(PointerPhase.Move, 0.6, 0.55));
             int before = previews;
             s.SetOrthoLock(false);
             s.SetOrthoLock(true);
             Check.That(previews == before, "no PreviewChanged for a Circle gesture");
-            s.Pointer(Ev(PointerPhase.Up, 0.6, 0.4));
-            Check.That(((CircleShape)s.ActiveLayer.Shapes[2]).Radius == Vec2.Distance(new Vec2(0.1, 0.12), new Vec2(0.6, 0.4)), "free radius");
+            s.Pointer(Ev(PointerPhase.Up, 0.6, 0.55));
+            Check.That(((CircleShape)s.ActiveLayer.Shapes[2]).Radius == Vec2.Distance(new Vec2(0.41, 0.43), new Vec2(0.6, 0.55)), "free radius");
         }
 
         // ---------- screen-space tolerance ----------

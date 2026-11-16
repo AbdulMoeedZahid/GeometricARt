@@ -11,7 +11,11 @@ namespace GeoART.App
         /// survives from a previous Play Mode session (MVP_PLAN 2.3).
         /// </summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ResetStatics() => ServiceHub.Clear();
+        static void ResetStatics()
+        {
+            ServiceHub.Clear();
+            BoardAppearance.ResetForNewSession();
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void ConfigurePlatform()

@@ -133,6 +133,66 @@ namespace GeoART.Tests
         }
 
         [Test]
+        public void IsVerticalNormal_SeparatesTablesFromWalls()
+        {
+            Assert.IsFalse(BoardGeometry.IsVerticalNormal(Vector3.up), "table");
+            Assert.IsFalse(BoardGeometry.IsVerticalNormal(Vector3.down), "ceiling");
+            Assert.IsFalse(BoardGeometry.IsVerticalNormal(Vector3.zero), "degenerate");
+            Assert.IsFalse(BoardGeometry.IsVerticalNormal(new Vector3(0f, 1f, -0.3f)), "slightly tilted table");
+            Assert.IsTrue(BoardGeometry.IsVerticalNormal(Vector3.back), "wall");
+            Assert.IsTrue(BoardGeometry.IsVerticalNormal(Vector3.right), "side wall");
+            Assert.IsTrue(BoardGeometry.IsVerticalNormal(new Vector3(0f, 0.3f, -1f)), "leaning board");
+        }
+
+        [Test]
+        public void UprightRotation_TopIsWorldUp_WhateverThePhonePitch()
+        {
+            foreach (var camForward in new[] { new Vector3(0f, -0.7f, 0.7f), Vector3.forward, new Vector3(0.2f, 0.6f, 0.7f) })
+            {
+                var rot = BoardGeometry.UprightRotation(Vector3.back, camForward);
+                Assert.That(Vector3.Dot(rot * Vector3.forward, Vector3.up), Is.GreaterThan(0.999f), $"top is up ({camForward})");
+                Assert.That(Vector3.Dot(rot * Vector3.up, Vector3.back), Is.GreaterThan(0.999f), "faces the user");
+                Assert.That(Vector3.Dot(rot * Vector3.right, Vector3.right), Is.GreaterThan(0.999f), "+u is the user's right");
+            }
+            // A wall facing +X (user standing at +X looking along -X): +u is the user's right, world +Z.
+            var side = BoardGeometry.UprightRotation(Vector3.right, Vector3.left);
+            Assert.That(Vector3.Dot(side * Vector3.forward, Vector3.up), Is.GreaterThan(0.999f));
+            Assert.That(Vector3.Dot(side * Vector3.right, Vector3.forward), Is.GreaterThan(0.999f));
+        }
+
+        [Test]
+        public void SurfaceRotation_OnTable_IsUnchangedFacingRotation()
+        {
+            foreach (var camForward in new[] { new Vector3(0f, -0.7f, 0.7f), Vector3.down, new Vector3(0.5f, -0.5f, -0.3f) })
+            {
+                Quaternion table = BoardGeometry.FacingRotation(Vector3.up, camForward);
+                Assert.That(Quaternion.Angle(table, BoardGeometry.SurfaceRotation(Vector3.up, camForward)), Is.LessThan(1e-3f));
+            }
+        }
+
+        [Test]
+        public void WallBoard_QuickPlace_ProjectsUprightAndNotMirrored()
+        {
+            var boardPos = new Vector3(0f, 1.4f, 1f);
+            _camGo.transform.position = new Vector3(0f, 1.6f, 0.3f);
+            _camGo.transform.LookAt(boardPos);
+            _board.SetPositionAndRotation(boardPos, BoardGeometry.SurfaceRotation(Vector3.back, _cam.transform.forward));
+
+            foreach (var p in new[] { new Vec2(0.5, 0.5), new Vec2(0.1, 0.1), new Vec2(0.9, 0.9) })
+            {
+                Assert.IsTrue(BoardGeometry.TryBoardToScreen(_cam, _board, Side, p, out var px));
+                Assert.IsTrue(BoardGeometry.TryScreenToBoard(_cam, _board, Side, px, out var back));
+                AssertUv(p, back, p.ToString());
+            }
+            BoardGeometry.TryBoardToScreen(_cam, _board, Side, new Vec2(0.1, 0.5), out var left);
+            BoardGeometry.TryBoardToScreen(_cam, _board, Side, new Vec2(0.9, 0.5), out var right);
+            BoardGeometry.TryBoardToScreen(_cam, _board, Side, new Vec2(0.5, 0.1), out var bottom);
+            BoardGeometry.TryBoardToScreen(_cam, _board, Side, new Vec2(0.5, 0.9), out var top);
+            Assert.That(right.X, Is.GreaterThan(left.X), "+u appears to the right");
+            Assert.That(top.Y, Is.GreaterThan(bottom.Y), "board top appears higher on screen");
+        }
+
+        [Test]
         public void BehindCamera_IsNotProjected()
         {
             PlaceBoardFacingCamera(Vector3.zero, new Vector3(0f, 0.36f, -0.3f));

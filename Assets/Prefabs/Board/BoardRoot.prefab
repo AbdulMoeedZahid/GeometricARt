@@ -215,7 +215,7 @@ MonoBehaviour:
   disablePlaneDetectionWhenPlaced: 1
   registerInServiceHub: 1
   defaultMode: 1
-  allowVerticalSurfaces: 0
+  allowVerticalSurfaces: 1
   cornerView: {fileID: 4884695938895559833}
 --- !u!114 &4115248604165880154
 MonoBehaviour:

@@ -8,7 +8,9 @@ namespace GeoART.Engine
     /// Pointer routing for the Line and Circle tools. One gesture at a time:
     ///   Down (on the board)  Line: start point A.  Circle: centre. Snapped (see EditorSession.Snap.cs).
     ///   Move                 ghost in Preview (Line: A to p. Circle: radius |p - centre| plus a thin radius line), with p
-    ///                        snapped. A hover ring marks the candidate the current point snapped to.
+    ///                        snapped. A hover ring marks the candidate the current point snapped to. The circle's
+    ///                        radius is capped at the distance from its centre to the nearest board edge
+    ///                        (<see cref="MaxRadiusInBoard"/>), so a circle never leaves the board, like lines.
     ///   Up                   a drag commits to the layer that was active at Down if the line length / radius is at least
     ///                        <see cref="MinStrokeLength"/>, else discards. Raises BoardChanged(Shapes).
     ///                        A tap (the pointer never left the tap slop) never goes through that commit: in the Line
@@ -243,6 +245,11 @@ namespace GeoART.Engine
                 RaiseToast(HiddenLayerToast);
                 return;
             }
+            if (_gestureTool == ToolId.Circle)
+            {
+                size = CircleRadius();
+                if (size < MinStrokeLength) return;   // centre too close to an edge for a visible circle
+            }
             Shape shape = _gestureTool == ToolId.Circle
                 ? new CircleShape(_board.NewId(), _anchor, size, _style)
                 : (Shape)new LineShape(_board.NewId(), _anchor, _current, _style);
@@ -311,15 +318,17 @@ namespace GeoART.Engine
             _preview.Clear();
             if (_gestureTool == ToolId.Circle)
             {
-                double r = Vec2.Distance(_anchor, _current);
+                double r = CircleRadius();
                 if (r > 0)
                 {
                     _ghostCircle.Center = _anchor;
                     _ghostCircle.Radius = r;
                     _ghostCircle.Style = _style;
                     _preview.Add(_ghostCircle);
+                    // Radius line toward the pointer, ending on the (possibly capped) circle.
+                    double d = Vec2.Distance(_anchor, _current);
                     _ghostRadius.A = _anchor;
-                    _ghostRadius.B = _current;
+                    _ghostRadius.B = d > r && d > 0 ? _anchor + (_current - _anchor) * (r / d) : _current;
                     _ghostRadius.Style = new StrokeStyle(_style.Color, LineWidth.Thin, LineStyle.Dotted);
                     _preview.Add(_ghostRadius);
                 }
@@ -341,6 +350,13 @@ namespace GeoART.Engine
             AddPendingRing();
             RaisePreviewChanged();
         }
+
+        /// <summary>Radius of the circle being drawn: the drag distance, capped so the circle stays on the board.</summary>
+        double CircleRadius() => System.Math.Min(Vec2.Distance(_anchor, _current), MaxRadiusInBoard(_anchor));
+
+        /// <summary>Largest radius of a circle centred at <paramref name="center"/> that stays inside the [0,1]^2 board.</summary>
+        public static double MaxRadiusInBoard(Vec2 center) =>
+            System.Math.Max(0.0, System.Math.Min(System.Math.Min(center.X, 1.0 - center.X), System.Math.Min(center.Y, 1.0 - center.Y)));
 
         /// <summary>The board is about to be swapped (LoadBoard/ClearBoard): drop the open gesture without committing.</summary>
         partial void OnBoardReplaced() => EndGesture(false);

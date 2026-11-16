@@ -70,6 +70,7 @@ namespace GeoART.Mocks
         public double SurfaceWidthMeters => double.NaN;
         public double SurfaceHeightMeters => double.NaN;
         public double BoardSideMeters => sideMeters;
+        public bool IsVerticalSurface => false;
         public bool TryAddCorner() => false;
         public void UndoCorner() { }
         public void ClearCorners() { }

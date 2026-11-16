@@ -81,5 +81,28 @@ namespace GeoART.BoardRender
                 forward = Vector3.ProjectOnPlane(Vector3.right, up);
             return Quaternion.LookRotation(forward.normalized, up);
         }
+
+        /// <summary>A surface counts as vertical (wall, screen, upright board) when its normal is more than 60 degrees from world up.</summary>
+        public const float VerticalNormalMaxUpDot = 0.5f;
+
+        public static bool IsVerticalNormal(Vector3 normal) =>
+            normal.sqrMagnitude > 1e-8f && Mathf.Abs(Vector3.Dot(normal.normalized, Vector3.up)) < VerticalNormalMaxUpDot;
+
+        /// <summary>
+        /// Board rotation for a vertical surface with normal <paramref name="planeNormal"/> (pointing toward the viewer):
+        /// local +Z (board +v, the top) is world up projected onto the surface, so the board is upright and +u is the
+        /// viewer's right. Falls back to <see cref="FacingRotation"/> when world up is (nearly) along the normal.
+        /// </summary>
+        public static Quaternion UprightRotation(Vector3 planeNormal, Vector3 cameraForward)
+        {
+            Vector3 n = planeNormal.sqrMagnitude > 1e-8f ? planeNormal.normalized : Vector3.up;
+            Vector3 top = Vector3.ProjectOnPlane(Vector3.up, n);
+            if (top.sqrMagnitude < 0.04f) return FacingRotation(n, cameraForward);
+            return Quaternion.LookRotation(top.normalized, n);
+        }
+
+        /// <summary>Upright on vertical surfaces, facing the user (bottom edge nearest) on horizontal ones.</summary>
+        public static Quaternion SurfaceRotation(Vector3 planeNormal, Vector3 cameraForward) =>
+            IsVerticalNormal(planeNormal) ? UprightRotation(planeNormal, cameraForward) : FacingRotation(planeNormal, cameraForward);
     }
 }
