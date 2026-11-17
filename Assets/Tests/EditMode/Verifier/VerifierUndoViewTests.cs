@@ -518,25 +518,40 @@ namespace GeoART.Tests.Verifier
             Canvas.ForceUpdateCanvases();
             var raycaster = _canvas.GetComponent<GraphicRaycaster>();
             Assert.NotNull(raycaster, "ToolBar canvas has a GraphicRaycaster");
+            var img = UndoGo.GetComponent<Image>();
             foreach (bool bright in new[] { false, true })
             {
                 if (bright) DrawLine(0.2, 0.3, 0.7, 0.3);
+                string what = bright ? "bright" : "dimmed";
                 Assert.AreEqual(bright ? 1f : DisabledAlpha, Alpha, 1e-4f, "precondition: alpha");
                 Rect u = WorldRect(UndoGo);
+                var probes = new[] { u.center, new Vector2(u.xMin + 2f, u.yMax - 2f), new Vector2(u.xMax - 2f, u.yMin + 2f) };
+
+                // What GraphicRaycaster tests per graphic: a raycast target whose rect contains the point and whose
+                // raycast filters (the CanvasGroup's blocksRaycasts among them) accept it. One rounded Image, no gaps.
+                Assert.IsTrue(img.raycastTarget && img.isActiveAndEnabled, $"{what}: Undo's Image is an active raycast target");
+                foreach (var p in probes)
+                {
+                    Assert.IsTrue(RectTransformUtility.RectangleContainsScreenPoint(img.rectTransform, p, null), $"{what}: {p} inside Undo");
+                    Assert.IsTrue(img.Raycast(p, null), $"{what}: {p} passes Undo's raycast filters (CanvasGroup blocks raycasts)");
+                }
+
+                // The full GraphicRaycaster too, when this Edit Mode run assigns graphic depths (batch runs often do not).
                 var hits = new List<RaycastResult>();
                 raycaster.Raycast(new PointerEventData(_es) { position = u.center }, hits);
-                if (hits.Count == 0) Assert.Inconclusive($"GraphicRaycaster hit nothing in this Edit Mode run (screen {Screen.width}x{Screen.height})");
-                GameObject top = hits[0].gameObject;
-                Assert.IsTrue(top.transform.IsChildOf(UndoGo.transform), $"{(bright ? "bright" : "dimmed")}: the topmost hit is Undo, got {top.name}");
-                Assert.AreSame(UndoGo, ExecuteEvents.GetEventHandler<IPointerClickHandler>(top), "a tap there clicks Undo");
-                // Near the corners too (no gaps: a single rounded Image).
-                foreach (var p in new[] { new Vector2(u.xMin + 3f, u.yMax - 3f), new Vector2(u.xMax - 3f, u.yMin + 3f) })
+                Debug.Log($"[Verifier] {what} Undo footprint: GraphicRaycaster returned {hits.Count} hits at {u.center}");
+                if (hits.Count > 0)
                 {
-                    hits.Clear();
-                    raycaster.Raycast(new PointerEventData(_es) { position = p }, hits);
-                    Assert.Greater(hits.Count, 0, $"{p}: inside the Undo footprint is UI");
+                    GameObject top = hits[0].gameObject;
+                    Assert.IsTrue(top.transform.IsChildOf(UndoGo.transform), $"{what}: the topmost hit is Undo, got {top.name}");
+                    Assert.AreSame(UndoGo, ExecuteEvents.GetEventHandler<IPointerClickHandler>(top), "a tap there clicks Undo");
                 }
             }
+
+            // Negative control: the filter check is real (a CanvasGroup that stopped blocking would let touches through).
+            Group.blocksRaycasts = false;
+            Assert.IsFalse(img.Raycast(WorldRect(UndoGo).center, null), "control: with blocksRaycasts off the filter rejects");
+            Group.blocksRaycasts = true;
         }
 
         // ---------- the LayerSidebar opacity popup: one step per session ----------
