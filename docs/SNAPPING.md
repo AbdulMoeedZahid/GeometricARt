@@ -28,6 +28,8 @@ dot, and a circle centred on a grid corner shows a grid dot; the position is the
 | Line | tap a dot, then tap another dot | Connects the two dots with a line. After the first tap an orange ring stays on it. |
 | Line | tap the ringed dot again, tap empty board, start a drag, switch tool, Cancel | Forgets the first tap. |
 | Circle | drag | Centre snaps on touch-down; the radius snaps to the dot under the finger (radius = exact distance). |
+| Move, Duplicate | drag (action bar mode) | The grabbed line end / centre (or the selection's pivot) snaps to the nearest dot and lands on it exactly. Move hides the selection's own dots while dragging; Duplicate keeps them, so a copy can chain onto its original. See `docs/TOOLS.md`. |
+| Scale | drag (action bar mode) | The handle (the selection's outermost point toward the finger) snaps radially to a dot: a single circle scaled about its centre passes exactly through it. The selection's own dots are hidden while dragging. |
 | any | **Snap** button | Turns snapping off/on (default on). Off: no dots, nothing snaps, taps connect nothing. |
 | Line | **H/V** button | Lock on: every new line is exactly horizontal or vertical along the board edges (whichever way you dragged more), and its end lines up with dots in the same row or column. With the lock on, tapping two dots connects them only if they are in the same row or column ("H/V lock is on: tap two points in the same row or column"). Circle tool ignores it. |
 
@@ -62,6 +64,7 @@ A tap is a touch that moves less than 10 reference px.
 - `Assets/GeoART/Engine/Geometry/Intersect.cs` crossings
 - `Assets/GeoART/Engine/EditorSession.Snap.cs` snap query, H/V lock
 - `Assets/GeoART/Engine/EditorSession.Tools.cs` Line/Circle gestures, tap-to-connect
+- `Assets/GeoART/Engine/EditorSession.Transform.cs` Move/Scale/Duplicate snapping (`SnapIndex.ExcludedShapes`)
 - `Assets/GeoART/Contracts/Model/CircleDivisions.cs` exact 8-way circle division table
 - `Assets/GeoART/App/ScreenSnapMetric.cs` screen-pixel tolerance
 - `Assets/GeoART/App/ToolBar.cs` Snap and H/V buttons
