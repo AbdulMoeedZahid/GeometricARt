@@ -9,6 +9,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.TestTools;
+using EntityId = GeoART.Contracts.EntityId;
 using InputTouchPhase = UnityEngine.InputSystem.TouchPhase;
 
 namespace GeoART.Tests.Verifier.PlayMode
