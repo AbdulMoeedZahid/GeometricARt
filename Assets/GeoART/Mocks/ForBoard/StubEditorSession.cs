@@ -114,6 +114,7 @@ namespace GeoART.Mocks
         public void ToggleDottedLine() { }
         public void SetTool(ToolId t) { }
         public void SetStamp(StampKind k) { }
+        public void ClearSelection() => Selection.Ids.Clear();
         public EntityId AddLayer() => EntityId.None;
         public void SelectLayer(EntityId id) { }
         public void MoveLayer(EntityId id, int newIndex) { }

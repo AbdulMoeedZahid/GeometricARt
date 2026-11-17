@@ -17,7 +17,13 @@ namespace GeoART.EditorTools
     ///      up without a full build;
     ///   2. renders a test board (lines/circles/dotted at every width plus a live ghost; snapping off) and a snapping
     ///      board (grid and shape candidate dots, a pending tap-to-connect ring and a live hover ring; on the sheet and on
-    ///      a dark table) to PNGs from phone-like viewpoints at 45 cm and 90 cm, with and without MSAA.
+    ///      a dark table) to PNGs from phone-like viewpoints at 45 cm and 90 cm, with and without MSAA;
+    ///   3. renders an open Select marquee (orange dotted box, cyan halo on the enclosed shapes) on the sheet and on a
+    ///      dark table (select-*.png, select-dark-*.png);
+    ///   4. renders open Move and Scale drags of a selection (cyan halos, dashed selection frame and pivot marker on the
+    ///      originals, orange ghosts, cursor, hover ring when snapped): xform-*.png, xform-dark-*.png, xform-scale-*.png;
+    ///   5. renders the test board after two Undos (undo-*.png): the base design without the open green ghost, the blue
+    ///      dotted circle and the tiny circle, so BoardView redraws from a swapped-in board.
     /// Batch (needs graphics, so no -nographics):
     ///   -executeMethod GeoART.EditorTools.ToolsRenderCheck.RunBatch   (PNGs go to $GEOART_RENDER_OUT or Logs/GeoARtRenderCheck)
     /// </summary>
@@ -78,6 +84,16 @@ namespace GeoART.EditorTools
             //    dark board shows the ring of a pending start.
             RenderScenario(outDir, "snap-", s => DrawSnapDesign(s, openDrag: true), showBase: true, dark: false);
             RenderScenario(outDir, "snap-dark-", s => DrawSnapDesign(s, openDrag: false), showBase: false, dark: true);
+            // 3. Select: a live marquee over part of the design, so the PNG shows the box and the highlighted shapes.
+            RenderScenario(outDir, "select-", DrawSelectDesign, showBase: true, dark: false);
+            RenderScenario(outDir, "select-dark-", DrawSelectDesign, showBase: false, dark: true);
+            // 4. Move and Scale: an open drag (no Up), so the ghosts move while the frame and pivot stay on the originals.
+            RenderScenario(outDir, "xform-", s => DrawTransformDesign(s, ToolId.Move), showBase: true, dark: false);
+            RenderScenario(outDir, "xform-dark-", s => DrawTransformDesign(s, ToolId.Move), showBase: false, dark: true);
+            RenderScenario(outDir, "xform-scale-", s => DrawTransformDesign(s, ToolId.Scale), showBase: true, dark: false);
+            // 5. Undo: the first Undo cancels the open green ghost and removes the last stroke (blue dotted circle), the
+            //    second removes the tiny circle.
+            RenderScenario(outDir, "undo-", s => { DrawTestDesign(s); s.Undo(); s.Undo(); }, showBase: true, dark: false);
         }
 
         static void RenderScenario(string outDir, string prefix, Action<EditorSession> draw, bool showBase, bool dark)
@@ -205,6 +221,65 @@ namespace GeoART.EditorTools
             {
                 s.Pointer(new PointerEvent(PointerPhase.Down, new Vec2(0.748, 0.752), true, 1));   // tap on (0.75, 0.75)
                 s.Pointer(new PointerEvent(PointerPhase.Up, new Vec2(0.748, 0.752), true, 1.05));
+            }
+        }
+
+        /// <summary>
+        /// Two layers: a black line, a dotted blue line and a red circle at the bottom; a thick green line and a big circle
+        /// on top. Then the Select tool with an open marquee (Down and Moves, no Up) that encloses the black line, the
+        /// dotted line and the red circle but only part of the big circle, which must stay unhighlighted.
+        /// </summary>
+        static void DrawSelectDesign(EditorSession s)
+        {
+            s.SetSnapEnabled(false);
+            Drag(s, 0.12, 0.15, 0.42, 0.38);                                       // black line (in)
+            s.Style = StrokeStyle.Default.WithColor(Palette.Blue).WithDash(LineStyle.Dotted);
+            Drag(s, 0.12, 0.45, 0.45, 0.45);                                       // dotted blue line (in)
+            s.SetTool(ToolId.Circle);
+            s.Style = StrokeStyle.Default.WithColor(Palette.Red);
+            Drag(s, 0.3, 0.62, 0.38, 0.62);                                        // red circle r 0.08 (in)
+            s.AddLayer();
+            s.Style = StrokeStyle.Default;
+            Drag(s, 0.72, 0.6, 0.92, 0.6);                                         // big circle r 0.2 (partly in: out)
+            s.SetTool(ToolId.Line);
+            s.Style = StrokeStyle.Default.WithColor(Palette.Green).WithWidth(LineWidth.Thick);
+            Drag(s, 0.62, 0.12, 0.9, 0.2);                                         // thick green line (outside: out)
+            s.SetTool(ToolId.SelectMove);
+            s.Pointer(new PointerEvent(PointerPhase.Down, new Vec2(0.06, 0.08), true, 3));
+            s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.3, 0.4), true, 3.1));
+            s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.58, 0.76), true, 3.2));   // box stays open
+        }
+
+        /// <summary>
+        /// A black line and a red circle (selected by a marquee) and a blue line (not selected), drawn with snapping off,
+        /// then snapping on and an open drag in <paramref name="tool"/>. Move grabs the black line's upper end and drags
+        /// it onto the grid corner (0.5, 0.5) (hover ring); Scale drags outward from right of the pivot (about 1.5x).
+        /// </summary>
+        static void DrawTransformDesign(EditorSession s, ToolId tool)
+        {
+            s.SetSnapEnabled(false);
+            Drag(s, 0.15, 0.2, 0.35, 0.35);                                        // black line (selected)
+            s.Style = StrokeStyle.Default.WithColor(Palette.Blue);
+            Drag(s, 0.6, 0.15, 0.85, 0.4);                                         // blue line (not selected)
+            s.SetTool(ToolId.Circle);
+            s.Style = StrokeStyle.Default.WithColor(Palette.Red);
+            Drag(s, 0.3, 0.6, 0.38, 0.6);                                          // red circle r 0.08 (selected)
+            s.Style = StrokeStyle.Default;
+            s.SetTool(ToolId.SelectMove);
+            Drag(s, 0.05, 0.1, 0.45, 0.75);
+            s.SetSnapEnabled(true);
+            s.SetTool(tool);
+            if (tool == ToolId.Scale)
+            {
+                s.Pointer(new PointerEvent(PointerPhase.Down, new Vec2(0.4, 0.44), true, 5));
+                s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.44, 0.44), true, 5.1));
+                s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.4675, 0.44), true, 5.2));   // stays open
+            }
+            else
+            {
+                s.Pointer(new PointerEvent(PointerPhase.Down, new Vec2(0.36, 0.355), true, 5));   // near (0.35, 0.35)
+                s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.42, 0.43), true, 5.1));
+                s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.507, 0.512), true, 5.2)); // end on (0.5, 0.5)
             }
         }
 

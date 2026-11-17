@@ -7,7 +7,7 @@ Layer sidebar on the middle-left of the screen, plus the engine commands behind 
 | Where | Gesture | Effect |
 |---|---|---|
 | `+` (top) | tap | Add "Layer N" at the TOP and select it. Max 12 layers (toast "Max 12 layers"). |
-| `-` (bottom) | tap | Delete the BOTTOM layer and everything on it (no undo yet). The last layer can't be deleted (toast). |
+| `-` (bottom) | tap | Delete the BOTTOM layer and everything on it (Undo brings it back). The last layer can't be deleted (toast). |
 | dash | tap | Select the layer (new shapes go there). Happens on release, with no double-tap delay. |
 | dash | double tap | Toggle the layer's visibility. Second tap must start within 0.3 s of the first release. |
 | dash | hold 0.45 s | Select + open the opacity popup next to the dash: name, 0-100% slider (applied live), close `x`. A tap anywhere outside closes it. |
@@ -35,6 +35,9 @@ Toasts: top-centre about 24% down, 1.8 s with fade, sortingOrder 120, never bloc
 - `SetLayerVisible(id, bool)`, `SetLayerOpacity(id, double)` (clamped to [0,1], NaN ignored).
 - Every change raises `BoardChanged(Layers)` (delete adds `Shapes|SnapPoints`); add/select/delete also raise `StateChanged`.
   Unknown ids and unchanged values raise nothing.
+- Undo (`docs/TOOLS.md`, "Undo"): add, delete, reorder, hide/show and opacity are undoable; `SelectLayer` is not (and
+  keeps the current active layer through an Undo when it still exists). Opacity edits on one layer merge into one step
+  per popup session (opening the popup calls `SelectLayer`, which ends the merge).
 
 ## Files
 

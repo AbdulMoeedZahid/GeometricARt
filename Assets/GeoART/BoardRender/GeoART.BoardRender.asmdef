@@ -2,7 +2,8 @@
     "name": "GeoART.BoardRender",
     "rootNamespace": "GeoART.BoardRender",
     "references": [
-        "GeoART.Contracts"
+        "GeoART.Contracts",
+        "GeoART.Engine"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
