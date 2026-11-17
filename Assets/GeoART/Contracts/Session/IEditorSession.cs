@@ -37,6 +37,7 @@ namespace GeoART.Contracts
         void SetStamp(StampKind k);
         void SetSnapEnabled(bool on);
         void SetOrthoLock(bool on);                               // raises StateChanged when it changes
+        void ClearSelection();                                    // empties the selection (StateChanged if it was not empty)
 
         // layers + grid
         EntityId AddLayer();

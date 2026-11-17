@@ -412,6 +412,7 @@ namespace GeoART.Tests.Verifier.PlayMode
             public void SetSnapEnabled(bool on) => _s.SetSnapEnabled(on);
             public bool OrthoLock => _s.OrthoLock;
             public void SetOrthoLock(bool on) => _s.SetOrthoLock(on);
+            public void ClearSelection() => _s.ClearSelection();
             public EntityId AddLayer() => _s.AddLayer();
             public void SelectLayer(EntityId id) => _s.SelectLayer(id);
             public void MoveLayer(EntityId id, int i) => _s.MoveLayer(id, i);
