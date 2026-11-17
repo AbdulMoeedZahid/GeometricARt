@@ -23,7 +23,8 @@ namespace GeoART.Tests.Verifier.PlayMode
     ///   (b) Scale: an outward drag grows a circle about its centre; released near a dot, the radius is the distance.
     ///   (c) Duplicate: a drag places a copy, the tool becomes Move, and the next drag moves only the copy.
     ///   (d) A second finger mid-Move restores the geometry exactly.
-    ///   (e) A touch that starts on an action-bar button never reaches the board.
+    ///   (e) A touch that starts on an action-bar button, in a gap between bar buttons, or in a gap of the tool column
+    ///       never reaches the board (the bar and column are covered by transparent raycast targets).
     /// </summary>
     public sealed class VerifierTransformPlayTests
     {
@@ -337,39 +338,62 @@ namespace GeoART.Tests.Verifier.PlayMode
             Canvas.ForceUpdateCanvases();
             yield return Frame();
 
-            GameObject button = null;
-            foreach (var t in _uiGo.GetComponentsInChildren<Transform>(true))
-                if (t.name == "Move") button = t.gameObject;
-            Assert.NotNull(button, "action bar Move button");
-            Assert.IsTrue(button.activeInHierarchy, "the bar is shown (placed, selection, Move)");
-            var corners = new Vector3[4];
-            ((RectTransform)button.transform).GetWorldCorners(corners);
-            Vector2 centre = (corners[0] + corners[2]) * 0.5f;
-            Assert.IsTrue(_space.TryScreenToBoard(new Vec2(centre.x, centre.y), out _), $"precondition: button centre {centre} is over the board");
+            Rect Of(string name)
+            {
+                GameObject go = null;
+                foreach (var t in _uiGo.GetComponentsInChildren<Transform>(true))
+                    if (t.name == name) go = t.gameObject;
+                Assert.NotNull(go, $"toolbar child {name}");
+                Assert.IsTrue(go.activeInHierarchy, $"{name} shown (placed, selection, Move)");
+                var c = new Vector3[4];
+                ((RectTransform)go.transform).GetWorldCorners(c);
+                return Rect.MinMaxRect(c[0].x, c[0].y, c[2].x, c[2].y);
+            }
+
+            Rect move = Of("Move"), scale = Of("Scale"), dup = Of("Duplicate"), desel = Of("Deselect");
+            Rect select = Of("Select"), dotted = Of("Dotted");
+            var probes = new[]
+            {
+                ("the Move button", move.center),
+                ("the gap Move|Scale", new Vector2((move.xMax + scale.xMin) * 0.5f, move.center.y)),
+                ("the gap Duplicate|Deselect", new Vector2((dup.xMax + desel.xMin) * 0.5f, dup.center.y)),
+                ("the column gap Select|Dotted", new Vector2(select.center.x, (select.yMin + dotted.yMax) * 0.5f)),
+            };
+            Assert.Greater(scale.xMin - move.xMax, 1f, "precondition: there is a real gap between bar buttons");
 
             var es = _esGo.GetComponent<EventSystem>();
             var hits = new List<RaycastResult>();
-            es.RaycastAll(new PointerEventData(es) { position = centre }, hits);
-            Debug.Log($"[Verifier] action bar probe at {centre} on {Screen.width}x{Screen.height}: {hits.Count} hits");
+            es.RaycastAll(new PointerEventData(es) { position = move.center }, hits);
+            Debug.Log($"[Verifier] action bar probe at {move.center} on {Screen.width}x{Screen.height}: {hits.Count} hits");
             if (hits.Count == 0) Assert.Inconclusive($"uGUI raycasts hit nothing in batch Play Mode (screen {Screen.width}x{Screen.height})");
 
             var lineBefore = _line.Clone();
             _boards = 0;
-            Touch(1, InputTouchPhase.Began, centre);
-            yield return Frame();
-            Assert.IsFalse(_session.GestureActive, "a press on the bar button opens no board gesture (no Down reached the session)");
-            Vector2 to = new Vector2(Screen.width * 0.5f, Screen.height * 0.6f);
-            for (int i = 1; i <= 8; i++)
+            foreach (var (what, at) in probes)
             {
-                Touch(1, InputTouchPhase.Moved, Vector2.Lerp(centre, to, i / 8f));
+                Assert.IsTrue(_space.TryScreenToBoard(new Vec2(at.x, at.y), out _), $"precondition: {what} {at} is over the board");
+                hits.Clear();
+                es.RaycastAll(new PointerEventData(es) { position = at }, hits);
+                Assert.Greater(hits.Count, 0, $"{what} is UI for uGUI raycasts (the router's IsOverUI)");
+
+                Touch(1, InputTouchPhase.Began, at);
                 yield return Frame();
-                Assert.IsFalse(_session.GestureActive, $"still no gesture after move {i}");
+                Assert.IsFalse(_session.GestureActive, $"a press on {what} opens no board gesture (no Down reached the session)");
+                Vector2 to = new Vector2(Screen.width * 0.5f, Screen.height * 0.6f);
+                for (int i = 1; i <= 8; i++)
+                {
+                    Touch(1, InputTouchPhase.Moved, Vector2.Lerp(at, to, i / 8f));
+                    yield return Frame();
+                    Assert.IsFalse(_session.GestureActive, $"{what}: still no gesture after move {i}");
+                }
+                Touch(1, InputTouchPhase.Ended, to);
+                yield return Frame();
+                yield return Frame();
+                AssertSame(_line, lineBefore, $"{what}: nothing moved");
+                Assert.AreEqual(0, _boards, $"{what}: no BoardChanged");
+                Assert.AreEqual(3, _session.ActiveLayer.Shapes.Count, $"{what}: nothing added");
+                Assert.AreEqual(ToolId.Move, _session.ActiveTool, $"{what}: still Move");
             }
-            Touch(1, InputTouchPhase.Ended, to);
-            yield return Frame();
-            AssertSame(_line, lineBefore, "nothing moved");
-            Assert.AreEqual(0, _boards, "no BoardChanged");
-            Assert.AreEqual(3, _session.ActiveLayer.Shapes.Count, "nothing added");
         }
     }
 }

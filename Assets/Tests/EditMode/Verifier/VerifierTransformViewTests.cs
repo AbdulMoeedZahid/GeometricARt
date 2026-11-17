@@ -543,6 +543,37 @@ namespace GeoART.Tests.Verifier
                 Assert.Less(r[0].yMax, canvas.yMin + 0.27f * h, "portrait: below the layer sidebar (27%..73%)");
         }
 
+        [Test]
+        public void BarAndColumnFootprintsBlockBoardTouchesInTheGaps()
+        {
+            MakeToolBar(place: true);
+            var line = AddLine(0.2, 0.2, 0.4, 0.4);
+            SelectShapes(line);
+            Canvas.ForceUpdateCanvases();
+            Assert.IsTrue(BarVisible, "precondition: bar shown");
+            foreach (var (root, names) in new[] { (Bar, BarOrder), (Find("Column").transform, ColumnOrder) })
+            {
+                var hit = root.GetComponent<Graphic>();
+                Assert.NotNull(hit, $"{root.name}: a backing Graphic, so touches between the buttons are UI too");
+                Assert.IsTrue(hit.raycastTarget, $"{root.name}: the backing Graphic is a raycast target");
+                Assert.AreEqual(0f, hit.color.a, 1e-6f, $"{root.name}: the backing is invisible");
+                var c = new Vector3[4];
+                ((RectTransform)root).GetWorldCorners(c);
+                Rect area = Rect.MinMaxRect(c[0].x, c[0].y, c[2].x, c[2].y);
+                for (int i = 0; i < names.Length; i++)
+                {
+                    Rect b = WorldRect(names[i]);
+                    Assert.IsTrue(b.xMin >= area.xMin - 0.5f && b.xMax <= area.xMax + 0.5f && b.yMin >= area.yMin - 0.5f
+                                  && b.yMax <= area.yMax + 0.5f, $"{root.name}: the backing covers {names[i]}");
+                    if (i == 0) continue;
+                    Rect a = WorldRect(names[i - 1]);   // the gap between neighbours lies inside the backing
+                    Vector2 gap = root == Bar ? new Vector2((a.xMax + b.xMin) * 0.5f, a.center.y)
+                                              : new Vector2(a.center.x, (a.yMin + b.yMax) * 0.5f);
+                    Assert.IsTrue(area.Contains(gap), $"{root.name}: gap {names[i - 1]}/{names[i]} is covered");
+                }
+            }
+        }
+
         /// <summary>
         /// The spec placement (B1.10) in screen px for a screen of w x h with the given safe area and column fit: returns
         /// the bar's rect after the shrink (bottom edge on the baseline, centred in the span).
