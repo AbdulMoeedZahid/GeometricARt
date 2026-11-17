@@ -10,6 +10,7 @@ namespace GeoART.Engine
     ///   EditorSession.cs         core state, events, grid, load/clear (shared; keep small)
     ///   EditorSession.Layers.cs  add/select/move/delete/visibility/opacity of layers
     ///   EditorSession.Tools.cs   pointer routing, Line and Circle tools, preview ghosts, cursor
+    ///   EditorSession.Select.cs  Select tool: marquee and tap-pick, selection queries, pruning on model changes
     /// Undo/redo is not implemented yet (CanUndo/CanRedo stay false).
     /// </summary>
     public sealed partial class EditorSession : IEditorSession
@@ -161,10 +162,16 @@ namespace GeoART.Engine
             RaiseStateChanged();
         }
 
+        /// <summary>
+        /// Model changed: snap hook, then drop selected ids that are no longer on a visible layer (before listeners run,
+        /// so they see a consistent selection), then BoardChanged, then StateChanged only if the selection shrank.
+        /// </summary>
         void RaiseBoardChanged(BoardChangeKind kind)
         {
             OnModelChanged(kind);
+            bool pruned = PruneSelection();
             BoardChanged?.Invoke(kind);
+            if (pruned) RaiseStateChanged();
         }
         void RaiseStateChanged() => StateChanged?.Invoke();
         void RaisePreviewChanged() => PreviewChanged?.Invoke();

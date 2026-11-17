@@ -5,7 +5,8 @@ namespace GeoART.Engine
     // OWNER: line/circle tools builder. Snap state (SnapEnabled, OrthoLock, SnapMetric) is in EditorSession.cs; the snap
     // query (TrySnap) and the candidate cache are in EditorSession.Snap.cs.
     /// <summary>
-    /// Pointer routing for the Line and Circle tools. One gesture at a time:
+    /// Pointer routing for the Line, Circle and Select tools (Select's gesture is in EditorSession.Select.cs; it starts
+    /// before the hidden-layer check, never snaps and never edits the model). One gesture at a time:
     ///   Down (on the board)  Line: start point A.  Circle: centre. Snapped (see EditorSession.Snap.cs).
     ///   Move                 ghost in Preview (Line: A to p. Circle: radius |p - centre| plus a thin radius line), with p
     ///                        snapped. A hover ring marks the candidate the current point snapped to.
@@ -106,9 +107,15 @@ namespace GeoART.Engine
         void BeginGesture(in PointerEvent e)
         {
             if (_gestureOpen) EndGesture(false);   // a lost Up: never commit a stale stroke
-            if (!e.OnBoard || !e.BoardPos.IsFinite || (_tool != ToolId.Line && _tool != ToolId.Circle))
+            if (!e.OnBoard || !e.BoardPos.IsFinite
+                || (_tool != ToolId.Line && _tool != ToolId.Circle && _tool != ToolId.SelectMove))
             {
                 if (DropPending()) RaisePreviewChanged();   // a tap off the board is a tap off any candidate
+                return;
+            }
+            if (_tool == ToolId.SelectMove)
+            {
+                BeginSelectGesture(e);   // before the hidden-layer check: selecting needs no drawable layer
                 return;
             }
 
@@ -127,14 +134,18 @@ namespace GeoART.Engine
             _hoverOn = _downHit;
             _anchor = _current = _downHit ? _downCand.Position : e.BoardPos;
             _cursor = _anchor;
+            StartTapDetection(e.BoardPos);
+            RebuildGhost();
+        }
 
+        /// <summary>Starts tap detection at the raw Down position <paramref name="raw"/> (see <see cref="MeasureTap"/>).</summary>
+        void StartTapDetection(Vec2 raw)
+        {
             _stillTap = true;
             _tapMetric = SnapMetric;
-            _tapScreen = TryScreenSpace(e.BoardPos, out _tapOrigin, out double tol);
+            _tapScreen = TryScreenSpace(raw, out _tapOrigin, out double tol);
             double slop = TapSlopFraction * tol;
             _tapSlop2 = slop * slop;
-
-            RebuildGhost();
         }
 
         void TrackGesture(in PointerEvent e)
@@ -156,11 +167,13 @@ namespace GeoART.Engine
         }
 
         /// <summary>
-        /// The current point for a raw pointer position: the H/V-locked end for the Line tool with the lock on, else
-        /// the plain snap. <paramref name="hit"/> is true if it snapped (hover ring).
+        /// The current point for a raw pointer position: the raw point itself for the Select tool (never snaps), the
+        /// H/V-locked end for the Line tool with the lock on, else the plain snap. <paramref name="hit"/> is true if it
+        /// snapped (hover ring).
         /// </summary>
         Vec2 ResolvePoint(Vec2 raw, out bool hit)
         {
+            if (_gestureTool == ToolId.SelectMove) { hit = false; return raw; }
             if (_gestureTool == ToolId.Line && _orthoLock)
             {
                 hit = TryOrthoEnd(raw, out Vec2 end);
@@ -211,9 +224,13 @@ namespace GeoART.Engine
         /// <summary>
         /// Closes the open gesture (commit = Up, else discard) and clears ghosts, hover ring and cursor. A discard
         /// (Cancel, tool switch, board replace, lost Up) also clears the pending tap-to-connect start, gesture or not.
-        /// The pending ring, if any, stays in Preview.
+        /// The pending ring, if any, stays in Preview. A Select gesture finishes in <see cref="FinishSelectGesture"/>
+        /// (pick, keep the marquee's set, or restore on discard); <paramref name="raiseSelectionState"/> false defers its
+        /// StateChanged to the caller (SetTool).
         /// </summary>
-        void EndGesture(bool commit)
+        void EndGesture(bool commit) => EndGesture(commit, true);
+
+        void EndGesture(bool commit, bool raiseSelectionState)
         {
             bool hadGesture = _gestureOpen;
             _gestureOpen = false;
@@ -222,7 +239,8 @@ namespace GeoART.Engine
             _cursor = null;
             _hoverOn = false;
             if (!commit) _hasPending = false;
-            else if (hadGesture)
+            if (hadGesture && _gestureTool == ToolId.SelectMove) FinishSelectGesture(commit, raiseSelectionState);
+            else if (commit && hadGesture)
             {
                 if (_stillTap) Tap();
                 else Commit();
@@ -308,6 +326,7 @@ namespace GeoART.Engine
 
         void RebuildGhost()
         {
+            if (_gestureTool == ToolId.SelectMove) { RebuildMarquee(); return; }
             _preview.Clear();
             if (_gestureTool == ToolId.Circle)
             {
@@ -345,19 +364,27 @@ namespace GeoART.Engine
         /// <summary>The board is about to be swapped (LoadBoard/ClearBoard): drop the open gesture without committing.</summary>
         partial void OnBoardReplaced() => EndGesture(false);
 
+        /// <summary>
+        /// Switches tool: None, Line, Circle and SelectMove are supported, anything else toasts <see cref="ComingSoonToast"/>
+        /// and keeps the current tool. Ends any open gesture without committing, clears the selection when the new tool
+        /// does not use it (<see cref="KeepsSelection"/>), sets <see cref="ToolHint"/> and raises exactly one StateChanged.
+        /// Entering Select also toasts <see cref="SelectHintToast"/>.
+        /// </summary>
         public void SetTool(ToolId t)
         {
-            if (t != ToolId.None && t != ToolId.Line && t != ToolId.Circle)
+            if (t != ToolId.None && t != ToolId.Line && t != ToolId.Circle && t != ToolId.SelectMove)
             {
                 RaiseToast(ComingSoonToast);
                 return;
             }
             if (t == _tool) return;
-            EndGesture(false);
+            EndGesture(false, false);   // a Select gesture's restore is folded into the single StateChanged below
+            if (!KeepsSelection(t)) ClearSelectionNoEvent();
             _tool = t;
             string hint = HintFor(t);
             if (hint != _toolHint) SetToolHint(hint);
             else RaiseStateChanged();
+            if (t == ToolId.SelectMove) RaiseToast(SelectHintToast);
         }
 
         static string HintFor(ToolId t)
@@ -366,6 +393,7 @@ namespace GeoART.Engine
             {
                 case ToolId.Line: return "Line: drag from start to end, or tap two points";
                 case ToolId.Circle: return "Circle: drag from centre outwards";
+                case ToolId.SelectMove: return SelectHintToast;
                 default: return "";
             }
         }
