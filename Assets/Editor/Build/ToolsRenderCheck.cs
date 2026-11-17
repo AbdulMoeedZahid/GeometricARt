@@ -19,7 +19,9 @@ namespace GeoART.EditorTools
     ///      board (grid and shape candidate dots, a pending tap-to-connect ring and a live hover ring; on the sheet and on
     ///      a dark table) to PNGs from phone-like viewpoints at 45 cm and 90 cm, with and without MSAA;
     ///   3. renders an open Select marquee (orange dotted box, cyan halo on the enclosed shapes) on the sheet and on a
-    ///      dark table (select-*.png, select-dark-*.png).
+    ///      dark table (select-*.png, select-dark-*.png);
+    ///   4. renders open Move and Scale drags of a selection (cyan halos, dashed selection frame and pivot marker on the
+    ///      originals, orange ghosts, cursor, hover ring when snapped): xform-*.png, xform-dark-*.png, xform-scale-*.png.
     /// Batch (needs graphics, so no -nographics):
     ///   -executeMethod GeoART.EditorTools.ToolsRenderCheck.RunBatch   (PNGs go to $GEOART_RENDER_OUT or Logs/GeoARtRenderCheck)
     /// </summary>
@@ -83,6 +85,10 @@ namespace GeoART.EditorTools
             // 3. Select: a live marquee over part of the design, so the PNG shows the box and the highlighted shapes.
             RenderScenario(outDir, "select-", DrawSelectDesign, showBase: true, dark: false);
             RenderScenario(outDir, "select-dark-", DrawSelectDesign, showBase: false, dark: true);
+            // 4. Move and Scale: an open drag (no Up), so the ghosts move while the frame and pivot stay on the originals.
+            RenderScenario(outDir, "xform-", s => DrawTransformDesign(s, ToolId.Move), showBase: true, dark: false);
+            RenderScenario(outDir, "xform-dark-", s => DrawTransformDesign(s, ToolId.Move), showBase: false, dark: true);
+            RenderScenario(outDir, "xform-scale-", s => DrawTransformDesign(s, ToolId.Scale), showBase: true, dark: false);
         }
 
         static void RenderScenario(string outDir, string prefix, Action<EditorSession> draw, bool showBase, bool dark)
@@ -237,6 +243,39 @@ namespace GeoART.EditorTools
             s.Pointer(new PointerEvent(PointerPhase.Down, new Vec2(0.06, 0.08), true, 3));
             s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.3, 0.4), true, 3.1));
             s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.58, 0.76), true, 3.2));   // box stays open
+        }
+
+        /// <summary>
+        /// A black line and a red circle (selected by a marquee) and a blue line (not selected), drawn with snapping off,
+        /// then snapping on and an open drag in <paramref name="tool"/>. Move grabs the black line's upper end and drags
+        /// it onto the grid corner (0.5, 0.5) (hover ring); Scale drags outward from right of the pivot (about 1.5x).
+        /// </summary>
+        static void DrawTransformDesign(EditorSession s, ToolId tool)
+        {
+            s.SetSnapEnabled(false);
+            Drag(s, 0.15, 0.2, 0.35, 0.35);                                        // black line (selected)
+            s.Style = StrokeStyle.Default.WithColor(Palette.Blue);
+            Drag(s, 0.6, 0.15, 0.85, 0.4);                                         // blue line (not selected)
+            s.SetTool(ToolId.Circle);
+            s.Style = StrokeStyle.Default.WithColor(Palette.Red);
+            Drag(s, 0.3, 0.6, 0.38, 0.6);                                          // red circle r 0.08 (selected)
+            s.Style = StrokeStyle.Default;
+            s.SetTool(ToolId.SelectMove);
+            Drag(s, 0.05, 0.1, 0.45, 0.75);
+            s.SetSnapEnabled(true);
+            s.SetTool(tool);
+            if (tool == ToolId.Scale)
+            {
+                s.Pointer(new PointerEvent(PointerPhase.Down, new Vec2(0.4, 0.44), true, 5));
+                s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.44, 0.44), true, 5.1));
+                s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.4675, 0.44), true, 5.2));   // stays open
+            }
+            else
+            {
+                s.Pointer(new PointerEvent(PointerPhase.Down, new Vec2(0.36, 0.355), true, 5));   // near (0.35, 0.35)
+                s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.42, 0.43), true, 5.1));
+                s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.507, 0.512), true, 5.2)); // end on (0.5, 0.5)
+            }
         }
 
         static void Invoke(object target, string method) =>
