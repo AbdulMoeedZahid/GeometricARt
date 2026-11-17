@@ -318,7 +318,7 @@ namespace GeoART.Tests.Verifier
             // The column has nine buttons; the contextual action bar (Move, Scale, Duplicate, Deselect) has its own four.
             var buttons = new List<Button>(Find("Column").GetComponentsInChildren<Button>(true));
             Assert.AreEqual(9, buttons.Count, "nine buttons in the column");
-            Assert.AreEqual(13, _appGo.GetComponentsInChildren<Button>(true).Length, "plus the four action bar buttons");
+            Assert.AreEqual(14, _appGo.GetComponentsInChildren<Button>(true).Length, "plus the four action bar buttons and Undo");
 
             float prevBottom = float.MaxValue;
             var tops = new float[ButtonOrder.Length];
