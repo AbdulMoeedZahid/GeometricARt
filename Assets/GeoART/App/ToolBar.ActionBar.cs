@@ -11,7 +11,8 @@ namespace GeoART.App
     /// tapping another switches to it. Deselect empties the selection (the engine then falls back to Select).
     /// Placement (reference px, see <see cref="PlaceActionBar"/>): bottom edge on the column's lowest baseline (just above
     /// the placement row), centred in the space left of the tool column, shrunk (not below MinFit) when that space is
-    /// narrower than the bar. Every button is a raycast target, so BoardInputRouter ignores touches that start on it.
+    /// narrower than the bar. Every button is a raycast target and a transparent raycast-target panel covers the whole bar,
+    /// so BoardInputRouter ignores touches that start anywhere on it, including the gaps between buttons.
     /// </summary>
     public sealed partial class ToolBar
     {
@@ -31,6 +32,7 @@ namespace GeoART.App
             _bar = (RectTransform)go.transform;
             _bar.pivot = new Vector2(0.5f, 0f);
             _bar.sizeDelta = new Vector2(ActionBarWidth, BarButtonH);
+            AddTouchBlocker(go);   // the 8 px gaps between buttons must not start a transform drag on the board
             float x = 0f;
             _moveBg = CreateBarButton("Move", Glyph.Move, font, ref x, () => ToggleMode(ToolId.Move));
             _scaleBg = CreateBarButton("Scale", Glyph.Scale, font, ref x, () => ToggleMode(ToolId.Scale));
