@@ -19,8 +19,9 @@ namespace GeoART.App
     /// Nine buttons in four groups (3, 2, 2, 2), 550 reference px tall: fits a 390x844 portrait screen with room for
     /// the placement row and the coach text. Shorter screens (landscape: Android 16 ignores the portrait lock on large
     /// screens) shrink the column to stay between the two, see <see cref="ApplySafeArea"/>.
-    /// Icons are drawn procedurally into small textures once in Awake. Every button is a raycast target, so
-    /// BoardInputRouter ignores touches that start on it. Visible only while the board is placed (or when the scene
+    /// Icons are drawn procedurally into small textures once in Awake. Every button is a raycast target, and the column
+    /// (like the action bar) has a transparent raycast-target panel behind its buttons (<see cref="AddTouchBlocker"/>), so
+    /// BoardInputRouter ignores touches that start anywhere on it, gaps between buttons included. Visible only while the board is placed (or when the scene
     /// has no IBoardSpace). Event-driven: refreshes on session/placement StateChanged, no per-frame work except a
     /// cheap safe-area comparison.
     /// The contextual action bar (Move | Scale | Duplicate | Deselect, shown while something is selected in a selection
@@ -78,6 +79,7 @@ namespace GeoART.App
             _column = (RectTransform)columnGo.transform;
             _column.pivot = new Vector2(1f, 0.5f);
             _column.sizeDelta = new Vector2(ButtonW, ColumnHeight);
+            AddTouchBlocker(columnGo);
             ApplySafeArea();
 
             var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -227,6 +229,17 @@ namespace GeoART.App
         }
 
         // ---------- building ----------
+
+        /// <summary>
+        /// A fully transparent Image over <paramref name="go"/>'s whole rect, a raycast target: uGUI raycasts (and so
+        /// BoardInputRouter's IsOverUI) hit the footprint between buttons too, so a touch in a gap never reaches the board.
+        /// </summary>
+        static void AddTouchBlocker(GameObject go)
+        {
+            var img = go.AddComponent<Image>();
+            img.color = new Color(0f, 0f, 0f, 0f);
+            img.raycastTarget = true;
+        }
 
         Image CreateButton(string label, Glyph glyph, Font font, ref float y, UnityEngine.Events.UnityAction onClick,
             out Text text)
