@@ -17,7 +17,9 @@ namespace GeoART.EditorTools
     ///      up without a full build;
     ///   2. renders a test board (lines/circles/dotted at every width plus a live ghost; snapping off) and a snapping
     ///      board (grid and shape candidate dots, a pending tap-to-connect ring and a live hover ring; on the sheet and on
-    ///      a dark table) to PNGs from phone-like viewpoints at 45 cm and 90 cm, with and without MSAA.
+    ///      a dark table) to PNGs from phone-like viewpoints at 45 cm and 90 cm, with and without MSAA;
+    ///   3. renders an open Select marquee (orange dotted box, cyan halo on the enclosed shapes) on the sheet and on a
+    ///      dark table (select-*.png, select-dark-*.png).
     /// Batch (needs graphics, so no -nographics):
     ///   -executeMethod GeoART.EditorTools.ToolsRenderCheck.RunBatch   (PNGs go to $GEOART_RENDER_OUT or Logs/GeoARtRenderCheck)
     /// </summary>
@@ -78,6 +80,9 @@ namespace GeoART.EditorTools
             //    dark board shows the ring of a pending start.
             RenderScenario(outDir, "snap-", s => DrawSnapDesign(s, openDrag: true), showBase: true, dark: false);
             RenderScenario(outDir, "snap-dark-", s => DrawSnapDesign(s, openDrag: false), showBase: false, dark: true);
+            // 3. Select: a live marquee over part of the design, so the PNG shows the box and the highlighted shapes.
+            RenderScenario(outDir, "select-", DrawSelectDesign, showBase: true, dark: false);
+            RenderScenario(outDir, "select-dark-", DrawSelectDesign, showBase: false, dark: true);
         }
 
         static void RenderScenario(string outDir, string prefix, Action<EditorSession> draw, bool showBase, bool dark)
@@ -206,6 +211,32 @@ namespace GeoART.EditorTools
                 s.Pointer(new PointerEvent(PointerPhase.Down, new Vec2(0.748, 0.752), true, 1));   // tap on (0.75, 0.75)
                 s.Pointer(new PointerEvent(PointerPhase.Up, new Vec2(0.748, 0.752), true, 1.05));
             }
+        }
+
+        /// <summary>
+        /// Two layers: a black line, a dotted blue line and a red circle at the bottom; a thick green line and a big circle
+        /// on top. Then the Select tool with an open marquee (Down and Moves, no Up) that encloses the black line, the
+        /// dotted line and the red circle but only part of the big circle, which must stay unhighlighted.
+        /// </summary>
+        static void DrawSelectDesign(EditorSession s)
+        {
+            s.SetSnapEnabled(false);
+            Drag(s, 0.12, 0.15, 0.42, 0.38);                                       // black line (in)
+            s.Style = StrokeStyle.Default.WithColor(Palette.Blue).WithDash(LineStyle.Dotted);
+            Drag(s, 0.12, 0.45, 0.45, 0.45);                                       // dotted blue line (in)
+            s.SetTool(ToolId.Circle);
+            s.Style = StrokeStyle.Default.WithColor(Palette.Red);
+            Drag(s, 0.3, 0.62, 0.38, 0.62);                                        // red circle r 0.08 (in)
+            s.AddLayer();
+            s.Style = StrokeStyle.Default;
+            Drag(s, 0.72, 0.6, 0.92, 0.6);                                         // big circle r 0.2 (partly in: out)
+            s.SetTool(ToolId.Line);
+            s.Style = StrokeStyle.Default.WithColor(Palette.Green).WithWidth(LineWidth.Thick);
+            Drag(s, 0.62, 0.12, 0.9, 0.2);                                         // thick green line (outside: out)
+            s.SetTool(ToolId.SelectMove);
+            s.Pointer(new PointerEvent(PointerPhase.Down, new Vec2(0.06, 0.08), true, 3));
+            s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.3, 0.4), true, 3.1));
+            s.Pointer(new PointerEvent(PointerPhase.Move, new Vec2(0.58, 0.76), true, 3.2));   // box stays open
         }
 
         static void Invoke(object target, string method) =>
