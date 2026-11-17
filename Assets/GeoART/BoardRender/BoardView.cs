@@ -6,11 +6,13 @@ namespace GeoART.BoardRender
 {
     /// <summary>
     /// Draws the board and the session's model in the transform's local XZ plane (A-2/A-3/A-4).
-    /// Four meshes, one draw call each, rebuilt only when dirty:
+    /// Five meshes, one draw call each, rebuilt only when dirty (render queues 3000..3004, in this order):
     ///   Base    - translucent sheet, outer frame (D-04), and the dashed outline of a corner-registered surface when it
     ///             is larger than the board (skipped when showBase is off), plus the dashed square or hex tile edges
     ///             from <see cref="TileGrid"/> (D-07; drawn whenever showGrid is on, so also in AR)
     ///   Shapes  - committed lines/circles/polygons on visible layers + user snap points  (BoardChanged)
+    ///   Selection - each selected shape on a visible layer: a wide translucent halo (solid even for dotted shapes), then
+    ///             the shape's own stroke again on top, so it reads above its neighbours  (BoardChanged/StateChanged)
     ///   Candidates - snap candidate dots, tinted and sized by SnapKind tier               (BoardChanged/StateChanged)
     ///   Overlay - tool preview ghosts (incl. the engine's snap hover ring), cursor         (PreviewChanged/StateChanged)
     /// Candidates have their own mesh so a drag (PreviewChanged every frame) never rebuilds hundreds of dots.
@@ -55,9 +57,12 @@ namespace GeoART.BoardRender
         [SerializeField] Color previewColor = new Color(1f, 0.55f, 0.1f, 0.9f);
         [SerializeField] Color cursorColor = new Color(1f, 0.42f, 0f, 1f);
         [SerializeField] Color surfaceOutlineColor = new Color(0.1f, 0.8f, 1f, 0.9f);
+        [SerializeField, Tooltip("Halo behind selected shapes.")]
+        Color selectionColor = new Color(0.1f, 0.75f, 1f, 0.55f);
 
         // Heights above the board plane (metres) so layers never z-fight with each other.
         const float ShapesLift = 0.0008f;
+        const float SelectionLift = 0.0010f;
         const float CandidatesLift = 0.0012f;
         const float OverlayLift = 0.0016f;
 
@@ -70,11 +75,12 @@ namespace GeoART.BoardRender
         const float GridOutlineWidth = 0.0009f;     // light ring around grid dots
         const float DotOutlineWidth = 0.0011f;      // light ring around construction and shape dots
         const float MinorGridAlpha = 0.6f;          // edge midpoints / centres: grid colours at this alpha
+        const float SelectionHaloMeters = 0.0018f;  // halo reaches this far beyond each side of the stroke (times StrokeScale)
 
         IEditorSession _session;
         bool _subscribed;
-        Part _base, _shapes, _candidates, _overlay;
-        bool _baseDirty = true, _shapesDirty = true, _candidatesDirty = true, _overlayDirty = true;
+        Part _base, _shapes, _selection, _candidates, _overlay;
+        bool _baseDirty = true, _shapesDirty = true, _selectionDirty = true, _candidatesDirty = true, _overlayDirty = true;
         int _lastGridN = -1;
         GridKind _lastGridKind = (GridKind)(-1);
         readonly List<(Vec2 A, Vec2 B)> _gridEdges = new List<(Vec2 A, Vec2 B)>(64);
@@ -94,8 +100,9 @@ namespace GeoART.BoardRender
             }
             _base = new Part(transform, "Base", material, 3000);
             _shapes = new Part(transform, "Shapes", material, 3001);
-            _candidates = new Part(transform, "Candidates", material, 3002);
-            _overlay = new Part(transform, "Overlay", material, 3003);
+            _selection = new Part(transform, "Selection", material, 3002);
+            _candidates = new Part(transform, "Candidates", material, 3003);
+            _overlay = new Part(transform, "Overlay", material, 3004);
         }
 
         void Start()
@@ -116,6 +123,7 @@ namespace GeoART.BoardRender
         {
             _base?.Dispose();
             _shapes?.Dispose();
+            _selection?.Dispose();
             _candidates?.Dispose();
             _overlay?.Dispose();
         }
@@ -129,7 +137,8 @@ namespace GeoART.BoardRender
             MarkAllDirty();
         }
 
-        public void MarkAllDirty() => _baseDirty = _shapesDirty = _candidatesDirty = _overlayDirty = true;
+        public void MarkAllDirty() =>
+            _baseDirty = _shapesDirty = _selectionDirty = _candidatesDirty = _overlayDirty = true;
 
         /// <summary>Runtime board side (quick place 0.40 m, or the corner-fitted square). Clamped to [0.05, 3] m.</summary>
         public void SetSideMeters(float side)
@@ -174,6 +183,7 @@ namespace GeoART.BoardRender
         void OnBoardChanged(BoardChangeKind kind)
         {
             _shapesDirty = true;
+            _selectionDirty = true;    // selected shapes moved, were hidden or deleted
             _candidatesDirty = true;   // candidates depend on geometry, layer visibility and grid
             _overlayDirty = true;
             if ((kind & (BoardChangeKind.Grid | BoardChangeKind.Reset)) != 0) _baseDirty = true;
@@ -183,6 +193,7 @@ namespace GeoART.BoardRender
 
         void OnStateChanged()
         {
+            _selectionDirty = true;    // the selection changed (it raises StateChanged, never BoardChanged)
             _candidatesDirty = true;   // Snap toggled on/off
             _overlayDirty = true;
         }
@@ -202,6 +213,7 @@ namespace GeoART.BoardRender
                 _baseDirty = false;
             }
             if (_shapesDirty) { RebuildShapes(board); _shapesDirty = false; }
+            if (_selectionDirty) { RebuildSelection(board); _selectionDirty = false; }
             if (_candidatesDirty) { RebuildCandidates(); _candidatesDirty = false; }
             if (_overlayDirty) { RebuildOverlay(); _overlayDirty = false; }
         }
@@ -305,6 +317,34 @@ namespace GeoART.BoardRender
             _shapes.Apply();
         }
 
+        /// <summary>
+        /// Selected shapes on visible layers: first a solid halo in <see cref="selectionColor"/>, wider than the stroke by
+        /// <see cref="SelectionHaloMeters"/> on each side, then the shape's own stroke (layer opacity applied) on top.
+        /// </summary>
+        void RebuildSelection(Board board)
+        {
+            var mb = _selection.Builder;
+            mb.Clear();
+            var ids = _session?.Selection?.Ids;
+            if (board != null && ids != null && ids.Count > 0)
+            {
+                float haloExtra = 2f * SelectionHaloMeters * StrokeScale;
+                foreach (var layer in board.Layers)
+                {
+                    if (layer == null || !layer.Visible) continue;
+                    float opacity = Mathf.Clamp01((float)layer.Opacity);
+                    foreach (var shape in layer.Shapes)
+                    {
+                        if (shape == null || !ids.Contains(shape.Id)) continue;
+                        AddShapeStroke(mb, shape, selectionColor, SelectionLift, WidthOf(shape.Style.Width) + haloExtra, false);
+                        if (opacity > 0f)
+                            AddShape(mb, shape, WithOpacity(ToColor32(shape.Style.Color), opacity), SelectionLift);
+                    }
+                }
+            }
+            _selection.Apply();
+        }
+
         /// <summary>Candidate tiers: 0 minor grid, 1 grid intersections, 2 construction points, 3 shape points.</summary>
         static int TierOf(SnapKind kind)
         {
@@ -389,10 +429,12 @@ namespace GeoART.BoardRender
             _overlay.Apply();
         }
 
-        void AddShape(BoardMeshBuilder mb, Shape shape, Color32 color, float lift)
+        void AddShape(BoardMeshBuilder mb, Shape shape, Color32 color, float lift) =>
+            AddShapeStroke(mb, shape, color, lift, WidthOf(shape.Style.Width), shape.Style.Dash == LineStyle.Dotted);
+
+        /// <summary>The shape's outline with an explicit width and dash (the selection halo is wider and always solid).</summary>
+        void AddShapeStroke(BoardMeshBuilder mb, Shape shape, Color32 color, float lift, float width, bool dashed)
         {
-            float width = WidthOf(shape.Style.Width);
-            bool dashed = shape.Style.Dash == LineStyle.Dotted;
             switch (shape)
             {
                 case LineShape line:
