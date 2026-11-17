@@ -1,4 +1,4 @@
-# Line and Circle tools
+# Line, Circle and Select tools
 
 Drawing on the placed board, plus thinner and smoother strokes. Snapping is **on by default**: line ends, circle
 centres and radius points jump exactly onto snap points (grid intersections, shape crossings, endpoints, circle
@@ -25,7 +25,35 @@ Details:
   screen position no longer projects (tracking lost), the last valid point is kept.
 - The stroke is cancelled (nothing committed) by a second finger, by "Re-place board" or any placement state other than
   Placed (e.g. tracking lost), by the app pausing / losing focus, by switching tools, and by loading or clearing the board.
-- Other tool ids (Select, Rotate, Stamps, ...) toast "Coming soon" and keep the current tool.
+- Other tool ids (Rotate, Stamps, Scale, Duplicate, ...) toast "Coming soon" and keep the current tool.
+
+## Select tool
+Chooses lines and circles (and polygons) for the tools that will act on them later (Move, Scale, Duplicate). It only
+selects: nothing is moved, added or removed, the board never raises `BoardChanged` and no undo step is made.
+1. Tap **Select** (third button, four corner brackets). It turns orange, Line/Circle go idle, and a toast and the tool hint
+   say "Select: drag a box around whole shapes, or tap one".
+2. **Drag a box**: once the finger leaves the tap slop an orange dotted rectangle follows it (board-aligned, from the
+   touch-down point to the finger; never snapped, no H/V lock). Every shape that lies **wholly** inside the box (edges
+   count) is highlighted in cyan as you drag; a shape the box only partly covers is not. Lift: the selection stays and a
+   toast says "N shapes selected", or "Nothing selected: the box must enclose whole shapes".
+3. **Tap a stroke**: selects only the shape whose line or circle outline is nearest the finger (within 24 screen px, at
+   most 1.2 cm on the 40 cm board; the topmost shape wins a tie). Tapping inside a circle away from its outline does not
+   pick it. A tap on empty board clears the selection.
+4. A new box or tap always **replaces** the selection (no add mode).
+5. A second finger, Re-place, the app pausing, a tool switch, Clear or Load during a drag **cancel** it: the box goes
+   away and the selection from before the drag comes back.
+
+Rules:
+- Shapes on every **visible** layer can be selected together; shapes on hidden layers can't. Hiding or deleting a layer
+  drops its shapes from the selection, and showing it again does not re-select them. A hidden active layer does not
+  block Select (the "Layer is hidden" toast is for drawing only).
+- Switching to Line, Circle or None clears the selection (Scale and Duplicate will keep it). Clear and Load clear it.
+- Rendering: `BoardView` draws a "Selection" mesh (render queue 3002, between Shapes 3001 and the snap dots 3003; the
+  Overlay with the marquee is 3004): a wide translucent cyan halo under each selected shape, then the shape's own stroke
+  again on top.
+- Engine API (concrete `EditorSession`, `IEditorSession` is unchanged): `SelectionCount`, `GetSelectedShapes` (shape and
+  layer, bottom layer first), `TryGetSelectionBounds` (union bounds), `SetSelection`, `ClearSelection`. Geometry lives in
+  `Engine/Geometry/SelectionGeometry.cs` (`BoardRect`, enclosure, stroke distance, pick).
 
 ## Smoothing (BoardInputRouter)
 AR tracking makes the finger's projected board point jitter even when the finger is still, so the router re-projects the
@@ -57,10 +85,11 @@ finger every frame and filters the board point with a One Euro filter (`Engine/O
 
 ## Files
 - `Assets/GeoART/Engine/EditorSession.Tools.cs`: tools, gestures, ghosts, cursor, dotted toggle.
+- `Assets/GeoART/Engine/EditorSession.Select.cs`, `Engine/Geometry/SelectionGeometry.cs`: the Select tool.
 - `Assets/GeoART/Engine/OneEuroFilter2D.cs` (new): the smoothing filter.
 - `Assets/GeoART/App/BoardInputRouter.cs`: touch/mouse to `IEditorSession.Pointer`.
 - `Assets/GeoART/App/ToolBar.cs`: right-edge tool column (procedural icons).
 - `Assets/GeoART/BoardRender/BoardView.cs`, `BoardMeshBuilder.cs`, `Shaders/BoardUnlit.shader`: widths, AA, joins, circles.
 - `Assets/Settings/Mobile_RPAsset.asset`: MSAA 4x, render scale 1.
 - `Assets/Editor/Build/ToolsRenderCheck.cs` (new): shader compile + render check.
-- `tools/enginecheck/ToolChecks.cs`: engine and filter checks.
+- `tools/enginecheck/ToolChecks.cs`: engine and filter checks. `tools/enginecheck/SelectChecks.cs`: Select tool checks.
