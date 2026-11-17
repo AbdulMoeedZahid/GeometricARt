@@ -19,7 +19,7 @@ namespace GeoART.Engine
     ///
     /// The list is rebuilt lazily by <see cref="Sync"/>: never per pointer move. Edits that keep every count the same
     /// (moving or restyling a shape, moving a user point) are not visible to the signature: call <see cref="MarkDirty"/>
-    /// on every model change.
+    /// on every model change. <see cref="ExcludedShapes"/> drops shapes as sources while they are being transformed.
     /// </summary>
     public sealed class SnapIndex
     {
@@ -37,6 +37,13 @@ namespace GeoART.Engine
         /// reported as <see cref="SnapKind.Intersection"/>. Off by default (plan 3.2). Changing it is picked up by Sync.
         /// </summary>
         public bool IncludeShapeGridCrossings;
+
+        /// <summary>
+        /// Shapes skipped as candidate sources (a transform's own shapes): no endpoints, no centres, no circle divisions,
+        /// and no crossings with other shapes. Null excludes nothing. Not part of the signature: call
+        /// <see cref="MarkDirty"/> after changing it (the set or its contents).
+        /// </summary>
+        public HashSet<EntityId> ExcludedShapes;
 
         public IReadOnlyList<SnapCandidate> Candidates => _candidates;
 
@@ -154,7 +161,9 @@ namespace GeoART.Engine
                 if (layer == null || !layer.Visible) continue;
                 for (int i = 0; i < layer.Shapes.Count; i++)
                 {
-                    switch (layer.Shapes[i])
+                    Shape shape = layer.Shapes[i];
+                    if (IsExcluded(shape)) continue;
+                    switch (shape)
                     {
                         case LineShape line:
                             Add(line.A, SnapKind.Endpoint);
@@ -205,8 +214,10 @@ namespace GeoART.Engine
                 if (layer == null || !layer.Visible) continue;
                 for (int i = 0; i < layer.Shapes.Count; i++)
                 {
-                    if (layer.Shapes[i] is CircleShape circle && IsDrawable(circle)) Add(circle.Center, SnapKind.Center);
-                    else if (layer.Shapes[i] is PolygonShape poly && IsDrawable(poly)) Add(poly.Center, SnapKind.Center);
+                    Shape shape = layer.Shapes[i];
+                    if (IsExcluded(shape)) continue;
+                    if (shape is CircleShape circle && IsDrawable(circle)) Add(circle.Center, SnapKind.Center);
+                    else if (shape is PolygonShape poly && IsDrawable(poly)) Add(poly.Center, SnapKind.Center);
                 }
             }
             for (int li = 0; li < layers.Count; li++)
@@ -215,7 +226,7 @@ namespace GeoART.Engine
                 if (layer == null || !layer.Visible) continue;
                 for (int i = 0; i < layer.Shapes.Count; i++)
                 {
-                    if (!(layer.Shapes[i] is CircleShape circle) || !IsDrawable(circle)) continue;
+                    if (!(layer.Shapes[i] is CircleShape circle) || !IsDrawable(circle) || IsExcluded(circle)) continue;
                     Vec2 c = circle.Center;
                     double r = circle.Radius;
                     for (int k = 0; k < CircleDivisions; k++)   // exact table, shared with GoldenBoards.StarPoint
@@ -234,6 +245,8 @@ namespace GeoART.Engine
             double a = poly.RotationRad + 2.0 * Math.PI * k / poly.Sides;
             return new Vec2(poly.Center.X + poly.Radius * Math.Cos(a), poly.Center.Y + poly.Radius * Math.Sin(a));
         }
+
+        bool IsExcluded(Shape s) => s != null && ExcludedShapes != null && ExcludedShapes.Contains(s.Id);
 
         static bool IsDrawable(CircleShape c) => c.Radius > 0 && !double.IsInfinity(c.Radius) && c.Center.IsFinite;
 

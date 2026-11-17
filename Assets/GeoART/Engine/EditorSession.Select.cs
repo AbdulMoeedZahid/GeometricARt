@@ -6,7 +6,7 @@ namespace GeoART.Engine
 {
     // OWNER: select tool.
     /// <summary>
-    /// The Select tool (<see cref="ToolId.SelectMove"/>; Move comes later). It only chooses shapes: it never edits the
+    /// The Select tool (<see cref="ToolId.SelectMove"/>; Move/Scale/Duplicate: EditorSession.Transform.cs). It only chooses shapes: it never edits the
     /// model, never raises BoardChanged and never adds an undo step. One gesture at a time, routed from
     /// EditorSession.Tools.cs:
     ///   Down    on the board, also when the active layer is hidden. Remembers the selection, so Cancel can restore it.
@@ -129,7 +129,7 @@ namespace GeoART.Engine
         }
 
         /// <summary>Tools that work on the selection; switching to any other tool clears it.</summary>
-        static bool KeepsSelection(ToolId t) => t == ToolId.SelectMove || t == ToolId.Scale || t == ToolId.Duplicate;
+        static bool KeepsSelection(ToolId t) => t == ToolId.SelectMove || IsTransformTool(t);
 
         /// <summary>Makes the selection equal to <paramref name="next"/>. No event; true if it changed. Allocation-free.</summary>
         bool ReplaceSelection(HashSet<EntityId> next)

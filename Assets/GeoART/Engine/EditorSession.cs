@@ -11,6 +11,8 @@ namespace GeoART.Engine
     ///   EditorSession.Layers.cs  add/select/move/delete/visibility/opacity of layers
     ///   EditorSession.Tools.cs   pointer routing, Line and Circle tools, preview ghosts, cursor
     ///   EditorSession.Select.cs  Select tool: marquee and tap-pick, selection queries, pruning on model changes
+    ///   EditorSession.Transform.cs  Move, Scale and Duplicate of the selection; tool fallback when it empties
+    ///   EditorSession.Snap.cs    snap query and candidate cache, H/V lock
     /// Undo/redo is not implemented yet (CanUndo/CanRedo stay false).
     /// </summary>
     public sealed partial class EditorSession : IEditorSession
@@ -173,7 +175,12 @@ namespace GeoART.Engine
             BoardChanged?.Invoke(kind);
             if (pruned) RaiseStateChanged();
         }
-        void RaiseStateChanged() => StateChanged?.Invoke();
+        /// <summary>Normalizes the tool first (a transform tool with an empty selection falls back to Select), then raises.</summary>
+        void RaiseStateChanged()
+        {
+            NormalizeTool();
+            StateChanged?.Invoke();
+        }
         void RaisePreviewChanged() => PreviewChanged?.Invoke();
         void RaiseToast(string message) => Toast?.Invoke(message);
     }
