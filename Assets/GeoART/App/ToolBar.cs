@@ -8,7 +8,8 @@ namespace GeoART.App
     /// Tool picker built as uGUI at runtime (like PlacementControls): a compact vertical column on the RIGHT edge,
     /// vertically centred inside the safe area (the left edge belongs to the layer sidebar).
     ///   Line / Circle / Select   pick the tool (radio buttons); the active one is filled with the accent orange.
-    ///                   Select (marquee-corner icon) sets ToolId.SelectMove: drag a box or tap a stroke to select
+    ///                   Select (marquee-corner icon) sets ToolId.SelectMove: drag a box or tap a stroke to select. It
+    ///                   stays orange in Move, Scale and Duplicate too (the selection tools)
     ///   Dotted          toggles IEditorSession.ToggleDottedLine (orange when on)
     ///   Width           cycles the stroke width Thin -> Medium -> Thick (label shows the current one)
     ///   Grid            switches the tile grid Square <-> Hex (icon and label show the current kind)
@@ -22,9 +23,11 @@ namespace GeoART.App
     /// BoardInputRouter ignores touches that start on it. Visible only while the board is placed (or when the scene
     /// has no IBoardSpace). Event-driven: refreshes on session/placement StateChanged, no per-frame work except a
     /// cheap safe-area comparison.
+    /// The contextual action bar (Move | Scale | Duplicate | Deselect, shown while something is selected in a selection
+    /// tool) is in ToolBar.ActionBar.cs.
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class ToolBar : MonoBehaviour
+    public sealed partial class ToolBar : MonoBehaviour
     {
         [SerializeField] bool show = true;
 
@@ -41,8 +44,8 @@ namespace GeoART.App
         public const float ColumnHeight =
             ButtonCount * ButtonH + (ButtonCount - GroupCount) * Spacing + (GroupCount - 1) * GroupGap;
 
-        enum Glyph { Line, Circle, Dotted, Width, Square, Hex, Tiles, Snap, HV, Select }
-        const int GlyphCount = 10;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
+        enum Glyph { Line, Circle, Dotted, Width, Square, Hex, Tiles, Snap, HV, Select, Move, Scale, Duplicate, Deselect }
+        const int GlyphCount = 14;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
 
         IEditorSession _session;
         IBoardSpace _boardSpace;
@@ -96,6 +99,7 @@ namespace GeoART.App
             _snapBg = CreateButton("Snap", Glyph.Snap, font, ref y, ToggleSnap, out _);
             _hvBg = CreateButton("HV", Glyph.HV, font, ref y, ToggleOrthoLock, out var hvLabel);
             hvLabel.text = "H/V";
+            BuildActionBar(font);
 
             _canvas.enabled = false;
         }
@@ -142,14 +146,19 @@ namespace GeoART.App
             ToolId tool = _session.ActiveTool;
             SetColor(_lineBg, tool == ToolId.Line ? Accent : Idle);
             SetColor(_circleBg, tool == ToolId.Circle ? Accent : Idle);
-            SetColor(_selectBg, tool == ToolId.SelectMove ? Accent : Idle);
+            SetColor(_selectBg, IsSelectionTool(tool) ? Accent : Idle);
             SetColor(_dottedBg, _session.DottedLine ? Accent : Idle);
             SetColor(_snapBg, _session.SnapEnabled ? Accent : Idle);
             SetColor(_hvBg, _session.OrthoLock ? Accent : Idle);
             string width = WidthLabel(_session.Style.Width);
             if (!ReferenceEquals(_widthLabel.text, width)) _widthLabel.text = width;
             RefreshGrid();
+            RefreshActionBar(visible);
         }
+
+        /// <summary>Select and the tools that act on its selection (Move, Scale, Duplicate).</summary>
+        static bool IsSelectionTool(ToolId t) =>
+            t == ToolId.SelectMove || t == ToolId.Move || t == ToolId.Scale || t == ToolId.Duplicate;
 
         void OnBoardChanged(BoardChangeKind kind)
         {
@@ -222,14 +231,23 @@ namespace GeoART.App
         Image CreateButton(string label, Glyph glyph, Font font, ref float y, UnityEngine.Events.UnityAction onClick,
             out Text text)
         {
-            var go = new GameObject(label, typeof(RectTransform), typeof(Image), typeof(Button));
-            var rt = (RectTransform)go.transform;
-            rt.SetParent(_column, false);
+            var bg = MakeButton(label, glyph, font, _column, onClick, out text);
+            var rt = (RectTransform)bg.transform;
             rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
             rt.pivot = new Vector2(0.5f, 1f);
             rt.sizeDelta = new Vector2(ButtonW, ButtonH);
             rt.anchoredPosition = new Vector2(0f, -y);
             y += ButtonH + Spacing;
+            return bg;
+        }
+
+        /// <summary>A rounded button (raycast target) with a 28 px glyph and an 11 pt label; the caller places it.</summary>
+        Image MakeButton(string label, Glyph glyph, Font font, RectTransform parent, UnityEngine.Events.UnityAction onClick,
+            out Text text)
+        {
+            var go = new GameObject(label, typeof(RectTransform), typeof(Image), typeof(Button));
+            var rt = (RectTransform)go.transform;
+            rt.SetParent(parent, false);
 
             var bg = go.GetComponent<Image>();
             bg.sprite = _rounded;
@@ -288,6 +306,7 @@ namespace GeoART.App
             _column.anchorMin = _column.anchorMax = new Vector2(_safeArea.xMax / w, centre / h);
             _column.anchoredPosition = new Vector2(-EdgeMargin, 0f);
             _column.localScale = new Vector3(fit, fit, 1f);
+            PlaceActionBar(w, h, scale, fit);
         }
 
         // ---------- procedural icons (white on transparent, anti-aliased with a signed distance) ----------
@@ -380,6 +399,37 @@ namespace GeoART.App
                     }
                     return d - 0.045f;
                 }
+                case Glyph.Move:   // four-way arrow
+                {
+                    var o = new Vector2(0.5f, 0.5f);
+                    float d = Mathf.Min(SegmentDistance(p, new Vector2(0.18f, 0.5f), new Vector2(0.82f, 0.5f)),
+                        SegmentDistance(p, new Vector2(0.5f, 0.18f), new Vector2(0.5f, 0.82f))) - 0.035f;
+                    for (int k = 0; k < 4; k++)
+                    {
+                        var u = k == 0 ? Vector2.right : k == 1 ? Vector2.left : k == 2 ? Vector2.up : Vector2.down;
+                        var n = new Vector2(-u.y, u.x);
+                        Vector2 t = o + 0.32f * u;
+                        d = Mathf.Min(d, SegmentDistance(p, t, t - 0.12f * u + 0.10f * n) - 0.035f);
+                        d = Mathf.Min(d, SegmentDistance(p, t, t - 0.12f * u - 0.10f * n) - 0.035f);
+                    }
+                    return d;
+                }
+                case Glyph.Scale:   // small box, big corner, diagonal arrow out of the box
+                {
+                    float d = Mathf.Abs(BoxDistance(p, new Vector2(0.34f, 0.34f), 0.14f)) - 0.035f;
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.18f, 0.82f), new Vector2(0.82f, 0.82f)) - 0.035f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.82f, 0.82f), new Vector2(0.82f, 0.18f)) - 0.035f);
+                    var tip = new Vector2(0.74f, 0.74f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.52f, 0.52f), tip) - 0.035f);
+                    d = Mathf.Min(d, SegmentDistance(p, tip, new Vector2(0.6f, 0.74f)) - 0.035f);
+                    return Mathf.Min(d, SegmentDistance(p, tip, new Vector2(0.74f, 0.6f)) - 0.035f);
+                }
+                case Glyph.Duplicate:   // two overlapping squares
+                    return Mathf.Min(Mathf.Abs(BoxDistance(p, new Vector2(0.42f, 0.42f), 0.2f)),
+                        Mathf.Abs(BoxDistance(p, new Vector2(0.6f, 0.6f), 0.2f))) - 0.035f;
+                case Glyph.Deselect:   // an X
+                    return Mathf.Min(SegmentDistance(p, new Vector2(0.26f, 0.26f), new Vector2(0.74f, 0.74f)),
+                        SegmentDistance(p, new Vector2(0.26f, 0.74f), new Vector2(0.74f, 0.26f))) - 0.045f;
                 case Glyph.Tiles:   // 3x3 dots
                 {
                     float d = float.MaxValue;

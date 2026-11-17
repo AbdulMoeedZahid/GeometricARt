@@ -6,7 +6,7 @@ namespace GeoART.BoardRender
 {
     /// <summary>
     /// Draws the board and the session's model in the transform's local XZ plane (A-2/A-3/A-4).
-    /// Five meshes, one draw call each, rebuilt only when dirty (render queues 3000..3004, in this order):
+    /// Six meshes, one draw call each, rebuilt only when dirty (render queues 3000..3005, in this order):
     ///   Base    - translucent sheet, outer frame (D-04), and the dashed outline of a corner-registered surface when it
     ///             is larger than the board (skipped when showBase is off), plus the dashed square or hex tile edges
     ///             from <see cref="TileGrid"/> (D-07; drawn whenever showGrid is on, so also in AR)
@@ -15,6 +15,10 @@ namespace GeoART.BoardRender
     ///             the shape's own stroke again on top, so it reads above its neighbours  (BoardChanged/StateChanged)
     ///   Candidates - snap candidate dots, tinted and sized by SnapKind tier               (BoardChanged/StateChanged)
     ///   Overlay - tool preview ghosts (incl. the engine's snap hover ring), cursor         (PreviewChanged/StateChanged)
+    ///   SelectionFrame - while something is selected: a dashed cyan box around the selection's union bounds and the
+    ///             pivot marker (ring and "+") at its centre, the point Move/Scale work about. Bounds come from the
+    ///             engine's <see cref="GeoART.Engine.SelectionGeometry"/>, so the drawn pivot is the engine's pivot.
+    ///             It stays on the originals during a transform drag (the ghosts move)    (with Selection)
     /// Candidates have their own mesh so a drag (PreviewChanged every frame) never rebuilds hundreds of dots.
     /// Binds to the IEditorSession in ServiceHub at Start, or explicitly via <see cref="Bind"/>.
     /// The side can change at runtime (<see cref="SetSideMeters"/>, corner placement); stroke widths scale with it,
@@ -59,6 +63,10 @@ namespace GeoART.BoardRender
         [SerializeField] Color surfaceOutlineColor = new Color(0.1f, 0.8f, 1f, 0.9f);
         [SerializeField, Tooltip("Halo behind selected shapes.")]
         Color selectionColor = new Color(0.1f, 0.75f, 1f, 0.55f);
+        [SerializeField, Tooltip("Dashed box around the selection's bounds.")]
+        Color selectionFrameColor = new Color(0.1f, 0.75f, 1f, 0.9f);
+        [SerializeField, Tooltip("Pivot marker (ring and plus) at the centre of the selection's bounds.")]
+        Color pivotColor = new Color(0.1f, 0.75f, 1f, 1f);
 
         // Heights above the board plane (metres) so layers never z-fight with each other.
         const float ShapesLift = 0.0008f;
@@ -79,7 +87,7 @@ namespace GeoART.BoardRender
 
         IEditorSession _session;
         bool _subscribed;
-        Part _base, _shapes, _selection, _candidates, _overlay;
+        Part _base, _shapes, _selection, _candidates, _overlay, _selectionFrame;
         bool _baseDirty = true, _shapesDirty = true, _selectionDirty = true, _candidatesDirty = true, _overlayDirty = true;
         int _lastGridN = -1;
         GridKind _lastGridKind = (GridKind)(-1);
@@ -103,6 +111,7 @@ namespace GeoART.BoardRender
             _selection = new Part(transform, "Selection", material, 3002);
             _candidates = new Part(transform, "Candidates", material, 3003);
             _overlay = new Part(transform, "Overlay", material, 3004);
+            _selectionFrame = new Part(transform, "SelectionFrame", material, 3005);
         }
 
         void Start()
@@ -126,6 +135,7 @@ namespace GeoART.BoardRender
             _selection?.Dispose();
             _candidates?.Dispose();
             _overlay?.Dispose();
+            _selectionFrame?.Dispose();
         }
 
         /// <summary>Attach to a session (real or stub). Pass null to show an empty board.</summary>
@@ -320,12 +330,15 @@ namespace GeoART.BoardRender
         /// <summary>
         /// Selected shapes on visible layers: first a solid halo in <see cref="selectionColor"/>, wider than the stroke by
         /// <see cref="SelectionHaloMeters"/> on each side, then the shape's own stroke (layer opacity applied) on top.
+        /// Also rebuilds the SelectionFrame part from the same shapes' union bounds.
         /// </summary>
         void RebuildSelection(Board board)
         {
             var mb = _selection.Builder;
             mb.Clear();
             var ids = _session?.Selection?.Ids;
+            bool anyBounds = false;
+            GeoART.Engine.BoardRect bounds = default;
             if (board != null && ids != null && ids.Count > 0)
             {
                 float haloExtra = 2f * SelectionHaloMeters * StrokeScale;
@@ -336,6 +349,11 @@ namespace GeoART.BoardRender
                     foreach (var shape in layer.Shapes)
                     {
                         if (shape == null || !ids.Contains(shape.Id)) continue;
+                        if (GeoART.Engine.SelectionGeometry.TryGetBounds(shape, out var b))
+                        {
+                            bounds = anyBounds ? GeoART.Engine.BoardRect.Union(bounds, b) : b;
+                            anyBounds = true;
+                        }
                         AddShapeStroke(mb, shape, selectionColor, SelectionLift, WidthOf(shape.Style.Width) + haloExtra, false);
                         if (opacity > 0f)
                             AddShape(mb, shape, WithOpacity(ToColor32(shape.Style.Color), opacity), SelectionLift);
@@ -343,6 +361,36 @@ namespace GeoART.BoardRender
                 }
             }
             _selection.Apply();
+            RebuildSelectionFrame(anyBounds, bounds);
+        }
+
+        /// <summary>
+        /// The selection's dashed bounds box (padded by the halo width) and the pivot marker at the bounds centre; empty
+        /// when nothing selected has bounds.
+        /// </summary>
+        void RebuildSelectionFrame(bool any, GeoART.Engine.BoardRect b)
+        {
+            var mb = _selectionFrame.Builder;
+            mb.Clear();
+            if (any && b.IsFinite && sideMeters > 0f)
+            {
+                float s = StrokeScale;
+                double pad = SelectionHaloMeters * s / sideMeters;   // metres -> board units
+                _poly.Clear();
+                _poly.Add(P(new Vec2(b.MinX - pad, b.MinY - pad), SelectionLift));
+                _poly.Add(P(new Vec2(b.MaxX + pad, b.MinY - pad), SelectionLift));
+                _poly.Add(P(new Vec2(b.MaxX + pad, b.MaxY + pad), SelectionLift));
+                _poly.Add(P(new Vec2(b.MinX - pad, b.MaxY + pad), SelectionLift));
+                mb.AddPolyline(_poly, true, 0.0009f * s, selectionFrameColor, true, StrokeDash, StrokeGap);
+
+                var c = new Vec2((b.MinX + b.MaxX) * 0.5, (b.MinY + b.MaxY) * 0.5);
+                float width = 0.0012f * s;
+                mb.AddCircle(P(c, SelectionLift), 0.0045f * s, width, pivotColor);
+                double arm = 0.006f * s / sideMeters;
+                mb.AddSegment(P(new Vec2(c.X - arm, c.Y), SelectionLift), P(new Vec2(c.X + arm, c.Y), SelectionLift), width, pivotColor);
+                mb.AddSegment(P(new Vec2(c.X, c.Y - arm), SelectionLift), P(new Vec2(c.X, c.Y + arm), SelectionLift), width, pivotColor);
+            }
+            _selectionFrame.Apply();
         }
 
         /// <summary>Candidate tiers: 0 minor grid, 1 grid intersections, 2 construction points, 3 shape points.</summary>
