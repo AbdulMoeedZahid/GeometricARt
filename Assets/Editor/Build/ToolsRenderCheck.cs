@@ -21,7 +21,9 @@ namespace GeoART.EditorTools
     ///   3. renders an open Select marquee (orange dotted box, cyan halo on the enclosed shapes) on the sheet and on a
     ///      dark table (select-*.png, select-dark-*.png);
     ///   4. renders open Move and Scale drags of a selection (cyan halos, dashed selection frame and pivot marker on the
-    ///      originals, orange ghosts, cursor, hover ring when snapped): xform-*.png, xform-dark-*.png, xform-scale-*.png.
+    ///      originals, orange ghosts, cursor, hover ring when snapped): xform-*.png, xform-dark-*.png, xform-scale-*.png;
+    ///   5. renders the test board after two Undos (undo-*.png): the base design without the open green ghost, the blue
+    ///      dotted circle and the tiny circle, so BoardView redraws from a swapped-in board.
     /// Batch (needs graphics, so no -nographics):
     ///   -executeMethod GeoART.EditorTools.ToolsRenderCheck.RunBatch   (PNGs go to $GEOART_RENDER_OUT or Logs/GeoARtRenderCheck)
     /// </summary>
@@ -89,6 +91,9 @@ namespace GeoART.EditorTools
             RenderScenario(outDir, "xform-", s => DrawTransformDesign(s, ToolId.Move), showBase: true, dark: false);
             RenderScenario(outDir, "xform-dark-", s => DrawTransformDesign(s, ToolId.Move), showBase: false, dark: true);
             RenderScenario(outDir, "xform-scale-", s => DrawTransformDesign(s, ToolId.Scale), showBase: true, dark: false);
+            // 5. Undo: the first Undo cancels the open green ghost and removes the last stroke (blue dotted circle), the
+            //    second removes the tiny circle.
+            RenderScenario(outDir, "undo-", s => { DrawTestDesign(s); s.Undo(); s.Undo(); }, showBase: true, dark: false);
         }
 
         static void RenderScenario(string outDir, string prefix, Action<EditorSession> draw, bool showBase, bool dark)

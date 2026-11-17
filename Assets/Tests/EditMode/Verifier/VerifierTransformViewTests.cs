@@ -482,19 +482,19 @@ namespace GeoART.Tests.Verifier
                 Assert.AreEqual(BarButtonH, rt.rect.height, 0.01f, $"{n} is {BarButtonH} tall");
             }
 
-            // GlyphCount 14: four new glyphs plus the rounded sprite at index GlyphCount, all distinct.
+            // GlyphCount 15: four action bar glyphs, the Undo glyph, plus the rounded sprite at index GlyphCount, all distinct.
             var f = typeof(ToolBar).GetField("_textures", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(f, "ToolBar._textures");
             var table = (Texture2D[])f.GetValue(tb);
-            Assert.AreEqual(15, table.Length, "14 glyphs + the rounded sprite");
+            Assert.AreEqual(16, table.Length, "15 glyphs (incl. Undo) + the rounded sprite");
             var distinct = new HashSet<Texture2D>();
             foreach (var t in table)
             {
                 Assert.NotNull(t, "every glyph slot is filled (a missing GlyphCount bump overwrites one)");
                 distinct.Add(t);
             }
-            Assert.AreEqual(15, distinct.Count, "all distinct");
-            Assert.AreSame(rounded.texture, table[14], "the rounded sprite sits at index GlyphCount (14)");
+            Assert.AreEqual(16, distinct.Count, "all distinct");
+            Assert.AreSame(rounded.texture, table[15], "the rounded sprite sits at index GlyphCount (15)");
             foreach (var t in icons) CollectionAssert.Contains(table, t, "every icon is in the table (freed on destroy)");
         }
 

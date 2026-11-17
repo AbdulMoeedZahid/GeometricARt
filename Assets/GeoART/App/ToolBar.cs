@@ -26,6 +26,8 @@ namespace GeoART.App
     /// cheap safe-area comparison.
     /// The contextual action bar (Move | Scale | Duplicate | Deselect, shown while something is selected in a selection
     /// tool) is in ToolBar.ActionBar.cs.
+    /// Undo (top-left of the safe area, dimmed when there is nothing to undo, hidden unless the board is Placed) is in
+    /// ToolBar.Undo.cs.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed partial class ToolBar : MonoBehaviour
@@ -45,8 +47,8 @@ namespace GeoART.App
         public const float ColumnHeight =
             ButtonCount * ButtonH + (ButtonCount - GroupCount) * Spacing + (GroupCount - 1) * GroupGap;
 
-        enum Glyph { Line, Circle, Dotted, Width, Square, Hex, Tiles, Snap, HV, Select, Move, Scale, Duplicate, Deselect }
-        const int GlyphCount = 14;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
+        enum Glyph { Line, Circle, Dotted, Width, Square, Hex, Tiles, Snap, HV, Select, Move, Scale, Duplicate, Deselect, Undo }
+        const int GlyphCount = 15;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
 
         IEditorSession _session;
         IBoardSpace _boardSpace;
@@ -102,6 +104,7 @@ namespace GeoART.App
             _hvBg = CreateButton("HV", Glyph.HV, font, ref y, ToggleOrthoLock, out var hvLabel);
             hvLabel.text = "H/V";
             BuildActionBar(font);
+            BuildUndoButton(font);
 
             _canvas.enabled = false;
         }
@@ -156,6 +159,7 @@ namespace GeoART.App
             if (!ReferenceEquals(_widthLabel.text, width)) _widthLabel.text = width;
             RefreshGrid();
             RefreshActionBar(visible);
+            RefreshUndo(visible);
         }
 
         /// <summary>Select and the tools that act on its selection (Move, Scale, Duplicate).</summary>
@@ -165,6 +169,7 @@ namespace GeoART.App
         void OnBoardChanged(BoardChangeKind kind)
         {
             if ((kind & (BoardChangeKind.Grid | BoardChangeKind.Reset)) != 0) RefreshGrid();
+            RefreshUndo(_canvas.enabled);   // CanUndo changes only together with BoardChanged (no StateChanged)
         }
 
         void RefreshGrid()
@@ -320,6 +325,7 @@ namespace GeoART.App
             _column.anchoredPosition = new Vector2(-EdgeMargin, 0f);
             _column.localScale = new Vector3(fit, fit, 1f);
             PlaceActionBar(w, h, scale, fit);
+            PlaceUndoButton(w, h, scale, fit);
         }
 
         // ---------- procedural icons (white on transparent, anti-aliased with a signed distance) ----------
@@ -440,6 +446,21 @@ namespace GeoART.App
                 case Glyph.Duplicate:   // two overlapping squares
                     return Mathf.Min(Mathf.Abs(BoxDistance(p, new Vector2(0.42f, 0.42f), 0.2f)),
                         Mathf.Abs(BoxDistance(p, new Vector2(0.6f, 0.6f), 0.2f))) - 0.035f;
+                case Glyph.Undo:   // U-turn arrow pointing back (left): top bar, right half-ring, bottom bar, arrowhead
+                {
+                    var c = new Vector2(0.58f, 0.435f);
+                    const float r = 0.19f;
+                    var top = new Vector2(0.58f, 0.625f);
+                    var bottom = new Vector2(0.58f, 0.245f);
+                    var tip = new Vector2(0.24f, 0.625f);
+                    float d = p.x >= c.x ? Mathf.Abs(Vector2.Distance(p, c) - r)
+                                         : Mathf.Min(Vector2.Distance(p, top), Vector2.Distance(p, bottom));
+                    d = Mathf.Min(d, SegmentDistance(p, tip, top));
+                    d = Mathf.Min(d, SegmentDistance(p, bottom, new Vector2(0.38f, 0.245f)));
+                    d = Mathf.Min(d, SegmentDistance(p, tip, new Vector2(0.37f, 0.755f)));
+                    d = Mathf.Min(d, SegmentDistance(p, tip, new Vector2(0.37f, 0.495f)));
+                    return d - 0.045f;
+                }
                 case Glyph.Deselect:   // an X
                     return Mathf.Min(SegmentDistance(p, new Vector2(0.26f, 0.26f), new Vector2(0.74f, 0.74f)),
                         SegmentDistance(p, new Vector2(0.26f, 0.74f), new Vector2(0.74f, 0.26f))) - 0.045f;
