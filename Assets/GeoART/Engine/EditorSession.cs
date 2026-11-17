@@ -13,7 +13,7 @@ namespace GeoART.Engine
     ///   EditorSession.Select.cs  Select tool: marquee and tap-pick, selection queries, pruning on model changes
     ///   EditorSession.Transform.cs  Move, Scale and Duplicate of the selection; tool fallback when it empties
     ///   EditorSession.Snap.cs    snap query and candidate cache, H/V lock
-    /// Undo/redo is not implemented yet (CanUndo/CanRedo stay false).
+    ///   EditorSession.Undo.cs    undo/redo history (board snapshots)
     /// </summary>
     public sealed partial class EditorSession : IEditorSession
     {
@@ -90,8 +90,6 @@ namespace GeoART.Engine
 
         /// <summary>Snap partial: the model changed (called before BoardChanged listeners run), e.g. mark candidates dirty.</summary>
         partial void OnModelChanged(BoardChangeKind kind);
-        public bool CanUndo => false;
-        public bool CanRedo => false;
 
         public StrokeStyle Style
         {
@@ -116,6 +114,7 @@ namespace GeoART.Engine
         {
             n = Math.Max(Board.MinGridN, Math.Min(Board.MaxGridN, n));
             if (_board.GridN == n) return;
+            RecordUndo(UndoLabels.Tiles);
             _board.GridN = n;
             RaiseBoardChanged(BoardChangeKind.Grid);
         }
@@ -124,16 +123,33 @@ namespace GeoART.Engine
         {
             if (kind != GridKind.Square && kind != GridKind.Hex) return;
             if (_board.GridKind == kind) return;
+            RecordUndo(UndoLabels.GridType);
             _board.GridKind = kind;
             RaiseBoardChanged(BoardChangeKind.Grid);
         }
 
-        public void Undo() { }
-        public void Redo() { }
+        /// <summary>
+        /// Undoable: swaps in a fresh board (one "Layer 1", 2x2 square grid) that keeps <see cref="Board.NextId"/>, so no
+        /// id is ever reissued. The history is kept.
+        /// </summary>
+        public void ClearBoard()
+        {
+            OnBoardReplaced();
+            HistoryStep step = CaptureStep(UndoLabels.ClearBoard);
+            var fresh = new Board { NextId = _board.NextId };
+            PushStep(step);
+            SwapInBoard(fresh);
+        }
 
-        public void ClearBoard() => LoadBoard(GoldenBoards.Empty());
-
+        /// <summary>A different document: clears the undo and redo history first, then swaps the board in.</summary>
         public void LoadBoard(Board b)
+        {
+            ClearHistory();
+            SwapInBoard(b);
+        }
+
+        /// <summary>Cancels any gesture, swaps the board, clears the selection; BoardChanged(Reset), StateChanged, PreviewChanged.</summary>
+        void SwapInBoard(Board b)
         {
             OnBoardReplaced();
             _board = b ?? GoldenBoards.Empty();

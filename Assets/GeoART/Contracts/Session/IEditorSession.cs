@@ -50,15 +50,15 @@ namespace GeoART.Contracts
         void SetGridKind(GridKind kind);                          // square or hex tiles; read back from Board.GridKind
 
         // history + lifecycle
-        bool CanUndo { get; }
+        bool CanUndo { get; }                                     // true after any undoable edit (strokes, transforms, layer and grid edits, ClearBoard); changes only together with BoardChanged
         bool CanRedo { get; }
-        void Undo();
-        void Redo();
-        void ClearBoard();
-        void LoadBoard(Board b);                                  // resets history
+        void Undo();                                              // reverts the last edit (cancels an open gesture first); toasts "Nothing to undo" when empty
+        void Redo();                                              // re-applies the last undone edit; any new edit clears it
+        void ClearBoard();                                        // undoable
+        void LoadBoard(Board b);                                  // resets history (CanUndo/CanRedo false)
 
-        event Action<BoardChangeKind> BoardChanged;               // model changed
-        event Action StateChanged;                                // tool/selection/style/undo availability/hint
+        event Action<BoardChangeKind> BoardChanged;               // model changed; Undo/Redo raise it with BoardChangeKind.History
+        event Action StateChanged;                                // tool/selection/style/hint; also after Undo/Redo (undo availability: see CanUndo)
         event Action PreviewChanged;                              // ghosts/cursor (high frequency, renderer only)
         event Action<string> Toast;                               // UI shows toasts
     }
