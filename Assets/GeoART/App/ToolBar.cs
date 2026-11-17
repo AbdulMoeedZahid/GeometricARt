@@ -7,14 +7,15 @@ namespace GeoART.App
     /// <summary>
     /// Tool picker built as uGUI at runtime (like PlacementControls): a compact vertical column on the RIGHT edge,
     /// vertically centred inside the safe area (the left edge belongs to the layer sidebar).
-    ///   Line / Circle   select the tool; the active one is filled with the accent orange
+    ///   Line / Circle / Select   pick the tool (radio buttons); the active one is filled with the accent orange.
+    ///                   Select (marquee-corner icon) sets ToolId.SelectMove: drag a box or tap a stroke to select
     ///   Dotted          toggles IEditorSession.ToggleDottedLine (orange when on)
     ///   Width           cycles the stroke width Thin -> Medium -> Thick (label shows the current one)
     ///   Grid            switches the tile grid Square <-> Hex (icon and label show the current kind)
     ///   Tiles           cycles tiles per side 1 -> 2 -> 3 -> 4 -> 1 (label "2x2" etc.)
     ///   Snap            toggles IEditorSession.SetSnapEnabled (orange when on; on by default)
     ///   HV              toggles IEditorSession.SetOrthoLock: Line tool draws horizontal/vertical lines (orange when on)
-    /// Eight buttons in four groups of two, about 520 reference px tall: fits a 390x844 portrait screen with room for
+    /// Nine buttons in four groups (3, 2, 2, 2), 550 reference px tall: fits a 390x844 portrait screen with room for
     /// the placement row and the coach text. Shorter screens (landscape: Android 16 ignores the portrait lock on large
     /// screens) shrink the column to stay between the two, see <see cref="ApplySafeArea"/>.
     /// Icons are drawn procedurally into small textures once in Awake. Every button is a raycast target, so
@@ -29,19 +30,19 @@ namespace GeoART.App
 
         static readonly Color Accent = new Color(1f, 0.42f, 0f, 0.95f);
         static readonly Color Idle = new Color(0.08f, 0.08f, 0.1f, 0.78f);
-        // ButtonH went from 58 to 56 when the column grew from 6 to 8 buttons (Snap, HV).
-        const float ButtonW = 56f, ButtonH = 56f, Spacing = 8f, GroupGap = 14f, EdgeMargin = 8f;
+        // ButtonH went from 58 to 56 when the column grew from 6 to 8 buttons (Snap, HV), and from 56 to 52 at 9 (Select).
+        const float ButtonW = 56f, ButtonH = 52f, Spacing = 8f, GroupGap = 14f, EdgeMargin = 8f;
         // Screen-height fractions the column stays clear of: PlacementControls' row ends 11% above the safe-area bottom
         // (its Re-place button shows while the bar does), DevHud's coach text starts 20% below the top of the screen.
         const float PlacementRowTop = 0.11f, CoachTextBottom = 0.80f, MinFit = 0.4f;
-        const int ButtonCount = 8, GroupCount = 4;
+        const int ButtonCount = 9, GroupCount = 4;
 
-        /// <summary>Column height in reference px: 8 buttons, one spacing inside each pair, a gap between pairs.</summary>
+        /// <summary>Column height in reference px: 9 buttons, one spacing between buttons of a group, a gap between groups.</summary>
         public const float ColumnHeight =
             ButtonCount * ButtonH + (ButtonCount - GroupCount) * Spacing + (GroupCount - 1) * GroupGap;
 
-        enum Glyph { Line, Circle, Dotted, Width, Square, Hex, Tiles, Snap, HV }
-        const int GlyphCount = 9;
+        enum Glyph { Line, Circle, Dotted, Width, Square, Hex, Tiles, Snap, HV, Select }
+        const int GlyphCount = 10;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
 
         IEditorSession _session;
         IBoardSpace _boardSpace;
@@ -49,7 +50,7 @@ namespace GeoART.App
         RectTransform _column;
         Rect _safeArea;
         int _screenW, _screenH;   // ApplySafeArea depends on the screen size too, not just the safe area
-        Image _lineBg, _circleBg, _dottedBg, _snapBg, _hvBg;
+        Image _lineBg, _circleBg, _selectBg, _dottedBg, _snapBg, _hvBg;
         Text _widthLabel, _gridLabel, _tilesLabel;
         RawImage _gridIcon;
         Texture _squareGlyph, _hexGlyph;
@@ -81,6 +82,7 @@ namespace GeoART.App
             float y = 0f;
             _lineBg = CreateButton("Line", Glyph.Line, font, ref y, () => _session?.SetTool(ToolId.Line), out _);
             _circleBg = CreateButton("Circle", Glyph.Circle, font, ref y, () => _session?.SetTool(ToolId.Circle), out _);
+            _selectBg = CreateButton("Select", Glyph.Select, font, ref y, () => _session?.SetTool(ToolId.SelectMove), out _);
             y += GroupGap - Spacing;
             _dottedBg = CreateButton("Dotted", Glyph.Dotted, font, ref y, () => _session?.ToggleDottedLine(), out _);
             CreateButton("Medium", Glyph.Width, font, ref y, CycleWidth, out _widthLabel);
@@ -140,6 +142,7 @@ namespace GeoART.App
             ToolId tool = _session.ActiveTool;
             SetColor(_lineBg, tool == ToolId.Line ? Accent : Idle);
             SetColor(_circleBg, tool == ToolId.Circle ? Accent : Idle);
+            SetColor(_selectBg, tool == ToolId.SelectMove ? Accent : Idle);
             SetColor(_dottedBg, _session.DottedLine ? Accent : Idle);
             SetColor(_snapBg, _session.SnapEnabled ? Accent : Idle);
             SetColor(_hvBg, _session.OrthoLock ? Accent : Idle);
@@ -240,8 +243,8 @@ namespace GeoART.App
             irt.SetParent(rt, false);
             irt.anchorMin = irt.anchorMax = new Vector2(0.5f, 1f);
             irt.pivot = new Vector2(0.5f, 1f);
-            irt.sizeDelta = new Vector2(30f, 30f);
-            irt.anchoredPosition = new Vector2(0f, -5f);
+            irt.sizeDelta = new Vector2(28f, 28f);
+            irt.anchoredPosition = new Vector2(0f, -3f);
             var icon = iconGo.GetComponent<RawImage>();
             icon.texture = MakeGlyph(glyph);
             icon.raycastTarget = false;
@@ -364,6 +367,18 @@ namespace GeoART.App
                     d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.84f, 0.4f), new Vector2(0.84f, 0.6f)) - 0.035f);
                     d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.4f, 0.16f), new Vector2(0.6f, 0.16f)) - 0.035f);
                     return Mathf.Min(d, SegmentDistance(p, new Vector2(0.4f, 0.84f), new Vector2(0.6f, 0.84f)) - 0.035f);
+                }
+                case Glyph.Select:   // four corner brackets of a marquee
+                {
+                    float d = float.MaxValue;
+                    for (int k = 0; k < 4; k++)
+                    {
+                        var c = new Vector2((k & 1) == 0 ? 0.2f : 0.8f, (k & 2) == 0 ? 0.2f : 0.8f);
+                        float sx = c.x < 0.5f ? 1f : -1f, sy = c.y < 0.5f ? 1f : -1f;
+                        d = Mathf.Min(d, SegmentDistance(p, c, c + new Vector2(0.22f * sx, 0f)));
+                        d = Mathf.Min(d, SegmentDistance(p, c, c + new Vector2(0f, 0.22f * sy)));
+                    }
+                    return d - 0.045f;
                 }
                 case Glyph.Tiles:   // 3x3 dots
                 {
