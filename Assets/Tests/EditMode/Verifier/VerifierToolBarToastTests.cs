@@ -140,7 +140,7 @@ namespace GeoART.Tests.Verifier
         }
 
         [Test]
-        public void ToolBarEightButtonsFitInsideCanvas()
+        public void ToolBarNineButtonsFitInsideCanvas()
         {
             Add<ToolBar>();
             _space.PlaceAtReticle();
@@ -148,7 +148,7 @@ namespace GeoART.Tests.Verifier
             var canvas = _go.GetComponentInChildren<Canvas>(true);
             Vector3[] cc = new Vector3[4], bc = new Vector3[4];
             ((RectTransform)canvas.transform).GetWorldCorners(cc);
-            string[] names = { "Line", "Circle", "Dotted", "Medium", "Square", "2x2", "Snap", "HV" };
+            string[] names = { "Line", "Circle", "Select", "Dotted", "Medium", "Square", "2x2", "Snap", "HV" };
             float prevTop = float.MaxValue;
             foreach (var n in names)
             {

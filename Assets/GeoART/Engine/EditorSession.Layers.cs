@@ -22,6 +22,7 @@ namespace GeoART.Engine
                 RaiseToast($"Max {MaxLayers} layers");
                 return EntityId.None;
             }
+            RecordUndo(UndoLabels.AddLayer);
             var layer = new Layer(_board.NewId(), NextLayerName());
             _board.Layers.Add(layer);
             _board.ActiveLayerId = layer.Id;
@@ -30,8 +31,10 @@ namespace GeoART.Engine
             return layer.Id;
         }
 
+        /// <summary>Makes the layer active. Not an undo step; ends a layer-opacity merge even when nothing changes.</summary>
         public void SelectLayer(EntityId id)
         {
+            _opacityStepLayer = EntityId.None;
             if (_board.ActiveLayerId == id || _board.FindLayer(id) == null) return;
             _board.ActiveLayerId = id;
             RaiseBoardChanged(BoardChangeKind.Layers);
@@ -45,6 +48,7 @@ namespace GeoART.Engine
             if (from < 0) return;
             int to = Math.Max(0, Math.Min(_board.Layers.Count - 1, newIndex));
             if (to == from) return;
+            RecordUndo(UndoLabels.LayerOrder);
             Layer layer = _board.Layers[from];
             _board.Layers.RemoveAt(from);
             _board.Layers.Insert(to, layer);
@@ -59,6 +63,7 @@ namespace GeoART.Engine
                 RaiseToast("Can't delete the only layer");
                 return;
             }
+            RecordUndo(UndoLabels.DeleteLayer);   // before the selection removal: the step keeps the pre-delete selection
             Layer bottom = _board.Layers[0];
             _board.Layers.RemoveAt(0);
             for (int i = 0; i < bottom.Shapes.Count; i++)
@@ -72,11 +77,15 @@ namespace GeoART.Engine
         {
             Layer layer = _board.FindLayer(id);
             if (layer == null || layer.Visible == visible) return;
+            RecordUndo(visible ? UndoLabels.ShowLayer : UndoLabels.HideLayer);
             layer.Visible = visible;
             RaiseBoardChanged(BoardChangeKind.Layers);
         }
 
-        /// <summary>Sets the layer's stroke opacity, clamped to [0,1]; NaN is ignored.</summary>
+        /// <summary>
+        /// Sets the layer's stroke opacity, clamped to [0,1]; NaN is ignored. Consecutive calls on one layer merge into one
+        /// undo step until anything else is recorded, undone or redone, or SelectLayer is called (one popup session).
+        /// </summary>
         public void SetLayerOpacity(EntityId id, double opacity)
         {
             if (double.IsNaN(opacity)) return;
@@ -84,6 +93,11 @@ namespace GeoART.Engine
             if (layer == null) return;
             opacity = Math.Max(0.0, Math.Min(1.0, opacity));
             if (layer.Opacity == opacity) return;
+            if (_opacityStepLayer != id)
+            {
+                RecordUndo(UndoLabels.LayerOpacity);
+                _opacityStepLayer = id;
+            }
             layer.Opacity = opacity;
             RaiseBoardChanged(BoardChangeKind.Layers);
         }
