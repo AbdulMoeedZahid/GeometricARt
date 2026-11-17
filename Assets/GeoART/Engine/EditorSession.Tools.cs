@@ -30,6 +30,8 @@ namespace GeoART.Engine
     /// clamped to the board and alignment-snapped along the axis (TryOrthoEnd in EditorSession.Snap.cs). Toggling it
     /// mid-gesture re-tracks the ghost at once. With the lock on, tap-to-connect commits only a pair that shares X or Y
     /// exactly; any other pair commits nothing, clears pending and raises <see cref="OrthoLockToast"/>.
+    ///
+    /// Every committed stroke is one undo step (EditorSession.Undo.cs).
     /// </summary>
     public sealed partial class EditorSession
     {
@@ -275,6 +277,7 @@ namespace GeoART.Engine
                 RaiseToast(HiddenLayerToast);
                 return;
             }
+            RecordUndo(_gestureTool == ToolId.Circle ? UndoLabels.Circle : UndoLabels.Line);
             Shape shape = _gestureTool == ToolId.Circle
                 ? new CircleShape(_board.NewId(), _anchor, size, _style)
                 : (Shape)new LineShape(_board.NewId(), _anchor, _current, _style);
@@ -314,6 +317,7 @@ namespace GeoART.Engine
                 RaiseToast(HiddenLayerToast);
                 return;
             }
+            RecordUndo(UndoLabels.Line);
             layer.Shapes.Add(new LineShape(_board.NewId(), a, q, _style));
             RaiseBoardChanged(BoardChangeKind.Shapes);
         }

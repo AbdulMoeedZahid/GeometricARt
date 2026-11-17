@@ -357,6 +357,9 @@ namespace GeoART.Engine
         {
             bool dup = _gestureTool == ToolId.Duplicate;
             if (dup) _xfNewIds.Clear();
+            // One undo step per commit, captured before any edit or NewId; pushed only if something changed.
+            HistoryStep step = CaptureStep(dup ? UndoLabels.Duplicate
+                : _gestureTool == ToolId.Scale ? UndoLabels.Scale : UndoLabels.Move);
             int n = 0;
             for (int i = 0; i < _xfItems.Count; i++)
             {
@@ -366,7 +369,6 @@ namespace GeoART.Engine
                 // Normally unreachable (any second touch cancels), but never touch a shape that left the selection.
                 if (src == null || !Selection.Ids.Contains(src.Id)) continue;
                 if (layer == null || !layer.Visible || _board.FindLayer(layer.Id) != layer) continue;
-                // Future undo: snapshot item.Shape.Clone() before Apply here.
                 if (dup)
                 {
                     Shape copy = src.Clone();
@@ -389,6 +391,7 @@ namespace GeoART.Engine
                 return;
             }
 
+            PushStep(step);
             RaiseBoardChanged(BoardChangeKind.Shapes);   // snap candidates are rebuilt for the new geometry
             if (dup)
             {

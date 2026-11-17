@@ -10,7 +10,8 @@ namespace GeoART.Contracts
 
     /// <summary>
     /// Committed geometry. All fields are value types, so <see cref="Clone"/> is a full deep copy;
-    /// commands must store clones, never shared instances (P2 4.2).
+    /// commands must store clones, never shared instances (P2 4.2). Undo snapshots rely on Clone being deep: a new
+    /// reference-type field needs a real deep copy here.
     /// </summary>
     public abstract class Shape
     {
@@ -79,6 +80,17 @@ namespace GeoART.Contracts
 
         public Layer() { }
         public Layer(EntityId id, string name) { Id = id; Name = name; }
+
+        /// <summary>Deep copy: same id, name, visibility, opacity; cloned shapes and snap points (null entries kept).</summary>
+        public Layer DeepClone()
+        {
+            var c = new Layer(Id, Name) { Visible = Visible, Opacity = Opacity };
+            c.Shapes.Capacity = Shapes.Count;
+            for (int i = 0; i < Shapes.Count; i++) c.Shapes.Add(Shapes[i]?.Clone());
+            c.SnapPoints.Capacity = SnapPoints.Count;
+            for (int i = 0; i < SnapPoints.Count; i++) c.SnapPoints.Add(SnapPoints[i]?.Clone());
+            return c;
+        }
     }
 
     /// <summary>The design. Mutated only by the engine's commands; everyone else reads it.</summary>
@@ -98,6 +110,15 @@ namespace GeoART.Contracts
 
         public EntityId NewId() => new EntityId(NextId++);
 
+        /// <summary>Deep copy of every field and layer, in order. Shares no mutable instance with this board (undo snapshots rely on it).</summary>
+        public Board DeepClone()
+        {
+            var c = new Board { GridN = GridN, GridKind = GridKind, ActiveLayerId = ActiveLayerId, NextId = NextId };
+            c.Layers.Capacity = Layers.Count;
+            for (int i = 0; i < Layers.Count; i++) c.Layers.Add(Layers[i]?.DeepClone());
+            return c;
+        }
+
         public Layer FindLayer(EntityId id)
         {
             for (int i = 0; i < Layers.Count; i++)
@@ -107,5 +128,9 @@ namespace GeoART.Contracts
     }
 
     [Flags]
-    public enum BoardChangeKind { None = 0, Shapes = 1, Layers = 2, SnapPoints = 4, Grid = 8, Reset = 16 }
+    public enum BoardChangeKind
+    {
+        None = 0, Shapes = 1, Layers = 2, SnapPoints = 4, Grid = 8, Reset = 16,
+        History = 32,   // Undo/Redo restored a snapshot (raised with the content flags)
+    }
 }
