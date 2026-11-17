@@ -843,8 +843,11 @@ namespace GeoART.EngineCheck
             s.Pointer(Ev(PointerPhase.Down, 0.55, 0.55));
             s.Pointer(Ev(PointerPhase.Move, 0.75, 0.75));
             Check.That(s.SelectionCount == 1, "live selection");
+            int states = 0;
+            s.StateChanged += () => states++;
             s.SetTool(ToolId.Circle);
             Check.That(s.SelectionCount == 0, "Circle clears the selection");
+            Check.That(states == 1, $"exactly one StateChanged for a tool switch, even mid-drag, got {states}");
             Check.That(!s.GestureActive && s.Preview.Count == 0 && !s.Cursor.HasValue, "gesture closed, rectangle gone");
             s.Pointer(Ev(PointerPhase.Move, 0.85, 0.85));
             s.Pointer(Ev(PointerPhase.Up, 0.85, 0.85));
