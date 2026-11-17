@@ -10,12 +10,17 @@ device when the app is closed. Nothing else in the app changed: the feature is o
 2. Tap it. A panel opens in the middle of the screen and the rest of the screen goes dark. You can't draw while it is
    open. Tap the dark area or the **x** to close it.
 3. In the panel:
-   - **Save current design** saves the board as a new design called "Design N" (one more than the highest "Design"
-     number already saved). There is no text box, so no keyboard pops up on the phone.
+   - The text field at the top is the name for the next save. Tap it and type (the phone keyboard opens), then press
+     **Save current design**. Leave it empty and the design is called "Design N" (one more than the highest "Design"
+     number already saved); the field's grey hint shows which name that will be. Names are up to 40 characters; line
+     breaks and extra spaces are removed.
    - **Clear board** starts over with an empty board (one layer, 2x2 square grid). The first tap turns the button red
      and changes it to "Tap again to clear". A second tap within 3 seconds clears the board. Otherwise it goes back to normal.
    - The list shows every saved design, newest first: the name, when it was saved, and a line like
      `2 layers · 3 shapes · Hex 3x3`.
+     - **Tap a name to rename it.** A text field opens over the name with the old name selected. Type the new name and
+       press Enter (Done on the phone), or tap anywhere else. Esc cancels. An empty name is refused. Renaming only
+       changes the name: the board, the save time, the file and the position in the list stay the same.
      - **Load** replaces the board with that design and closes the panel. A short "Loaded ..." toast confirms it.
      - **Delete** works like Clear: the first tap turns it red ("Sure?"), a second tap within 3 seconds deletes the file.
    - The grey line under the buttons says what just happened ("Saved "Design 3"", "Deleted "Design 2"") or what went wrong.
@@ -86,6 +91,8 @@ To get rid of all saves in the Editor, delete that folder. You can also copy des
 - It talks to the engine only through `IEditorSession` from `ServiceHub`: it reads `session.Board` to save and calls
   `session.LoadBoard(board)` / `session.ClearBoard()`. Every view already redraws on `BoardChanged(Reset)`. No engine,
   contract or tool bar code was changed.
+- The name fields are the legacy uGUI `InputField` (no TextMeshPro, no new package). They work with the Input System
+  UI module the scenes already use and open the iOS keyboard on the phone.
 - uGUI built in code, like the rest of the app: canvases `DesignsButton` (sorting order 106, just above the tool bar)
   and `DesignsPanel` (115, above the layer sidebar, below toasts). The layout uses the 390x844 reference and follows
   `Screen.safeArea`.
@@ -99,7 +106,7 @@ To get rid of all saves in the Editor, delete that folder. You can also copy des
 | File | What |
 |---|---|
 | `Assets/GeoART/App/Save/DesignFile.cs` | file DTOs (`DesignFile`, `BoardData`, `LayerData`, `ShapeData`, `SnapPointData`) and `DesignSerializer` (Board <-> JSON, checks) |
-| `Assets/GeoART/App/Save/DesignLibrary.cs` | `DesignLibrary` (list / save / load / delete in a folder) and `DesignEntry` |
+| `Assets/GeoART/App/Save/DesignLibrary.cs` | `DesignLibrary` (list / save / load / rename / delete in a folder, name clean-up) and `DesignEntry` |
 | `Assets/GeoART/App/Save/DesignsPanel.cs` | the Designs button and panel, and `DesignsPanelBootstrap` |
 | `Assets/Tests/EditMode/Save/GeoART.Tests.EditMode.Save.asmdef` | test assembly |
 | `Assets/Tests/EditMode/Save/DesignSerializerTests.cs` | round trips (golden boards, a hand-made board, exact doubles) and bad-file handling |
@@ -108,7 +115,7 @@ To get rid of all saves in the Editor, delete that folder. You can also copy des
 The `Save` folder sits under `Assets/GeoART/App`, so the code compiles into the existing `GeoART.App` assembly.
 
 ## Tests
-Window > General > Test Runner > EditMode, then run `GeoART.Tests.EditMode.Save` (24 tests). They don't need a scene.
+Window > General > Test Runner > EditMode, then run `GeoART.Tests.EditMode.Save` (27 tests). They don't need a scene.
 The library tests write to a fresh folder under the system temp folder and delete it afterwards.
 
 To check it by hand: open `Assets/Scenes/Sandbox/Sandbox_A_Flat.unity`, press Play, draw something, then
@@ -116,6 +123,5 @@ Designs > Save current design > Clear board (twice) > Load. The board comes back
 
 ## Left out for now
 - Thumbnails in the list.
-- Renaming a design (needs a text field and the on-screen keyboard).
 - Sharing or exporting a design (share sheet, Files app), and importing one.
 - Overwriting an existing save ("Save" vs "Save as"). Every save makes a new file.

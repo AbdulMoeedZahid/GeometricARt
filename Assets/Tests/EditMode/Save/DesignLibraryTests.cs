@@ -84,6 +84,57 @@ namespace GeoART.Tests.Save
         }
 
         [Test]
+        public void SaveNameIsCleanedAndBlankGetsTheDefault()
+        {
+            Assert.That(_lib.TrySave(GoldenBoards.Empty(), out DesignEntry a, out string error, "   "), Is.True, error);
+            Assert.That(a.Name, Is.EqualTo("Design 1"), "blank name -> default");
+            Assert.That(_lib.TrySave(GoldenBoards.Empty(), out DesignEntry b, out error, "  Star \n  tiles\t2 "), Is.True, error);
+            Assert.That(b.Name, Is.EqualTo("Star tiles 2"));
+            Assert.That(_lib.TrySave(GoldenBoards.Empty(), out DesignEntry c, out error, new string('x', 60)), Is.True, error);
+            Assert.That(c.Name.Length, Is.EqualTo(DesignLibrary.MaxNameLength));
+            Assert.That(_lib.List().Select(e => e.Name), Is.EquivalentTo(new[] { "Design 1", "Star tiles 2", c.Name }));
+        }
+
+        [Test]
+        public void RenameChangesOnlyTheName()
+        {
+            var board = DesignSerializerTests.HandMade();
+            Assert.That(_lib.TrySave(board, out DesignEntry first, out string error), Is.True, error);
+            Assert.That(_lib.TrySave(GoldenBoards.Tiled2x2(), out DesignEntry second, out error), Is.True, error);
+
+            Assert.That(_lib.TryRename(first.Id, "  Hex flower ", out DesignEntry renamed, out error), Is.True, error);
+            Assert.That(renamed.Name, Is.EqualTo("Hex flower"));
+            Assert.That(renamed.Id, Is.EqualTo(first.Id), "same file");
+            Assert.That(renamed.SavedUtc, Is.EqualTo(first.SavedUtc), "save time kept, so the order does not change");
+
+            var list = _lib.List();
+            Assert.That(list.Select(e => e.Id), Is.EqualTo(new[] { second.Id, first.Id }));
+            Assert.That(list[1].Name, Is.EqualTo("Hex flower"));
+            Assert.That(list[0].Name, Is.EqualTo("Design 2"));
+            Assert.That(_lib.TryLoad(first.Id, out Board back, out error), Is.True, error);
+            BoardAssert.AreEqual(board, back);
+            Assert.That(JsonFiles().Length, Is.EqualTo(2));
+            Assert.That(Directory.GetFiles(_root, "*.tmp"), Is.Empty, "no temp file left behind");
+
+            // the new name survives a fresh library on the same folder
+            Assert.That(new DesignLibrary(_root).List()[1].Name, Is.EqualTo("Hex flower"));
+        }
+
+        [Test]
+        public void RenameRejectsEmptyNamesAndMissingDesigns()
+        {
+            Assert.That(_lib.TrySave(GoldenBoards.Empty(), out DesignEntry a, out string error, "Keep me"), Is.True, error);
+            Assert.That(_lib.TryRename(a.Id, " \n ", out DesignEntry none, out error), Is.False);
+            Assert.That(error, Is.Not.Null.And.Not.Empty);
+            Assert.That(none, Is.Null);
+            Assert.That(_lib.List()[0].Name, Is.EqualTo("Keep me"));
+
+            Assert.That(_lib.TryRename("design-not-there", "x", out none, out error), Is.False);
+            Assert.That(error, Is.Not.Null.And.Not.Empty);
+            Assert.That(_lib.TryRename("../x", "x", out none, out error), Is.False);
+        }
+
+        [Test]
         public void LoadGivesTheSavedBoard()
         {
             var board = DesignSerializerTests.HandMade();
