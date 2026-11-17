@@ -115,6 +115,29 @@ namespace GeoART.App.Save
             return "Design " + (max + 1).ToString(CultureInfo.InvariantCulture);
         }
 
+        /// <summary>Longest design name; the name fields in the panel stop at this length too.</summary>
+        public const int MaxNameLength = 40;
+
+        /// <summary>
+        /// The name as it gets stored: line breaks and other control characters become spaces, runs of spaces become
+        /// one, the ends are trimmed and it is cut to <see cref="MaxNameLength"/>. Empty when nothing is left.
+        /// </summary>
+        public static string CleanName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "";
+            var sb = new StringBuilder(name.Length);
+            foreach (char ch in name)
+            {
+                char c = char.IsControl(ch) || char.IsWhiteSpace(ch) ? ' ' : ch;
+                if (c == ' ' && (sb.Length == 0 || sb[sb.Length - 1] == ' ')) continue;
+                sb.Append(c);
+            }
+            string s = sb.ToString().Trim();
+            if (s.Length > MaxNameLength) s = s.Substring(0, MaxNameLength).TrimEnd();
+            return s;
+        }
+
+        /// <summary>Saves the board as a new file. An empty or blank <paramref name="name"/> gets "Design N".</summary>
         public bool TrySave(Board board, out DesignEntry entry, out string error, string name = null)
         {
             entry = null;
@@ -128,7 +151,8 @@ namespace GeoART.App.Save
             try
             {
                 Directory.CreateDirectory(Root);
-                if (string.IsNullOrEmpty(name)) name = NextDefaultName();
+                name = CleanName(name);
+                if (name.Length == 0) name = NextDefaultName();
 
                 DateTime now = DateTime.UtcNow;
                 now = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMillisecond, DateTimeKind.Utc);   // what the file keeps
@@ -165,6 +189,58 @@ namespace GeoART.App.Save
                 return false;
             }
             return TryRead(path, id, out board, out _, out error);
+        }
+
+        /// <summary>
+        /// Gives a saved design a new name. Only the name changes: the board, the save time and the id (file name) stay
+        /// the same, so the design keeps its place in the list. The file is rewritten through a temp file like a save.
+        /// </summary>
+        public bool TryRename(string id, string newName, out DesignEntry entry, out string error)
+        {
+            entry = null;
+            if (!CheckId(id, out error)) return false;
+            newName = CleanName(newName);
+            if (newName.Length == 0)
+            {
+                error = "A name can't be empty.";
+                return false;
+            }
+            string path = PathFor(id);
+            if (!File.Exists(path))
+            {
+                error = "That design is gone (file not found).";
+                return false;
+            }
+            string tmp = path + TempExtension;
+            try
+            {
+                if (!DesignSerializer.TryParse(File.ReadAllText(path, Utf8), out DesignFile file, out error)) return false;
+                file.name = newName;
+                File.WriteAllText(tmp, JsonUtility.ToJson(file, true), Utf8);
+                ReplaceFile(tmp, path);
+                tmp = null;
+                return TryRead(path, id, out _, out entry, out error);
+            }
+            catch (Exception e)
+            {
+                error = "Could not rename: " + e.Message;
+                if (tmp != null) TryDeleteFile(tmp);
+                return false;
+            }
+        }
+
+        /// <summary>Moves <paramref name="tmp"/> over <paramref name="path"/> in one step where the platform allows it.</summary>
+        static void ReplaceFile(string tmp, string path)
+        {
+            try
+            {
+                File.Replace(tmp, path, null);
+            }
+            catch (PlatformNotSupportedException)
+            {
+                File.Delete(path);
+                File.Move(tmp, path);
+            }
         }
 
         public bool TryDelete(string id, out string error)
