@@ -19,16 +19,17 @@ namespace GeoART.Engine
     /// change, so it allocates freely; nothing here runs on the pointer path.
     ///
     /// Steps (docs/BANDS.md):
-    ///  1. Drop non-finite and shorter than <see cref="MinLength"/> segments. With a frame: clip to [0,1]^2 (the clipped
-    ///     coordinate is written as exactly 0 or 1) and snap every endpoint coordinate within <see cref="WeldEps"/> of a
-    ///     side onto it, so lines that end at the edge end exactly on the frame.
-    ///  2. Endpoint weld: endpoints within <see cref="WeldEps"/> become one point (a frame point wins, then the
+    ///  1. Drop non-finite and shorter than <see cref="MinLength"/> segments. With a frame: snap every endpoint coordinate
+    ///     within <see cref="WeldEps"/> of a side onto it, clip to [0,1]^2 (the clipped coordinate is written as exactly 0
+    ///     or 1) and snap again, so lines that end at the edge end exactly on the frame.
+    ///  2. Endpoint weld: endpoints within <see cref="WeldEps"/> become one point (a point on more frame sides wins, then the
     ///     lexicographically smallest). Near-junction weld: an endpoint within <see cref="WeldEps"/> of another segment's
     ///     interior moves onto it (repeated until nothing moves, at most 4 passes).
     ///  3. Collinear merge: collinear segments (within <see cref="CollinearEps"/>) that overlap or touch become one
-    ///     segment between the extreme original endpoints (bit-exact); it keeps the largest source index.
+    ///     segment between the extreme original endpoints (bit-exact); it keeps the largest source index. Then one more
+    ///     near-junction pass re-attaches ends to the merged segments.
     ///  4. Crossings: every pair (uniform-grid prefilter) through <see cref="Intersect.SegmentSegment"/>, which returns
-    ///     segment ends bit-exactly. Points within <see cref="NodeEps"/> become one node (a frame point wins, then the
+    ///     segment ends bit-exactly. Points within <see cref="NodeEps"/> become one node (a point on more frame sides wins, then the
     ///     lexicographically smallest). Segments are split at their nodes into edges.
     ///  5. Frame: the four sides become edges with <see cref="FrameSource"/>, cut at every node on them (a side piece
     ///     already covered by a segment is not duplicated).
@@ -42,7 +43,7 @@ namespace GeoART.Engine
     {
         public const double WeldEps = 1e-5;
         public const double NodeEps = 1e-7;
-        public const double CollinearEps = 1e-7;
+        public const double CollinearEps = WeldEps;
         public const double MinLength = 1e-9;
         public const double FrameEps = 1e-9;
         /// <summary>Source of the frame's edges.</summary>
@@ -107,6 +108,7 @@ namespace GeoART.Engine
                     PlanarSegment s = input[i];
                     if (!s.A.IsFinite || !s.B.IsFinite) continue;
                     Vec2 a = s.A, b = s.B;
+                    if (addFrame) { a = SnapToFrame(a); b = SnapToFrame(b); }   // first, so a near-axis line at -1e-16 isn't clipped away
                     if (addFrame && !ClipToFrame(ref a, ref b)) continue;
                     if (addFrame) { a = SnapToFrame(a); b = SnapToFrame(b); }
                     if (Vec2.Distance(a, b) < MinLength) continue;
@@ -116,6 +118,7 @@ namespace GeoART.Engine
             WeldEndpoints(segs);
             WeldNearJunctions(segs);
             MergeCollinear(segs);
+            WeldNearJunctions(segs);   // a merged axis can sit up to CollinearEps off a member's end: re-attach T-junctions
 
             var g = new PlanarGraph { HasFrame = addFrame };
             g.Planarize(segs, addFrame);
@@ -317,7 +320,7 @@ namespace GeoART.Engine
                     if (moves.TryGetValue(s.B, out Vec2 b)) s.B = b;
                     segs[i] = s;
                 }
-                Canonicalize(segs);
+                WeldEndpoints(segs);   // two ends moved onto the same segment may now be a hair apart
             }
         }
 

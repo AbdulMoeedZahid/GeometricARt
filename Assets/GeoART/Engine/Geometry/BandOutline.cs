@@ -141,7 +141,12 @@ namespace GeoART.Engine
                 _iT = new double[nh];
                 _iS = new double[nh];
                 _iJoined = new bool[nh];
-                for (int g = 0; g < nh; g++) InnerWedge(g);
+                for (int g = 0; g < nh; g++)
+                {
+                    InnerWedge(g);
+                    _iIn[g] = ClampToBoard(_iIn[g]);
+                    _iOut[g] = ClampToBoard(_iOut[g]);
+                }
                 BuildInnerRuns();
                 if (opt.Interlace) AddBridges(opt.FlipWeave, true);
             }
@@ -192,6 +197,13 @@ namespace GeoART.Engine
                 t = (x1 + x0 * dot) / cross;
                 s = (x0 + x1 * dot) / cross;
             }
+            if (double.IsNaN(t) || double.IsInfinity(t) || double.IsNaN(s) || double.IsInfinity(s))
+            {
+                pOut = u + nL0 * x0;   // dot rounded to 1 with cross != 0: treat as a bevel
+                pIn = u + nR1 * x1;
+                t = s = 0;
+                return Join.Bevel;
+            }
             pOut = pIn = u + nL0 * x0 + d0 * t;
             return Join.Mitre;
         }
@@ -235,7 +247,16 @@ namespace GeoART.Engine
             }
             MaxSafeWidth = minSafe;
             Collapsed = collapsed;
+            // Nothing outside the board: a corner on a frame line stays on it, a tip spike or cap near the frame is cut.
+            for (int g = 0; g < nh; g++)
+            {
+                _wIn[g] = ClampToBoard(_wIn[g]);
+                _wOut[g] = ClampToBoard(_wOut[g]);
+            }
         }
+
+        static Vec2 ClampToBoard(Vec2 p) =>
+            p.X >= 0 && p.X <= 1 && p.Y >= 0 && p.Y <= 1 ? p : new Vec2(Math.Max(0, Math.Min(1, p.X)), Math.Max(0, Math.Min(1, p.Y)));
 
         static Vec2 LineLine(Vec2 p, Vec2 d, Vec2 q, Vec2 e, out bool ok)
         {
@@ -318,6 +339,8 @@ namespace GeoART.Engine
         void CountSelfIntersections()
         {
             var poly = new List<Vec2>();
+            var order = new int[64];
+            var minX = new double[64];
             int count = 0;
             for (int f = 0; f < _g.FaceCount; f++)
             {
@@ -334,12 +357,30 @@ namespace GeoART.Engine
                 if (!any) continue;
                 if (poly.Count > 1 && poly[poly.Count - 1] == poly[0]) poly.RemoveAt(poly.Count - 1);
                 int m = poly.Count;
+                if (m < 4) continue;
+                // Sweep over segments sorted by min x; test only pairs whose x and y ranges overlap.
+                if (order.Length < m) { order = new int[m * 2]; minX = new double[m * 2]; }
                 for (int i = 0; i < m; i++)
-                    for (int j = i + 2; j < m; j++)
+                {
+                    order[i] = i;
+                    minX[i] = Math.Min(poly[i].X, poly[(i + 1) % m].X);
+                }
+                Array.Sort(minX, order, 0, m);
+                for (int a = 0; a < m; a++)
+                {
+                    int i = order[a];
+                    Vec2 p0 = poly[i], p1 = poly[(i + 1) % m];
+                    double maxX = Math.Max(p0.X, p1.X), y0 = Math.Min(p0.Y, p1.Y), y1 = Math.Max(p0.Y, p1.Y);
+                    for (int b = a + 1; b < m && minX[b] <= maxX; b++)
                     {
-                        if (i == 0 && j == m - 1) continue;   // adjacent through the wrap
-                        if (ProperCross(poly[i], poly[(i + 1) % m], poly[j], poly[(j + 1) % m])) count++;
+                        int j = order[b];
+                        int d = Math.Abs(i - j);
+                        if (d <= 1 || d == m - 1) continue;   // neighbours share an end
+                        Vec2 q0 = poly[j], q1 = poly[(j + 1) % m];
+                        if (Math.Max(q0.Y, q1.Y) < y0 || Math.Min(q0.Y, q1.Y) > y1) continue;
+                        if (ProperCross(p0, p1, q0, q1)) count++;
                     }
+                }
             }
             SelfIntersections = count;
         }
@@ -395,7 +436,7 @@ namespace GeoART.Engine
             double hi = InnerHalfWidth;
             bool both = Drawn(g) && Drawn(prev);
             Join outer = _join[g];
-            bool joined = both && (succ == g || _bg.StructureDegree(u) == 2 || outer == Join.Bevel ||
+            bool joined = both && (succ == g || _bg.Continues(prev, g) || outer == Join.Bevel ||
                                    (outer == Join.Mitre && Straight(d0, d1)));
             if (joined)
             {

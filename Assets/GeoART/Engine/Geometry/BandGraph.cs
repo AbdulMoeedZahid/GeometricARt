@@ -13,10 +13,11 @@ namespace GeoART.Engine
     /// Side factor: 1 for a structure half-edge, 0 for the frame and for the outer side of a structure line lying on the
     /// frame (so nothing is offset outside the board along it).
     ///
-    /// Threads (one continuous band each) follow structure edges straight through structure-degree-4 nodes (sorted index
-    /// i pairs with i + 2) and through degree-2 nodes (the band turns, also on the frame); they stop at degree 1, 3, 5+
-    /// and at degree-4 nodes on the frame. A crossing is a structure-degree-4 node off the frame; its pass p (0 or 1) is
-    /// the pair holding sorted index p. Over/under must alternate along every thread: for consecutive visits (c1, p1),
+    /// Threads (one continuous band each) follow structure edges through structure-degree-2 nodes (the band turns, also
+    /// on the frame) and through structure-degree-4 nodes, where sorted index i pairs with i + 2 (a crossing), unless two
+    /// RING-ADJACENT edges are collinear: that is a line with a tip touching it from one side, so the straight pair
+    /// continues, the tip pairs with itself and the node is not a crossing. Threads stop at degree 1, 3, 5+ and at
+    /// degree-4 nodes on the frame. A crossing's pass p (0 or 1) is the pair holding sorted index p. Over/under must alternate along every thread: for consecutive visits (c1, p1),
     /// (c2, p2) the over-pass bits satisfy o1 XOR o2 = 1 XOR p1 XOR p2 (closed threads include the wrap-around pair).
     /// Solved by BFS 2-colouring in node order; each component is seeded at its smallest (x, y) crossing with o = 0 (the
     /// pass holding the smallest-angle half-edge goes over). The seed comes from geometry, so Undo, Redo and reload never
@@ -30,6 +31,7 @@ namespace GeoART.Engine
         readonly int[] _sRingStart, _sRing, _sRingIndex;   // structure-only CCW rings
         readonly double[] _side;                           // per half-edge band side factor (0 or 1)
         readonly int[] _crossingOf;                        // node -> crossing index or -1
+        readonly byte[] _pairing;                          // degree-4 nodes: 0 = i with i+2, 1 = i with i^1, 2 = i with 3-i
         readonly List<int> _crossingNodes = new List<int>();
         readonly List<int> _over = new List<int>();
         readonly List<int> _threadStart = new List<int> { 0 };
@@ -128,10 +130,12 @@ namespace GeoART.Engine
 
             // Crossings in node order (smallest (x, y) first: nodes are sorted).
             _crossingOf = new int[nn];
+            _pairing = new byte[nn];
             for (int v = 0; v < nn; v++)
             {
                 _crossingOf[v] = -1;
-                if (_structureDegree[v] == 4 && !g.NodeOnFrame(v))
+                if (_structureDegree[v] == 4) _pairing[v] = Pairing(v);
+                if (_structureDegree[v] == 4 && !g.NodeOnFrame(v) && _pairing[v] == 0)
                 {
                     _crossingOf[v] = _crossingNodes.Count;
                     _crossingNodes.Add(v);
@@ -154,7 +158,28 @@ namespace GeoART.Engine
             return false;
         }
 
-        bool Stops(int v) => !(_structureDegree[v] == 2 || _crossingOf[v] >= 0);
+        /// <summary>
+        /// How a structure-degree-4 node pairs its edges: 0 (i with i + 2) unless two ring-adjacent edges point in opposite
+        /// directions (a straight line with a tip touching it from one side): 1 for the pairs (0,1)(2,3), 2 for (0,3)(1,2).
+        /// </summary>
+        byte Pairing(int v)
+        {
+            int start = _sRingStart[v];
+            for (int k = 0; k < 4; k++)
+            {
+                Vec2 a = Graph.Dir(_sRing[start + k]), b = Graph.Dir(_sRing[start + (k + 1) % 4]);
+                double cross = a.X * b.Y - a.Y * b.X, dot = a.X * b.X + a.Y * b.Y;
+                if (dot < 0 && Math.Abs(Math.Atan2(cross, -dot)) < BandOutline.StraightEps)
+                    return (byte)(k == 0 || k == 2 ? 1 : 2);
+            }
+            return 0;
+        }
+
+        bool Stops(int v) =>
+            !(_structureDegree[v] == 2 || _crossingOf[v] >= 0 || (_structureDegree[v] == 4 && _pairing[v] != 0 && !Graph.NodeOnFrame(v)));
+
+        /// <summary>True when a thread runs from structure half-edge h straight on into <paramref name="next"/> (same band).</summary>
+        public bool Continues(int h, int next) => IsStructure(h) && Continue(h, out _) == next;
 
         /// <summary>The structure half-edge a thread continues with after h, or -1 at a stop.</summary>
         int Continue(int h, out int pass)
@@ -165,6 +190,8 @@ namespace GeoART.Engine
             int k = _sRingIndex[PlanarGraph.Twin(h)];
             int start = _sRingStart[v];
             if (_structureDegree[v] == 2) return _sRing[start + 1 - k];
+            if (_pairing[v] == 1) return _sRing[start + (k ^ 1)];        // a turn, not a crossing
+            if (_pairing[v] == 2) return _sRing[start + 3 - k];
             pass = k & 1;
             return _sRing[start + (k + 2) % 4];
         }
