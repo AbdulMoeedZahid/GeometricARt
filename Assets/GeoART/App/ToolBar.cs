@@ -14,8 +14,12 @@ namespace GeoART.App
     ///                   stays orange in Move, Scale and Duplicate too (the selection tools)
     ///   Bands           per-layer band treatment of the active layer (label Off / Double / Weave, orange while on): tap
     ///                   toggles it, hold opens the layer popup (ToolBar.HoldMenus.cs)
-    ///   Width / colour  with a selection, also restyle the selected shapes (one "Style" step each)
+    ///   Width / Colour  with a selection, also restyle the selected shapes (one "Style" step each)
     ///   Width           cycles the stroke width Thin -> Medium -> Thick (label shows the current one)
+    ///   Colour          its icon is a disc in the current Style.Color (in a rainbow ring when that is the custom colour);
+    ///                   a press opens the colour palette to its left (ToolBar.Colour.cs): the five palette colours, the
+    ///                   custom colour, "Wheel…" and the Board guides toggle. It replaced the colour pill at the
+    ///                   bottom-left, which the Select action bar covered
     ///   Grid            switches the tile grid Square <-> Hex (icon and label show the current kind)
     ///   Tiles           cycles tiles per side 1 -> 2 -> 3 -> 4 -> 1 (label "2x2" etc.)
     ///   Snap            toggles IEditorSession.SetSnapEnabled (orange when on; on by default)
@@ -23,10 +27,12 @@ namespace GeoART.App
     ///                   horizontal/vertical lines); the Snap label reads "H/V" while the lock is on. H/V had its own
     ///                   button until the Fill tool needed the slot (decisions: fewer, bigger buttons, pulled forward)
     ///   Fill            selects ToolId.Fill (paint bucket): tap inside a closed region to fill it (docs/FILL.md). Only
-    ///                   while <see cref="FillEnabled"/> is on (off for now: 8 buttons)
-    /// Nine buttons in four groups (3, 2, 2, 2), 550 reference px tall: fits a 390x844 portrait screen with room for
-    /// the placement row and the coach text. Shorter screens (landscape: Android 16 ignores the portrait lock on large
-    /// screens) shrink the column to stay between the two, see <see cref="ApplySafeArea"/>.
+    ///                   while <see cref="FillEnabled"/> is on (off for now: 9 buttons)
+    /// Nine buttons in four groups [Line, Circle, Select] [Bands, Width, Colour] [Square, 2x2] [Snap], 550 reference px
+    /// tall: fits a 390x844 portrait screen with room for the placement row and the coach text. Phones whose band between
+    /// the two is a little shorter (about 532-536 px on a 14 Pro Max or a 390x844 iPhone with its insets) shrink it to
+    /// about 0.97, landscape screens (Android 16 ignores the portrait lock on large screens) further, see
+    /// <see cref="ApplySafeArea"/>.
     /// Icons are drawn procedurally into small textures once in Awake. Every button is a raycast target, and the column
     /// (like the action bar) has a transparent raycast-target panel behind its buttons (<see cref="AddTouchBlocker"/>), so
     /// BoardInputRouter ignores touches that start anywhere on it, gaps between buttons included. Visible only while the board is placed (or when the scene
@@ -51,23 +57,23 @@ namespace GeoART.App
         const float PlacementRowTop = 0.11f, CoachTextBottom = 0.80f, MinFit = 0.4f;
         /// <summary>
         /// Switch for the Fill tool (docs/FILL.md). Off for now: the triangulator has a known issue with holes sharing a
-        /// rightmost x. Off = no Fill button (the column has 8 buttons) and the colour bar never shows "No fill"; the
+        /// rightmost x. Off = no Fill button (the column has 9 buttons) and the palette never shows "No fill"; the
         /// engine, the model, saving and drawing of fills stay, so saved fills load, draw and survive a re-save.
         /// </summary>
         public const bool FillEnabled = false;
 
-        const int ButtonCount = FillEnabled ? 9 : 8, GroupCount = 4;
+        const int ButtonCount = FillEnabled ? 10 : 9, GroupCount = 4;
 
-        /// <summary>Column height in reference px: ButtonCount buttons (8, or 9 with Fill), one spacing between buttons of a group, a gap between groups.</summary>
+        /// <summary>Column height in reference px: ButtonCount buttons (9, or 10 with Fill), one spacing between buttons of a group, a gap between groups.</summary>
         public const float ColumnHeight =
             ButtonCount * ButtonH + (ButtonCount - GroupCount) * Spacing + (GroupCount - 1) * GroupGap;
 
         enum Glyph
         {
             Line, Circle, Dotted, Width, Square, Hex, Tiles, Snap, HV, Select, Move, Scale, Duplicate, Deselect, Undo,
-            CircleDotted, Bands, HoldMark, Fill, Delete, Redo, Extend,
+            CircleDotted, Bands, HoldMark, Fill, Delete, Redo, Extend, Disc, Ring, NoFill,
         }
-        const int GlyphCount = 22;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
+        const int GlyphCount = 25;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
 
         IEditorSession _session;
         IBoardSpace _boardSpace;
@@ -115,6 +121,7 @@ namespace GeoART.App
             y += GroupGap - Spacing;
             BuildBandsButton(font, ref y);
             CreateButton("Medium", Glyph.Width, font, ref y, CycleWidth, out _widthLabel);
+            BuildColourButton(font, ref y);
             y += GroupGap - Spacing;
             _hexGlyph = MakeGlyph(Glyph.Hex);
             var gridBg = CreateButton("Square", Glyph.Square, font, ref y, ToggleGridKind, out _gridLabel);
@@ -140,6 +147,7 @@ namespace GeoART.App
                 _session.BoardChanged += OnBoardChanged;
             }
             if (_boardSpace != null) _boardSpace.StateChanged += OnPlacementChanged;
+            BoardAppearance.Changed += RefreshColour;
             Refresh();
         }
 
@@ -151,6 +159,10 @@ namespace GeoART.App
                 _session.BoardChanged -= OnBoardChanged;
             }
             if (_boardSpace != null) _boardSpace.StateChanged -= OnPlacementChanged;
+            BoardAppearance.Changed -= RefreshColour;
+            if (_colorBar != null) _colorBar.CustomChanged -= RefreshColour;
+            if (_spectrumRing != null) Destroy(_spectrumRing);
+            if (_spectrumDisc != null) Destroy(_spectrumDisc);
             if (_rounded != null) Destroy(_rounded);
             foreach (var t in _textures)
                 if (t != null) Destroy(t);
@@ -187,6 +199,7 @@ namespace GeoART.App
             RefreshGrid();
             RefreshLineMode();
             RefreshBands();
+            RefreshColour();
             RefreshActionBar(visible);
             RefreshUndo(visible);
         }
@@ -260,7 +273,7 @@ namespace GeoART.App
         static string WidthLabel(LineWidth w) =>
             w == LineWidth.Thin ? "Thin" : w == LineWidth.Thick ? "Thick" : "Medium";
 
-        static void SetColor(Image image, Color c)
+        static void SetColor(Graphic image, Color c)
         {
             if (image != null && image.color != c) image.color = c;
         }
@@ -361,6 +374,20 @@ namespace GeoART.App
             CloseHoldMenus();   // an open row was placed for the old layout
         }
 
+        /// <summary>
+        /// The tool column's rect in screen pixels (the overlay canvas: world = screen), e.g. for popups that must not cover
+        /// it. False before the column exists.
+        /// </summary>
+        public bool TryGetColumnScreenRect(out Rect rect)
+        {
+            rect = default;
+            if (_column == null) return false;
+            var c = new Vector3[4];
+            _column.GetWorldCorners(c);
+            rect = Rect.MinMaxRect(c[0].x, c[0].y, c[2].x, c[2].y);
+            return true;
+        }
+
         // ---------- procedural icons (white on transparent, anti-aliased with a signed distance) ----------
 
         const int GlyphPx = 64;
@@ -441,6 +468,13 @@ namespace GeoART.App
                     }
                     return d - 0.035f;
                 }
+                case Glyph.Disc:   // a filled disc filling the icon: colour swatches (tinted)
+                    return Vector2.Distance(p, new Vector2(0.5f, 0.5f)) - 0.47f;
+                case Glyph.Ring:   // a thin ring at the icon's edge: the outline around a swatch, so black reads on the dark button
+                    return Mathf.Abs(Vector2.Distance(p, new Vector2(0.5f, 0.5f)) - 0.44f) - 0.045f;
+                case Glyph.NoFill:   // a ring crossed by a slash: "no fill"
+                    return Mathf.Min(Mathf.Abs(Vector2.Distance(p, new Vector2(0.5f, 0.5f)) - 0.36f) - 0.045f,
+                        SegmentDistance(p, new Vector2(0.26f, 0.26f), new Vector2(0.74f, 0.74f)) - 0.045f);
                 case Glyph.HoldMark:   // a filled corner triangle with its right angle at the bottom right: "hold for more"
                     return Mathf.Max(Mathf.Max(0.12f - p.y, p.x - 0.88f), (p.y - p.x) * 0.7071f);
                 case Glyph.Square:   // 2x2 squares
