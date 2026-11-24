@@ -155,7 +155,7 @@ namespace GeoART.App
             handleArea.sizeDelta = new Vector2(-20f, 0f);
             Image handle = LayerUiKit.NewImage("Handle", handleArea, Color.white, false, 11f);
             handle.rectTransform.anchorMin = handle.rectTransform.anchorMax = new Vector2(0f, 0.5f);
-            handle.rectTransform.sizeDelta = new Vector2(22f, 22f);
+            handle.rectTransform.sizeDelta = new Vector2(22f, 22f - 32f);   // the Slider stretches it over the 32 px area's height: 22 x 22
             var slider = hit.gameObject.AddComponent<Slider>();
             slider.transition = Selectable.Transition.None;
             slider.navigation = new Navigation { mode = Navigation.Mode.None };
