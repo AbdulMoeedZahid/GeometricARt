@@ -92,7 +92,7 @@ namespace GeoART.Tests.Verifier
             b.Layers[2].Fills.Add(new FillSeed(new Vec2(0.123456789012345, 0.987654321098765), new RgbaColor(1, 2, 3, 200)));
             b.Layers[2].Fills.Add(new FillSeed(new Vec2(0.5, 0.5), Palette.Red));
             b.Layers[0].Fills.Add(new FillSeed(new Vec2(1.0 / 3.0, 2.0 / 3.0), Palette.Blue));
-            string json = DesignSerializer.ToJson(b, "fills", DateTime.UtcNow);
+            string json = DesignSerializer.ToJson(b, "seed test", DateTime.UtcNow);
             StringAssert.Contains("\"version\": 1", json, "no version bump");
             var back = Load(json);
             for (int li = 0; li < 3; li++)
