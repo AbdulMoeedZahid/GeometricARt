@@ -81,10 +81,11 @@ Act on the selection. While something is selected, a cyan **dashed box** surroun
 mark** (a ring with a "+") sits at the centre of that box: the selection's "origin". Move and Scale work about it.
 
 **Action bar.** With a selection, in Select, Move, Scale or Duplicate, a row of four buttons appears at the bottom, left
-of the tool column and just above "Re-place board": **Move | Scale | Duplicate | Deselect** (64x52 reference px each,
-280 wide; on narrow screens it shrinks, never below 40%). Move, Scale and Duplicate are modes: the active one is orange
+of the tool column and just above "Re-place board": **Move | Scale | Duplicate | Delete | Deselect** (56x52 reference px
+each, 304 wide; on narrow screens it shrinks, never below 40%). Move, Scale and Duplicate are modes: the active one is orange
 (and so is the column's Select button), tapping it again returns to Select, tapping another switches. **Deselect** empties
-the selection; the bar hides and the tool returns to Select. The bar is hidden with no selection, before placement and
+the selection; the bar hides and the tool returns to Select. **Delete** (between Duplicate and Deselect, a trash can)
+removes the selected shapes: one "Delete" undo step, toast "Deleted N shapes", and the tool returns to Select. The bar is hidden with no selection, before placement and
 in Line or Circle. Entering a mode without a selection toasts "Select shapes first".
 
 Shared rules (all three modes):
@@ -131,6 +132,9 @@ box (padded by the halo width) and the pivot mark from `SelectionGeometry` bound
 Render check: `board-xform-*.png`, `board-xform-dark-*.png`, `board-xform-scale-*.png`.
 
 ## Undo
+
+**Redo.** A "Redo" button (the arrow mirrored) sits right of Undo (x 72-128 on 390x844), shown and dimmed by the same
+rules with `CanRedo`; it re-applies the last undone step, and any new edit clears what can be redone.
 
 **Button.** "Undo" (U-turn arrow) sits at the top-left corner of the safe area, 8 ref px in from the corner, 56x52 and
 scaled with the tool column (`ToolBar.Undo.cs`). On a 390x844 screen it covers x 8-64, 1-7% from the top; on an iPhone 14
@@ -256,7 +260,7 @@ Notes for developers:
 - `Assets/GeoART/Engine/EditorSession.Select.cs`, `Engine/Geometry/SelectionGeometry.cs`: the Select tool.
 - `Assets/GeoART/Engine/EditorSession.Transform.cs`, `Engine/Geometry/TransformGeometry.cs`: Move, Scale, Duplicate;
   `Engine/Snap/SnapIndex.cs` `ExcludedShapes` (a transform's own shapes are not snap sources).
-- `Assets/GeoART/App/ToolBar.ActionBar.cs`: the Move | Scale | Duplicate | Deselect bar.
+- `Assets/GeoART/App/ToolBar.ActionBar.cs`: the Move | Scale | Duplicate | Delete | Deselect bar.
 - `Assets/GeoART/Engine/EditorSession.Undo.cs`, `Contracts/Model/Board.cs` (`DeepClone`): undo/redo history.
   `Assets/GeoART/App/ToolBar.Undo.cs`: the Undo button.
 - `Assets/GeoART/Engine/OneEuroFilter2D.cs` (new): the smoothing filter.
