@@ -5,10 +5,11 @@ using UnityEngine.UI;
 namespace GeoART.App
 {
     /// <summary>
-    /// The contextual action bar: a horizontal row of four buttons, Move | Scale | Duplicate | Deselect, on the ToolBar's
+    /// The contextual action bar: a horizontal row of five buttons, Move | Scale | Duplicate | Delete | Deselect, on the ToolBar's
     /// canvas. Shown only while the board is placed, the selection is not empty and the tool is Select, Move, Scale or
     /// Duplicate. Move, Scale and Duplicate are modes: the active one is filled orange, tapping it again returns to Select,
-    /// tapping another switches to it. Deselect empties the selection (the engine then falls back to Select).
+    /// tapping another switches to it. Delete removes the selected shapes (one undo step) and Deselect empties the selection
+    /// (the engine then falls back to Select in both cases).
     /// Placement (reference px, see <see cref="PlaceActionBar"/>): bottom edge on the column's lowest baseline (just above
     /// the placement row), centred in the space left of the tool column, shrunk (not below MinFit) when that space is
     /// narrower than the bar. Every button is a raycast target and a transparent raycast-target panel covers the whole bar,
@@ -16,10 +17,11 @@ namespace GeoART.App
     /// </summary>
     public sealed partial class ToolBar
     {
-        const float BarButtonW = 64f, BarButtonH = 52f, BarSpacing = 8f;
-        const int BarButtonCount = 4;
+        // Buttons went from 64 to 56 px (spacing 8 to 6) when Delete joined, so the bar still fits left of the column.
+        const float BarButtonW = 56f, BarButtonH = 52f, BarSpacing = 6f;
+        const int BarButtonCount = 5;
 
-        /// <summary>Bar width in reference px: four buttons and three spacings (280).</summary>
+        /// <summary>Bar width in reference px: five buttons and four spacings (304).</summary>
         public const float ActionBarWidth = BarButtonCount * BarButtonW + (BarButtonCount - 1) * BarSpacing;
 
         RectTransform _bar;
@@ -37,6 +39,7 @@ namespace GeoART.App
             _moveBg = CreateBarButton("Move", Glyph.Move, font, ref x, () => ToggleMode(ToolId.Move));
             _scaleBg = CreateBarButton("Scale", Glyph.Scale, font, ref x, () => ToggleMode(ToolId.Scale));
             _dupBg = CreateBarButton("Duplicate", Glyph.Duplicate, font, ref x, () => ToggleMode(ToolId.Duplicate));
+            CreateBarButton("Delete", Glyph.Delete, font, ref x, () => _session?.DeleteSelection());
             CreateBarButton("Deselect", Glyph.Deselect, font, ref x, () => _session?.ClearSelection());
             go.SetActive(false);
             ApplySafeArea();

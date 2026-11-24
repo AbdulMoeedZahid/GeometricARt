@@ -39,6 +39,7 @@ namespace GeoART.Contracts
         void SetSnapEnabled(bool on);
         void SetOrthoLock(bool on);                               // raises StateChanged when it changes
         void ClearSelection();                                    // empties the selection (StateChanged if it was not empty)
+        void DeleteSelection();                                   // removes the selected shapes (visible layers); one "Delete" step
 
         // layers + grid
         EntityId AddLayer();

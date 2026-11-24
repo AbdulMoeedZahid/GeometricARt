@@ -56,6 +56,7 @@ namespace GeoART.Engine
             public const string BandWidth = "Band width";
             public const string Style = "Style";
             public const string Fill = "Fill";
+            public const string Delete = "Delete";
             public const string ClearFill = "Clear fill";
         }
 

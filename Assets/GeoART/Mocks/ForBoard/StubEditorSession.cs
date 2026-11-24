@@ -149,6 +149,16 @@ namespace GeoART.Mocks
         public void SetTool(ToolId t) { }
         public void SetStamp(StampKind k) { }
         public void ClearSelection() => Selection.Ids.Clear();
+
+        public void DeleteSelection()
+        {
+            bool any = false;
+            foreach (var layer in _board.Layers)
+                any |= layer.Shapes.RemoveAll(s => s != null && Selection.Ids.Contains(s.Id)) > 0;
+            Selection.Ids.Clear();
+            if (any) BoardChanged?.Invoke(BoardChangeKind.Shapes);
+            StateChanged?.Invoke();
+        }
         public EntityId AddLayer() => EntityId.None;
         public void SelectLayer(EntityId id) { }
         public void MoveLayer(EntityId id, int newIndex) { }
