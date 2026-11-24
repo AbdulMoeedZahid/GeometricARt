@@ -291,6 +291,111 @@ namespace GeoART.EngineCheck
             Check.That(spy.LastToast == "Nothing in the way to extend to", "toast " + spy.LastToast);
         }
 
+        public static void SecondExtend_ReachesWhatTheFirstLengthened()
+        {
+            // Ends are worked out against the board before the action, so h's left end ignores where v is going. A second
+            // Extend sees v's new length: a real step (h's end moves a whole 0.1), not a phantom one. A third does nothing.
+            var s = new EditorSession();
+            var h = Line(s, s.ActiveLayer, 0.4, 0.5, 0.6, 0.5);
+            var v = Line(s, s.ActiveLayer, 0.3, 0.6, 0.3, 0.7);
+            Line(s, s.ActiveLayer, 0.1, 0.3, 0.9, 0.3);
+            Select(s, h, v);
+            var spy = new Spy(s);
+            int steps = s.UndoCount;
+            s.ExtendSelection();
+            Check.That(h.A == new Vec2(0.4, 0.5) && v.A == new Vec2(0.3, 0.3), $"first: h.A stays, v down to y 0.3, got {h.A} {v.A}");
+            s.ExtendSelection();
+            Check.That(h.A == new Vec2(0.3, 0.5), $"second: h.A onto the lengthened v, got {h.A}");
+            Check.That(s.UndoCount == steps + 2 && spy.LastToast == "Extended 1 end", "second: its own step, 1 end");
+            s.ExtendSelection();
+            Check.That(s.UndoCount == steps + 2 && spy.Shapes == 2 && spy.LastToast == "Nothing in the way to extend to", "third: no-op, no step, no event");
+        }
+
+        /// <summary>Seeded random board for the fuzz checks: <paramref name="lines"/> lines first, then mixed shapes.</summary>
+        static List<Shape> RandomShapes(EditorSession s, System.Random rng, int lines, int others)
+        {
+            // Coordinates rounded to 0.1 or 0.01 now and then so crossings coincide (shared corners, T-junctions).
+            double R()
+            {
+                int k = rng.Next(3);
+                double v = rng.NextDouble();
+                return k == 0 ? System.Math.Round(v, 1) : k == 1 ? System.Math.Round(v, 2) : v;
+            }
+            var list = new List<Shape>();
+            for (int i = 0; i < lines + others; i++)
+            {
+                int kind = i < lines ? 0 : rng.Next(3);
+                double a = R(), b = R(), c = R(), d = R(), r = 0.02 + R() * 0.4;
+                int n = rng.Next(3, 9);
+                EntityId id = s.Board.NewId();
+                list.Add(kind == 0 ? new LineShape(id, new Vec2(a, b), new Vec2(c, d), StrokeStyle.Default)
+                    : kind == 1 ? (Shape)new CircleShape(id, new Vec2(a, b), r, StrokeStyle.Default)
+                    : new PolygonShape(id, new Vec2(a, b), n, r, c * 6, StrokeStyle.Default));
+            }
+            return list;
+        }
+
+        public static void Fuzz_ShapeOrderNeverChangesTheResult()
+        {
+            for (int iter = 0; iter < 800; iter++)
+            {
+                Vec2[] Run(bool reverse)
+                {
+                    var rng = new System.Random(1000 + iter);   // same board both times
+                    var s = new EditorSession();
+                    int lines = rng.Next(2, 6);
+                    var shapes = RandomShapes(s, rng, lines, rng.Next(0, 6));
+                    for (int i = 0; i < shapes.Count; i++) s.ActiveLayer.Shapes.Add(shapes[reverse ? shapes.Count - 1 - i : i]);
+                    Select(s, shapes.GetRange(0, lines).ToArray());
+                    s.ExtendSelection();
+                    var ends = new Vec2[2 * lines];
+                    for (int i = 0; i < lines; i++) { var l = (LineShape)shapes[i]; ends[2 * i] = l.A; ends[2 * i + 1] = l.B; }
+                    return ends;
+                }
+                Vec2[] x = Run(false), y = Run(true);
+                for (int i = 0; i < x.Length; i++)
+                    Check.That(x[i] == y[i], $"seed {1000 + iter} end {i}: ({x[i].X:R}, {x[i].Y:R}) in layer order vs ({y[i].X:R}, {y[i].Y:R}) reversed (bit for bit)");
+            }
+        }
+
+        public static void Fuzz_RepeatedExtendNeverMakesPhantomSteps()
+        {
+            // Each later Extend either does nothing (no step, no event) or moves an end a real distance to a different
+            // boundary; never a rounding-sized nudge onto the boundary the end already sits on.
+            for (int iter = 0; iter < 800; iter++)
+            {
+                var rng = new System.Random(5000 + iter);
+                var s = new EditorSession();
+                int lines = rng.Next(1, 4);
+                var shapes = RandomShapes(s, rng, lines, rng.Next(1, 8));
+                foreach (var sh in shapes) s.ActiveLayer.Shapes.Add(sh);
+                Select(s, shapes.GetRange(0, lines).ToArray());
+                var spy = new Spy(s);
+                var before = new Vec2[2 * lines];
+                for (int rep = 0; rep < 20; rep++)
+                {
+                    for (int i = 0; i < lines; i++) { var l = (LineShape)shapes[i]; before[2 * i] = l.A; before[2 * i + 1] = l.B; }
+                    int steps = s.UndoCount, events = spy.Shapes;
+                    s.ExtendSelection();
+                    if (s.UndoCount == steps)
+                    {
+                        Check.That(spy.Shapes == events && spy.LastToast == "Nothing in the way to extend to", $"seed {5000 + iter}: no step means no event");
+                        for (int i = 0; i < lines; i++)
+                            Check.That(((LineShape)shapes[i]).A == before[2 * i] && ((LineShape)shapes[i]).B == before[2 * i + 1], $"seed {5000 + iter}: no step means no change");
+                        break;
+                    }
+                    Check.That(s.UndoCount == steps + 1 && spy.Shapes == events + 1, $"seed {5000 + iter}: one step, one event");
+                    for (int i = 0; i < lines; i++)
+                    {
+                        var l = (LineShape)shapes[i];
+                        double da = Vec2.Distance(before[2 * i], l.A), db = Vec2.Distance(before[2 * i + 1], l.B);
+                        Check.That((da == 0 || da > 1e-7) && (db == 0 || db > 1e-7), $"seed {5000 + iter} rep {rep}: phantom move {da:R} / {db:R}");
+                    }
+                    Check.That(rep < 19, $"seed {5000 + iter}: repeated Extend settles");
+                }
+            }
+        }
+
         static LineShape FindLine(EditorSession s, EntityId id)
         {
             foreach (var layer in s.Board.Layers)
