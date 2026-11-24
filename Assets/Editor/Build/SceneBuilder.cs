@@ -142,16 +142,19 @@ namespace GeoART.EditorTools
             var origin = CreateXROrigin(out Camera arCamera);
             var planes = origin.gameObject.AddComponent<ARPlaneManager>();
             planes.planePrefab = planePrefab;
-            // Tables only (D-09). If ARBoardSpace.allowVerticalSurfaces is ever enabled, this must become
-            // PlaneDetectionMode.Horizontal | PlaneDetectionMode.Vertical (deferred, CORNER_PLACEMENT_PLAN D8).
-            planes.requestedDetectionMode = PlaneDetectionMode.Horizontal;
+            // Tables and walls: ARBoardSpace.allowVerticalSurfaces is on (BOARD_PLACEMENT.md, Vertical surfaces).
+            // Use PlaneDetectionMode.Horizontal alone only if that flag is turned off.
+            planes.requestedDetectionMode = PlaneDetectionMode.Horizontal | PlaneDetectionMode.Vertical;
             var raycasts = origin.gameObject.AddComponent<ARRaycastManager>();
+            // Feature points let ARBoardSpace find walls before plane detection classifies them (no visualizer).
+            var pointClouds = origin.gameObject.AddComponent<ARPointCloudManager>();
             origin.gameObject.AddComponent<ARAnchorManager>();
 
             var boardRoot = (GameObject)PrefabUtility.InstantiatePrefab(boardRootPrefab, scene);
             var space = boardRoot.GetComponent<ARBoardSpace>();
             SetField(space, "raycastManager", raycasts);
             SetField(space, "planeManager", planes);
+            SetField(space, "pointCloudManager", pointClouds);
             SetField(space, "arCamera", arCamera);
             SetField(space, "xrOrigin", origin);
 
@@ -231,6 +234,7 @@ namespace GeoART.EditorTools
             SetField(app.AddComponent<EngineInstaller>(), "fixture", fixture);
             app.AddComponent<BoardInputRouter>();
             app.AddComponent<ToolBar>();
+            app.AddComponent<ColorBar>();
             app.AddComponent<LayerSidebar>();
             app.AddComponent<ToastView>();
         }

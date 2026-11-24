@@ -57,6 +57,12 @@ namespace GeoART.Contracts
         double SurfaceHeightMeters { get; }
         /// <summary>Current or previewed board side, metres; 0.40 for quick place.</summary>
         double BoardSideMeters { get; }
+        /// <summary>
+        /// True while the surface under the crosshair, being picked on, or holding the placed board is vertical (a wall,
+        /// projector screen, whiteboard or board held upright). False for tables and when no surface is found yet.
+        /// Changes raise <see cref="CornersChanged"/>.
+        /// </summary>
+        bool IsVerticalSurface { get; }
 
         /// <summary>Adds the crosshair point as the next corner. False (and Issue set) if not possible.</summary>
         bool TryAddCorner();

@@ -168,7 +168,7 @@ namespace GeoART.Tests
             Vector3 t = CornerPickSession.TowardTop(Vector3.up, Vector3.down, Vector3.forward, false);
             Assert.That(Vector3.Dot(t.normalized, Vector3.forward), Is.GreaterThan(0.9999f));
 
-            // Vertical surface (deferred, D8): gravity-up projected onto the wall.
+            // Vertical surface: gravity-up projected onto the wall.
             Vector3 g = CornerPickSession.TowardTop(Vector3.back, Vector3.forward, Vector3.up, true);
             Assert.That(Vector3.Dot(g.normalized, Vector3.up), Is.GreaterThan(0.9999f));
         }
@@ -264,6 +264,91 @@ namespace GeoART.Tests
             Assert.That(frame.SquareSide, Is.EqualTo(0.21).Within(1e-5));
             Assert.That(System.Math.Max(frame.Width, frame.Height), Is.EqualTo(0.297).Within(1e-5));
             Assert.That(s.Fit.MaxResidual, Is.LessThan(1e-5));
+        }
+
+        // ---------- vertical surfaces (wall, projector screen, whiteboard, board held upright) ----------
+
+        static readonly Vector3 WallCenter = new Vector3(0.05f, 1.4f, 1.0f);
+        static readonly Vector3 WallNormal = Vector3.back;   // the wall at z = 1 faces the user standing at z < 1
+
+        /// <summary>World corners of a w (along +X) x h (along +Y) rectangle on the wall z = 1, rolled by deg.</summary>
+        static Vector3[] WallCorners(float w, float h, float deg)
+        {
+            var rot = Quaternion.AngleAxis(deg, Vector3.forward);
+            return new[]
+            {
+                WallCenter + rot * new Vector3(-w / 2, -h / 2, 0), WallCenter + rot * new Vector3(w / 2, -h / 2, 0),
+                WallCenter + rot * new Vector3(w / 2, h / 2, 0), WallCenter + rot * new Vector3(-w / 2, h / 2, 0),
+            };
+        }
+
+        CornerPickSession PickOnWall(Vector3 camPos, float deg)
+        {
+            _camGo.transform.position = camPos;
+            _camGo.transform.LookAt(WallCenter);
+            var s = new CornerPickSession();
+            s.SetPlane(WallCenter, WallNormal);
+            foreach (var c in WallCorners(0.60f, 0.45f, deg))
+                Assert.IsTrue(Feed(s, camPos, c), $"add {c}: {s.LastActionIssue}");
+            Assert.IsTrue(s.HasValidFit, s.FitIssue.ToString());
+            return s;
+        }
+
+        Vector3 WallTowardTop(CornerPickSession s) =>
+            CornerPickSession.TowardTop(s.PlaneNormal, _cam.transform.forward, _cam.transform.up, true);
+
+        [Test]
+        public void Wall_FullFlow_BoardIsUprightAndFacesUser()
+        {
+            // Phone above the picture, looking down at it: the camera-based (table) rule would put the top at the bottom.
+            var camPos = new Vector3(0.1f, 1.8f, 0.4f);
+            var s = PickOnWall(camPos, 8f);
+            Assert.IsTrue(s.TryGetPlacement(WallTowardTop(s), Lift, out Pose pose, out RectFrame frame));
+
+            Assert.That(frame.Width, Is.EqualTo(0.60).Within(Tol), "width runs along the wall");
+            Assert.That(frame.Height, Is.EqualTo(0.45).Within(Tol), "height runs up the wall");
+            Assert.That(frame.SquareSide, Is.EqualTo(0.45).Within(Tol));
+            AssertNear(WallCenter + WallNormal * Lift, pose.position, Tol, "board centre, lifted toward the user");
+
+            Assert.That(Vector3.Dot(pose.rotation * Vector3.up, WallNormal), Is.GreaterThan(0.9999f), "board faces the user");
+            Assert.That(Vector3.Dot(pose.rotation * Vector3.forward, Vector3.up), Is.GreaterThan(0.98f), "board top is world up");
+            Assert.That(Vector3.Dot(pose.rotation * Vector3.right, Vector3.right), Is.GreaterThan(0.98f), "+u is the user's right");
+        }
+
+        [Test]
+        public void Wall_TopIsUp_FromBelowAndFromTheSide()
+        {
+            foreach (var camPos in new[] { new Vector3(0.0f, 1.0f, 0.45f), new Vector3(-0.45f, 1.35f, 0.5f), new Vector3(0.5f, 1.6f, 0.45f) })
+            {
+                var s = PickOnWall(camPos, -5f);
+                Assert.IsTrue(s.TryGetPlacement(WallTowardTop(s), Lift, out Pose pose, out _));
+                Assert.That(Vector3.Dot(pose.rotation * Vector3.forward, Vector3.up), Is.GreaterThan(0.99f), $"top is up from {camPos}");
+            }
+        }
+
+        [Test]
+        public void Wall_ScreenRoundTrip_AndOnScreenOrientation()
+        {
+            var camPos = new Vector3(0.0f, 1.45f, 0.45f);
+            var s = PickOnWall(camPos, 0f);
+            Assert.IsTrue(s.TryGetPlacement(WallTowardTop(s), Lift, out Pose pose, out RectFrame frame));
+            float side = (float)frame.SquareSide;
+            _board.SetPositionAndRotation(pose.position, pose.rotation);
+
+            foreach (var p in new[] { new Vec2(0.5, 0.5), new Vec2(0.05, 0.05), new Vec2(0.95, 0.05), new Vec2(0.05, 0.95), new Vec2(0.95, 0.95) })
+            {
+                Assert.IsTrue(BoardGeometry.TryBoardToScreen(_cam, _board, side, p, out var px), $"project {p}");
+                Assert.IsTrue(BoardGeometry.TryScreenToBoard(_cam, _board, side, px, out var back), $"unproject {p}");
+                Assert.That(back.X, Is.EqualTo(p.X).Within(1e-4), $"{p} u");
+                Assert.That(back.Y, Is.EqualTo(p.Y).Within(1e-4), $"{p} v");
+            }
+
+            BoardGeometry.TryBoardToScreen(_cam, _board, side, new Vec2(0.1, 0.5), out var left);
+            BoardGeometry.TryBoardToScreen(_cam, _board, side, new Vec2(0.9, 0.5), out var right);
+            BoardGeometry.TryBoardToScreen(_cam, _board, side, new Vec2(0.5, 0.1), out var bottom);
+            BoardGeometry.TryBoardToScreen(_cam, _board, side, new Vec2(0.5, 0.9), out var top);
+            Assert.That(right.X, Is.GreaterThan(left.X), "+u appears to the right (not mirrored)");
+            Assert.That(top.Y, Is.GreaterThan(bottom.Y), "+v (top) appears higher on screen");
         }
 
         [Test]

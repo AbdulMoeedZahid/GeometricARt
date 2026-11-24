@@ -17,7 +17,8 @@ namespace GeoART.App
         [SerializeField, Tooltip("When placed by corners, show the measured surface and board size (device checklist).")]
         bool showMeasurements = true;
 
-        const float LiveRefreshSeconds = 0.1f;   // edge/size readouts change every frame while moving; cap string rebuilds
+        const float LiveRefreshSeconds = 0.1f;
+        const float LongScanSeconds = 5f;        // then hint how to find a plain wall   // edge/size readouts change every frame while moving; cap string rebuilds
 
         IBoardSpace _boardSpace;
         ICornerPlacement _corners;
@@ -30,7 +31,8 @@ namespace GeoART.App
         PlacementMode _kMode;
         CornerIssue _kIssue;
         int _kCount, _kIssueCorner, _kEdgeMm, _kWMm, _kHMm, _kSMm;
-        bool _kConfirm;
+        bool _kConfirm, _kVertical, _kLongScan;
+        float _scanSince = -1f;
         float _lastRebuild = -1f;
 
         void Start()
@@ -81,21 +83,27 @@ namespace GeoART.App
             int count = _corners != null ? _corners.CornerCount : 0;
             int issueCorner = _corners != null ? _corners.IssueCorner : -1;
             bool confirm = _corners != null && _corners.CanConfirm;
+            bool vertical = _corners != null && _corners.IsVerticalSurface;
+            if (state != PlacementState.Scanning) _scanSince = -1f;
+            else if (_scanSince < 0f) _scanSince = Time.unscaledTime;
+            bool longScan = _scanSince >= 0f && Time.unscaledTime - _scanSince > LongScanSeconds;
             int edge = _corners != null && count < 4 ? Mm(_corners.LiveEdgeMeters) : -1;
             int wMm = _corners != null ? Mm(_corners.SurfaceWidthMeters) : -1;
             int hMm = _corners != null ? Mm(_corners.SurfaceHeightMeters) : -1;
             int sMm = _corners != null ? Mm(_corners.BoardSideMeters) : -1;
 
             bool discrete = state != _kState || mode != _kMode || issue != _kIssue || count != _kCount ||
-                            issueCorner != _kIssueCorner || confirm != _kConfirm;
+                            issueCorner != _kIssueCorner || confirm != _kConfirm || vertical != _kVertical || longScan != _kLongScan;
             bool live = edge != _kEdgeMm || wMm != _kWMm || hMm != _kHMm || sMm != _kSMm;
             if (!discrete && (!live || Time.unscaledTime - _lastRebuild < LiveRefreshSeconds)) return;
 
             _kState = state; _kMode = mode; _kIssue = issue; _kCount = count; _kIssueCorner = issueCorner;
-            _kConfirm = confirm; _kEdgeMm = edge; _kWMm = wMm; _kHMm = hMm; _kSMm = sMm;
+            _kConfirm = confirm; _kVertical = vertical; _kLongScan = longScan; _kEdgeMm = edge; _kWMm = wMm; _kHMm = hMm; _kSMm = sMm;
             _lastRebuild = Time.unscaledTime;
 
-            _coach = CoachText(state, _corners, _boardSpace.IsPlaced);
+            _coach = longScan
+                ? "Still looking: move sideways. Aim at a textured spot on it first (edge, socket, picture)"
+                : CoachText(state, _corners, _boardSpace.IsPlaced);
             _measure = _boardSpace.IsPlaced && wMm >= 0 && hMm >= 0
                 ? $"Surface {wMm / 10f:0.0} x {hMm / 10f:0.0} cm · board {sMm / 10f:0.0} cm"
                 : null;
@@ -106,16 +114,17 @@ namespace GeoART.App
         /// <summary>Placement coach line. C replaces this with its own coach text bound to IBoardSpace / ICornerPlacement.</summary>
         static string CoachText(PlacementState state, ICornerPlacement corners, bool placed)
         {
+            bool wall = corners != null && corners.IsVerticalSurface;
             if (corners != null && !placed && corners.Issue != CornerIssue.None)
-                return IssueText(corners.Issue, corners.IssueCorner);
+                return IssueText(corners.Issue, corners.IssueCorner, wall);
 
             switch (state)
             {
-                case PlacementState.Scanning: return "Move your phone slowly over a textured table";
+                case PlacementState.Scanning: return "Move your phone slowly over a textured table or wall";
                 case PlacementState.PlaneFound:
                     return corners != null && corners.Mode == PlacementMode.Corners
-                        ? "Aim the + at a corner of your sheet and tap (1 of 4)"
-                        : "Tap to place the board";
+                        ? wall ? "Aim the + at a corner on the wall and tap (1 of 4)" : "Aim the + at a corner of your sheet and tap (1 of 4)"
+                        : wall ? "Tap to place the board on the wall" : "Tap to place the board";
                 case PlacementState.PickingCorners:
                 {
                     if (corners == null) return null;
@@ -130,7 +139,7 @@ namespace GeoART.App
                     return corners.CanConfirm
                         ? $"Surface {corners.SurfaceWidthMeters * 100:0.0} x {corners.SurfaceHeightMeters * 100:0.0} cm, " +
                           $"board {corners.BoardSideMeters * 100:0.0} cm. Tap to place"
-                        : "Point the camera at the sheet to place";
+                        : wall ? "Point the camera at the wall to place" : "Point the camera at the sheet to place";
                 }
                 case PlacementState.TrackingLost: return "Tracking lost: move slowly back toward the board";
                 case PlacementState.Unsupported:
@@ -139,12 +148,13 @@ namespace GeoART.App
             }
         }
 
-        static string IssueText(CornerIssue issue, int corner)
+        static string IssueText(CornerIssue issue, int corner, bool wall)
         {
             switch (issue)
             {
-                case CornerIssue.NoSurface: return "Point the + at the table";
-                case CornerIssue.AimTooShallow: return "Tilt the phone down: view is too flat";
+                case CornerIssue.NoSurface: return wall ? "Point the + at the wall" : "Point the + at the table";
+                case CornerIssue.AimTooShallow:
+                    return wall ? "Face the wall more directly: view is too flat" : "Tilt the phone down: view is too flat";
                 case CornerIssue.TooFar: return "Move closer (within 2.5 m)";
                 case CornerIssue.Unsteady: return "Hold steady, then tap";
                 case CornerIssue.TooCloseToCorner: return $"That is corner {corner + 1}: aim at the next corner";

@@ -8,7 +8,9 @@ namespace GeoART.BoardRender
     /// Draws the board and the session's model in the transform's local XZ plane (A-2/A-3/A-4).
     /// Six meshes, one draw call each, rebuilt only when dirty (render queues 3000..3005, in this order):
     ///   Base    - translucent sheet, outer frame (D-04), and the dashed outline of a corner-registered surface when it
-    ///             is larger than the board (skipped when showBase is off), plus the dashed square or hex tile edges
+    ///             is larger than the board (skipped when showBase is off), plus the dashed square or hex tile edges.
+    ///             Guide lines (grid, frame, user snap points) are drawn in BoardAppearance.Guides: Black (the original
+    ///             dark colours, default) or White (light, for dark surfaces). Nothing is filled in AR
     ///             from <see cref="TileGrid"/> (D-07; drawn whenever showGrid is on, so also in AR)
     ///   Shapes  - committed lines/circles/polygons on visible layers + user snap points  (BoardChanged)
     ///   Selection - each selected shape on a visible layer: a wide translucent halo (solid even for dotted shapes), then
@@ -42,6 +44,12 @@ namespace GeoART.BoardRender
                                  "so the tiles are visible on the real surface in AR too.")]
         bool showGrid = true;
         [SerializeField] bool showSnapCandidates = true;
+        [SerializeField, Tooltip("Grid lines when BoardAppearance.Guides is White (Black uses dividerColor).")]
+        Color whiteGridColor = new Color(0.93f, 0.93f, 0.95f, 0.85f);
+        [SerializeField, Tooltip("Frame (flat scene) when Guides is White (Black uses frameColor).")]
+        Color whiteFrameColor = new Color(0.95f, 0.95f, 0.97f, 1f);
+        [SerializeField, Tooltip("User snap points when Guides is White (Black uses snapPointColor).")]
+        Color whiteSnapPointColor = new Color(0.95f, 0.95f, 0.97f, 1f);
         [SerializeField] Color sheetColor = new Color(1f, 1f, 1f, 0.32f);
         [SerializeField] Color frameColor = new Color(0.08f, 0.08f, 0.1f, 1f);
         [SerializeField] Color dividerColor = new Color(0.2f, 0.2f, 0.25f, 0.85f);
@@ -96,6 +104,11 @@ namespace GeoART.BoardRender
         readonly List<Vector3> _poly = new List<Vector3>(16);
 
         public float SideMeters => sideMeters;
+
+        static bool WhiteGuides => BoardAppearance.Guides == BoardGuideColor.White;
+        Color GridColor => WhiteGuides ? whiteGridColor : dividerColor;
+        Color FrameColor => WhiteGuides ? whiteFrameColor : frameColor;
+        Color SnapPointColor => WhiteGuides ? whiteSnapPointColor : snapPointColor;
         public IEditorSession Session => _session;
 
         void Awake()
@@ -123,10 +136,17 @@ namespace GeoART.BoardRender
         void OnEnable()
         {
             Subscribe();
+            BoardAppearance.Changed += OnAppearanceChanged;
             MarkAllDirty();
         }
 
-        void OnDisable() => Unsubscribe();
+        void OnDisable()
+        {
+            Unsubscribe();
+            BoardAppearance.Changed -= OnAppearanceChanged;
+        }
+
+        void OnAppearanceChanged() => _baseDirty = _shapesDirty = true;   // grid, frame, user snap points
 
         void OnDestroy()
         {
@@ -274,10 +294,11 @@ namespace GeoART.BoardRender
                 // Each edge once, so shared hex edges do not double up. With the base on, the frame already draws the
                 // board boundary; in AR (base off) the square grid's outer edges outline the board instead.
                 TileGrid.UniqueEdges(gridKind, gridN, _gridEdges, skipBoardBoundary: showBase);
+                Color grid = GridColor;
                 foreach (var (a, b) in _gridEdges)
                 {
                     float phase = 0f;
-                    mb.AddDashedSegment(P(a, 0f), P(b, 0f), 0.0011f * StrokeScale, dividerColor, Dash, Gap, ref phase);
+                    mb.AddDashedSegment(P(a, 0f), P(b, 0f), 0.0011f * StrokeScale, grid, Dash, Gap, ref phase);
                 }
             }
             _base.Apply();
@@ -293,7 +314,7 @@ namespace GeoART.BoardRender
 
             _poly.Clear();
             _poly.Add(bl); _poly.Add(br); _poly.Add(tr); _poly.Add(tl);
-            mb.AddPolyline(_poly, true, 0.002f * StrokeScale, frameColor);
+            mb.AddPolyline(_poly, true, 0.002f * StrokeScale, FrameColor);
 
             // Registered surface (D1: the board is centred in it, so the outline is symmetric).
             if (!float.IsNaN(_surfaceW) && (Mathf.Abs(_surfaceW - sideMeters) > 0.002f || Mathf.Abs(_surfaceH - sideMeters) > 0.002f))
@@ -319,7 +340,7 @@ namespace GeoART.BoardRender
                     if (opacity <= 0f) continue;
                     foreach (var shape in layer.Shapes)
                         if (shape != null) AddShape(mb, shape, WithOpacity(ToColor32(shape.Style.Color), opacity), ShapesLift);
-                    Color32 snapColor = WithOpacity(snapPointColor, opacity);
+                    Color32 snapColor = WithOpacity(SnapPointColor, opacity);
                     foreach (var sp in layer.SnapPoints)
                         if (sp != null) mb.AddDisc(P(sp.Position, ShapesLift), 0.0035f * StrokeScale, snapColor);
                 }
