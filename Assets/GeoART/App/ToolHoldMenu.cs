@@ -52,7 +52,7 @@ namespace GeoART.App
         Action _onHold;
         Color _accent, _idle;
 
-        bool _pressing, _holdFired, _cancelled, _suppressClick;
+        bool _configured, _pressing, _holdFired, _cancelled, _suppressClick;
         int _pointer, _hover = -1;
         Vector2 _pressPos;
         float _pressTime;
@@ -94,6 +94,22 @@ namespace GeoART.App
             var relay = blocker.GetComponent<LayerPointerRelay>();
             if (relay == null) relay = blocker.AddComponent<LayerPointerRelay>();
             relay.Target = this;
+            _configured = true;
+            SetCharge(0f);
+            Close();
+        }
+
+        /// <summary>
+        /// Action-only hold (no chip row): the same charge, slop and click suppression, then <paramref name="onHold"/>
+        /// runs (e.g. the Bands button opens the layer popup). <see cref="Opened"/> is still raised.
+        /// </summary>
+        public void Configure(Image charge, Action onHold)
+        {
+            _button = (RectTransform)transform;
+            _charge = charge;
+            _chips = Array.Empty<Image>();
+            _onHold = onHold;
+            _configured = true;
             SetCharge(0f);
             Close();
         }
@@ -117,7 +133,7 @@ namespace GeoART.App
 
         public void OnPointerDown(PointerEventData e)
         {
-            if (_row == null || IsOpen) return;
+            if (!_configured || IsOpen) return;
             // A new press always replaces the old one, so a lost PointerUp (system gesture, touch cancel) never wedges it.
             _pressing = true;
             _pointer = e.pointerId;
@@ -166,7 +182,7 @@ namespace GeoART.App
             _suppressClick = true;
             SetCharge(0f);
             _onHold?.Invoke();
-            Open();
+            if (_row != null) Open();
             Haptics.Tick();   // the menu opened under the finger
             Opened?.Invoke();
         }

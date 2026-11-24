@@ -5,7 +5,11 @@ using UnityEngine.UI;
 namespace GeoART.App
 {
     /// <summary>
-    /// The Line and Circle hold menus and the Bands slot.
+    /// The Line and Circle hold menus and the Bands button.
+    /// With a selection (Select, Move, Scale, Duplicate), holding Line or Circle opens the chips WITHOUT switching tool,
+    /// and a chip also restyles the selected shapes' dash (one "Style" step); a plain tap still switches tools.
+    /// Bands: tap turns the active layer's bands on or off (keeping its remembered mode and width); hold opens the layer
+    /// popup for the active layer (LayerSidebar.OpenSettings); the label shows Off / Double / Weave, orange while on.
     /// Line mode: Solid or Dotted (<see cref="StrokeStyle.Dash"/>), shared by Line and Circle as the Dotted toggle was.
     /// Tap Line/Circle selects the tool and keeps the mode. Hold either one (<see cref="ToolHoldMenu.HoldSeconds"/>) to
     /// select it and open a row of mode chips to its left; slide onto a chip and release to pick it, or release first and
@@ -22,12 +26,12 @@ namespace GeoART.App
         const float ChipW = 56f, ChipH = 52f, ChipSpacing = 8f, HoldMarkSize = 8f;
         const string LineMenuHintKey = "GeoART.Hint.LineMenu";
         const string LineMenuHint = "Hold Line or Circle for line styles";
-        const float BandsDisabledAlpha = 0.4f;
 
         static readonly string[] s_ModeNames = { "Solid", "Dotted" };   // index = (int)LineStyle
 
         RectTransform _holdMenus;
-        ToolHoldMenu _lineMenu, _circleMenu;
+        ToolHoldMenu _lineMenu, _circleMenu, _bandsMenu;
+        Image _bandsBg;
         RawImage _lineIcon, _circleIcon;
         Texture _lineSolidGlyph, _lineDottedGlyph, _circleSolidGlyph, _circleDottedGlyph;
         Text _bandsLabel;
@@ -48,12 +52,13 @@ namespace GeoART.App
             _circleSolidGlyph = MakeGlyph(Glyph.Circle);
             _circleDottedGlyph = MakeGlyph(Glyph.CircleDotted);
 
-            _lineMenu = AddHoldMenu(_lineBg, "Line", new[] { Glyph.Line, Glyph.Dotted }, font,
-                () => _session?.SetTool(ToolId.Line));
+            _lineMenu = AddHoldMenu(_lineBg, "Line", new[] { Glyph.Line, Glyph.Dotted }, font, () => HoldTool(ToolId.Line));
             _circleMenu = AddHoldMenu(_circleBg, "Circle", new[] { Glyph.Circle, Glyph.CircleDotted }, font,
-                () => _session?.SetTool(ToolId.Circle));
-            _lineMenu.Opened += () => _circleMenu.Close();   // one menu at a time (two fingers can hold both)
-            _circleMenu.Opened += () => _lineMenu.Close();
+                () => HoldTool(ToolId.Circle));
+            // One menu at a time (two fingers can hold two buttons).
+            _lineMenu.Opened += () => { _circleMenu.Close(); _bandsMenu.Close(); };
+            _circleMenu.Opened += () => { _lineMenu.Close(); _bandsMenu.Close(); };
+            _bandsMenu.Opened += () => { _lineMenu.Close(); _circleMenu.Close(); };
         }
 
         /// <summary>
@@ -136,10 +141,19 @@ namespace GeoART.App
             _session?.SetTool(tool);
         }
 
+        bool HasSelection => _session != null && _session.Selection.Ids.Count > 0;
+
+        /// <summary>A hold on Line/Circle selects the tool, unless something is selected: then the chips restyle it.</summary>
+        void HoldTool(ToolId tool)
+        {
+            if (!HasSelection) _session?.SetTool(tool);
+        }
+
         void PickLineMode(int index)
         {
             if (_session == null) return;
             _session.Style = _session.Style.WithDash((LineStyle)index);   // raises StateChanged -> Refresh (icons)
+            if (HasSelection) _session.RestyleSelection(StyleParts.Dash, _session.Style);
         }
 
         void RefreshLineMode()
@@ -156,6 +170,7 @@ namespace GeoART.App
         {
             if (_lineMenu != null) _lineMenu.Close();
             if (_circleMenu != null) _circleMenu.Close();
+            if (_bandsMenu != null) _bandsMenu.Close();
         }
 
         void MaybeShowLineMenuHint()
@@ -169,25 +184,44 @@ namespace GeoART.App
             PlayerPrefs.Save();
         }
 
-        // ---------- Bands slot ----------
+        // ---------- Bands button ----------
 
-        /// <summary>The Bands button (the old Dotted slot): dimmed and "Off" until bands exist; a tap only toasts.</summary>
+        /// <summary>The Bands button (the old Dotted slot): tap toggles the active layer's bands, hold opens its popup.</summary>
         void BuildBandsButton(Font font, ref float y)
         {
-            Image bg = CreateButton("Bands", Glyph.Bands, font, ref y, OnBandsTap, out _bandsLabel);
+            _bandsBg = CreateButton("Bands", Glyph.Bands, font, ref y, OnBandsTap, out _bandsLabel);
             _bandsLabel.text = "Off";
-            bg.gameObject.AddComponent<CanvasGroup>().alpha = BandsDisabledAlpha;   // still a raycast target
+            Image charge = AddOverlay(_bandsBg.transform, "Charge");
+            AddHoldMark(_bandsBg.transform);
+            _bandsMenu = _bandsBg.gameObject.AddComponent<ToolHoldMenu>();
+            _bandsMenu.Configure(charge, OpenBandSettings);
         }
 
         void OnBandsTap()
         {
-            var toast = GetComponent<ToastView>();
-            if (toast != null) toast.Show("Bands are coming soon");
+            if (_session == null || _bandsMenu.SuppressClick) return;
+            Layer layer = _session.Board.FindLayer(_session.Board.ActiveLayerId);
+            if (layer == null) return;
+            LayerBands b = layer.Bands.Sanitized();   // a fresh layer: the defaults; an Off layer keeps its mode and width
+            b.On = !b.On;
+            _session.SetLayerBands(layer.Id, b);
+        }
+
+        void OpenBandSettings()
+        {
+            if (_session == null) return;
+            var sidebar = GetComponent<LayerSidebar>();
+            if (sidebar != null) sidebar.OpenSettings(_session.Board.ActiveLayerId);
         }
 
         void RefreshBands()
         {
-            if (_bandsLabel != null && _bandsLabel.text != "Off") _bandsLabel.text = "Off";
+            if (_bandsLabel == null || _session == null) return;
+            Layer layer = _session.Board?.FindLayer(_session.Board.ActiveLayerId);
+            LayerBands b = layer != null ? layer.Bands.Sanitized() : default;
+            string label = !b.On ? "Off" : b.Mode == BandMode.Interlace ? "Weave" : "Double";
+            if (_bandsLabel.text != label) _bandsLabel.text = label;
+            SetColor(_bandsBg, b.On ? Accent : Idle);
         }
     }
 }

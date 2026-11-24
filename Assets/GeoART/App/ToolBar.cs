@@ -12,8 +12,9 @@ namespace GeoART.App
     ///                   icon; holding either opens a row of mode chips to its left (ToolHoldMenu, ToolBar.HoldMenus.cs).
     ///                   Select (marquee-corner icon) sets ToolId.SelectMove: drag a box or tap a stroke to select. It
     ///                   stays orange in Move, Scale and Duplicate too (the selection tools)
-    ///   Bands           per-layer band treatment of the active layer (label Off / Double / Weave). Until bands exist it
-    ///                   is dimmed, shows "Off" and a tap only toasts that bands are coming
+    ///   Bands           per-layer band treatment of the active layer (label Off / Double / Weave, orange while on): tap
+    ///                   toggles it, hold opens the layer popup (ToolBar.HoldMenus.cs)
+    ///   Width / colour  with a selection, also restyle the selected shapes (one "Style" step each)
     ///   Width           cycles the stroke width Thin -> Medium -> Thick (label shows the current one)
     ///   Grid            switches the tile grid Square <-> Hex (icon and label show the current kind)
     ///   Tiles           cycles tiles per side 1 -> 2 -> 3 -> 4 -> 1 (label "2x2" etc.)
@@ -183,6 +184,7 @@ namespace GeoART.App
         void OnBoardChanged(BoardChangeKind kind)
         {
             if ((kind & (BoardChangeKind.Grid | BoardChangeKind.Reset)) != 0) RefreshGrid();
+            if ((kind & (BoardChangeKind.Layers | BoardChangeKind.Reset | BoardChangeKind.History)) != 0) RefreshBands();
             RefreshUndo(_canvas.enabled);   // CanUndo changes only together with BoardChanged (no StateChanged)
         }
 
@@ -237,6 +239,8 @@ namespace GeoART.App
             LineWidth next = s.Width == LineWidth.Thin ? LineWidth.Medium
                            : s.Width == LineWidth.Medium ? LineWidth.Thick : LineWidth.Thin;
             _session.Style = s.WithWidth(next);
+            // With a selection the new width also goes to the selected shapes (one "Style" step).
+            if (_session.Selection.Ids.Count > 0) _session.RestyleSelection(StyleParts.Width, _session.Style);
         }
 
         static string WidthLabel(LineWidth w) =>
