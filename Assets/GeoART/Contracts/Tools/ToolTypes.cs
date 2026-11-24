@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace GeoART.Contracts
 {
     /// <summary>Append only: ordinals are stable. SelectMove is the Select tool; Move, Scale and Duplicate act on the selection.</summary>
-    public enum ToolId { None, Line, SelectMove, Rotate, Circle, Snap, Scale, Stamps, Erase, Duplicate, Move }
+    public enum ToolId { None, Line, SelectMove, Rotate, Circle, Snap, Scale, Stamps, Erase, Duplicate, Move, Fill }
 
     /// <summary>Cancel = the gesture was interrupted (focus loss, re-placement, tracking loss, entering UI): abort unfinished work.</summary>
     public enum PointerPhase { Down, Move, Up, Cancel }

@@ -98,6 +98,7 @@ namespace GeoART.Engine
             _gestureLayer = EntityId.None;
             _lastRaw = _xfDown = _anchor = _current = e.BoardPos;
             _downHit = _hoverOn = false;
+            ResetSnapFeel();
             StartTapDetection(e.BoardPos);
 
             _xfPivot = new Vec2((_xfBounds.MinX + _xfBounds.MaxX) * 0.5, (_xfBounds.MinY + _xfBounds.MaxY) * 0.5);
@@ -268,6 +269,7 @@ namespace GeoART.Engine
             }
             double cx = Clamp(tx, _xfLoX, _xfHiX), cy = Clamp(ty, _xfLoY, _xfHiY);
             if (cx != tx || cy != ty) hit = false;   // a clamped translation is not a snap
+            NoteSnap(hit, c);
             _xfHit = hit;
             _xfSnapPos = hit ? c.Position : default;
             _xf = ShapeTransform.Translation(new Vec2(cx, cy));
@@ -294,6 +296,7 @@ namespace GeoART.Engine
             }
             double sc = Clamp(s, _xfSMin, _xfSMax);
             if (sc != s) hit = false;   // a clamped factor is not a snap
+            NoteSnap(hit, c);
             _xfHit = hit;
             _xfSnapPos = hit ? c.Position : default;
             _xf = ShapeTransform.ScaleAbout(pv, sc);

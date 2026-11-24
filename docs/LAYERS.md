@@ -10,7 +10,7 @@ Layer sidebar on the middle-left of the screen, plus the engine commands behind 
 | `-` (bottom) | tap | Delete the BOTTOM layer and everything on it (Undo brings it back). The last layer can't be deleted (toast). |
 | dash | tap | Select the layer (new shapes go there). Happens on release, with no double-tap delay. |
 | dash | double tap | Toggle the layer's visibility. Second tap must start within 0.3 s of the first release. |
-| dash | hold 0.45 s | Select + open the opacity popup next to the dash: name, 0-100% slider (applied live), close `x`. A tap anywhere outside closes it. |
+| dash | hold 0.45 s | Select + open the layer popup next to the dash: name, opacity 0-100% (applied live), the **Bands** section (see `docs/BANDS.md`), close `x`. A touch anywhere outside closes it on release (that touch never draws). The toolbar's Bands button opens the same popup for the active layer. |
 | dash | slide up/down | After more than 8 ref px of movement (before the hold fires) the dash lifts, follows the finger, and the other dashes open a gap. Release commits the move. |
 
 `+` sits on a round translucent-white chip and `-` on a round red chip (destructive), each with a hairline separating it from
@@ -32,17 +32,21 @@ Toasts: top-centre about 24% down, 1.8 s with fade, sortingOrder 120, never bloc
 - `MoveLayer(id, newIndex)` clamps the index to `[0, Count-1]`; no-op (no events) if unchanged.
 - `DeleteBottomLayer()` removes `Layers[0]` with its shapes and snap points (and drops its shapes from the selection). With
   one layer left it toasts "Can't delete the only layer". If the deleted layer was active, the new bottom becomes active.
-- `SetLayerVisible(id, bool)`, `SetLayerOpacity(id, double)` (clamped to [0,1], NaN ignored).
+- `SetLayerVisible(id, bool)`, `SetLayerOpacity(id, double)` (clamped to [0,1], NaN ignored),
+  `SetLayerBands(id, LayerBands)` (sanitized; see `docs/BANDS.md`).
 - Every change raises `BoardChanged(Layers)` (delete adds `Shapes|SnapPoints`); add/select/delete also raise `StateChanged`.
   Unknown ids and unchanged values raise nothing.
-- Undo (`docs/TOOLS.md`, "Undo"): add, delete, reorder, hide/show and opacity are undoable; `SelectLayer` is not (and
-  keeps the current active layer through an Undo when it still exists). Opacity edits on one layer merge into one step
-  per popup session (opening the popup calls `SelectLayer`, which ends the merge).
+- Undo (`docs/TOOLS.md`, "Undo"): add, delete, reorder, hide/show, opacity and bands are undoable; `SelectLayer` is not
+  (and keeps the current active layer through an Undo when it still exists). Opacity edits on one layer merge into one
+  step per popup session, and so do band-width edits ("Band width"); the merge key is (layer, kind), so opacity then
+  width is two steps. Opening the popup calls `SelectLayer`, which ends any merge. Other band changes are one "Bands"
+  step each.
+- `Layer.DeepClone` copies `Bands` (a value type), so Undo of any later edit keeps the bands.
 
 ## Files
 
 - `Assets/GeoART/Engine/EditorSession.Layers.cs` engine commands
-- `Assets/GeoART/App/LayerSidebar.cs` the sidebar, gestures and opacity popup
+- `Assets/GeoART/App/LayerSidebar.cs` the sidebar, gestures and the layer popup (opacity, bands)
 - `Assets/GeoART/App/LayerPointerRelay.cs` forwards EventSystem pointer events from dash rows / popup blocker
 - `Assets/GeoART/App/LayerUiKit.cs` runtime uGUI helpers (canvas, procedural rounded sprite, scale factor), also used by ToastView
 - `Assets/GeoART/App/ToastView.cs` toast display

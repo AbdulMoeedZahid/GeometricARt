@@ -9,9 +9,10 @@ namespace GeoART.Engine
     /// the whole Board plus the selection ids and a label (<see cref="RecordUndo"/>, called after every refusal guard and
     /// before the first mutation, NewId included). Undo/Redo never clone: the live board moves onto the other stack as-is
     /// and the stored one becomes live, so ids, order, doubles, layers, grid and NextId come back exactly.
-    ///   Steps        strokes, Move/Scale/Duplicate, add/delete/reorder/hide/show layer, layer opacity (consecutive edits
-    ///                of one layer merge until anything else happens or SelectLayer is called), grid type, tiles,
-    ///                ClearBoard. Never: SelectLayer, tool/selection/style/snap changes, refused or identity actions.
+    ///   Steps        strokes, Move/Scale/Duplicate, restyle, add/delete/reorder/hide/show layer, layer opacity and band
+    ///                width (consecutive edits of one layer's opacity, or of its band width, merge until anything else
+    ///                happens or SelectLayer is called), other band settings, grid type, tiles, ClearBoard. Never:
+    ///                SelectLayer, tool/selection/style/snap changes, refused or identity actions.
     ///   Cap          <see cref="MaxUndoSteps"/>; the oldest step is dropped (then <see cref="HistoryLimitToast"/>).
     ///   Scope        from session creation; LoadBoard clears it; ClearBoard is a step; a new step clears redo.
     ///   Ids          NextId never decreases between LoadBoards (the larger one wins on every swap): no id is reissued.
@@ -29,7 +30,7 @@ namespace GeoART.Engine
 
         /// <summary>Raised by Undo/Redo: every content flag (all listeners refresh) plus History.</summary>
         public const BoardChangeKind HistoryChangeKind = BoardChangeKind.Shapes | BoardChangeKind.Layers
-            | BoardChangeKind.SnapPoints | BoardChangeKind.Grid | BoardChangeKind.History;
+            | BoardChangeKind.SnapPoints | BoardChangeKind.Grid | BoardChangeKind.Fills | BoardChangeKind.History;
 
         public static string UndidToast(string label) => "Undid: " + label;
         public static string RedidToast(string label) => "Redid: " + label;
@@ -51,6 +52,13 @@ namespace GeoART.Engine
             public const string GridType = "Grid type";
             public const string Tiles = "Tiles";
             public const string ClearBoard = "Clear board";
+            public const string Bands = "Bands";
+            public const string BandWidth = "Band width";
+            public const string Style = "Style";
+            public const string Fill = "Fill";
+            public const string Delete = "Delete";
+            public const string Extend = "Extend";
+            public const string ClearFill = "Clear fill";
         }
 
         /// <summary>A stored board (never live while stored), the selection ids at that time, and the step's label.</summary>
@@ -70,7 +78,28 @@ namespace GeoART.Engine
 
         readonly List<HistoryStep> _undo = new List<HistoryStep>(), _redo = new List<HistoryStep>();
         bool _historyTrimmed;              // the cap dropped a step since the last LoadBoard
-        EntityId _opacityStepLayer;        // layer whose opacity edits merge into the top step; None = no merge
+        /// <summary>What a run of slider edits merges on: one layer's opacity, or one layer's band width.</summary>
+        enum MergeKind { None, Opacity, BandWidth }
+
+        // Consecutive edits of the same (layer, kind) merge into the top step; any other step, SelectLayer, Undo/Redo or a
+        // history reset ends the run.
+        EntityId _mergeLayer;
+        MergeKind _mergeKind;
+
+        void EndMerge()
+        {
+            _mergeLayer = EntityId.None;
+            _mergeKind = MergeKind.None;
+        }
+
+        /// <summary>Records a step unless this edit continues the current (layer, kind) run; then starts that run.</summary>
+        void RecordMergedUndo(EntityId layer, MergeKind kind, string label)
+        {
+            if (_mergeLayer == layer && _mergeKind == kind) return;
+            RecordUndo(label);
+            _mergeLayer = layer;
+            _mergeKind = kind;
+        }
 
         public bool CanUndo => _undo.Count > 0;
         public bool CanRedo => _redo.Count > 0;
@@ -100,7 +129,7 @@ namespace GeoART.Engine
             }
             _undo.Add(step);
             _redo.Clear();
-            _opacityStepLayer = EntityId.None;
+            EndMerge();
         }
 
         void RecordUndo(string label) => PushStep(CaptureStep(label));
@@ -110,7 +139,7 @@ namespace GeoART.Engine
             _undo.Clear();
             _redo.Clear();
             _historyTrimmed = false;
-            _opacityStepLayer = EntityId.None;
+            EndMerge();
         }
 
         void StepHistory(List<HistoryStep> from, List<HistoryStep> to, bool undo)
@@ -125,7 +154,7 @@ namespace GeoART.Engine
             from.RemoveAt(from.Count - 1);
             // The live board moves over as-is: no clone; nobody else holds it after the events below.
             to.Add(new HistoryStep(_board, new HashSet<EntityId>(Selection.Ids), s.Label));
-            _opacityStepLayer = EntityId.None;
+            EndMerge();
             RestoreStep(s);
             RaiseToast(undo ? UndidToast(s.Label) : RedidToast(s.Label));
         }

@@ -12,13 +12,15 @@ namespace GeoART.App
     /// not a mode: always the idle colour, dimmed (CanvasGroup alpha <see cref="UndoDisabledAlpha"/>) when there is nothing
     /// to undo but still a raycast target, so a tap toasts "Nothing to undo" and never reaches the board. Refreshed on
     /// session/placement StateChanged and on every BoardChanged (CanUndo changes only together with a BoardChanged).
+    /// Redo (plan 5.2) sits right of Undo (one ButtonW + Spacing further in, scaled with the same fit), with a mirrored
+    /// arrow, shown and dimmed by the same rules with CanRedo; a tap with nothing to redo toasts "Nothing to redo".
     /// </summary>
     public sealed partial class ToolBar
     {
         const float UndoDisabledAlpha = 0.4f;
 
-        RectTransform _undo;
-        CanvasGroup _undoGroup;
+        RectTransform _undo, _redo;
+        CanvasGroup _undoGroup, _redoGroup;
 
         void BuildUndoButton(Font font)
         {
@@ -29,6 +31,14 @@ namespace GeoART.App
             _undoGroup = bg.gameObject.AddComponent<CanvasGroup>();
             _undoGroup.alpha = UndoDisabledAlpha;
             bg.gameObject.SetActive(false);
+
+            var redo = MakeButton("Redo", Glyph.Redo, font, (RectTransform)_canvas.transform, () => _session?.Redo(), out _);
+            _redo = (RectTransform)redo.transform;
+            _redo.anchorMin = _redo.anchorMax = _redo.pivot = new Vector2(0f, 1f);
+            _redo.sizeDelta = new Vector2(ButtonW, ButtonH);
+            _redoGroup = redo.gameObject.AddComponent<CanvasGroup>();
+            _redoGroup.alpha = UndoDisabledAlpha;
+            redo.gameObject.SetActive(false);
             ApplySafeArea();
         }
 
@@ -40,6 +50,10 @@ namespace GeoART.App
             if (_undo.gameObject.activeSelf != visible) _undo.gameObject.SetActive(visible);
             float alpha = _session != null && _session.CanUndo ? 1f : UndoDisabledAlpha;
             if (_undoGroup.alpha != alpha) _undoGroup.alpha = alpha;
+            if (_redo == null) return;
+            if (_redo.gameObject.activeSelf != visible) _redo.gameObject.SetActive(visible);
+            float redoAlpha = _session != null && _session.CanRedo ? 1f : UndoDisabledAlpha;
+            if (_redoGroup.alpha != redoAlpha) _redoGroup.alpha = redoAlpha;
         }
 
         /// <summary>
@@ -53,6 +67,10 @@ namespace GeoART.App
             _undo.anchorMin = _undo.anchorMax = new Vector2((_safeArea.xMin + margin) / w, (_safeArea.yMax - margin) / h);
             _undo.anchoredPosition = Vector2.zero;
             _undo.localScale = new Vector3(fit, fit, 1f);
+            if (_redo == null) return;
+            _redo.anchorMin = _redo.anchorMax = _undo.anchorMin;
+            _redo.anchoredPosition = new Vector2((ButtonW + Spacing) * fit, 0f);   // canvas units: the offset scales with the fit
+            _redo.localScale = new Vector3(fit, fit, 1f);
         }
     }
 }

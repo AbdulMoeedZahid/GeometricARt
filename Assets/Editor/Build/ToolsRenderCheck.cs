@@ -24,6 +24,13 @@ namespace GeoART.EditorTools
     ///      originals, orange ghosts, cursor, hover ring when snapped): xform-*.png, xform-dark-*.png, xform-scale-*.png;
     ///   5. renders the test board after two Undos (undo-*.png): the base design without the open green ghost, the blue
     ///      dotted circle and the tiny circle, so BoardView redraws from a swapped-in board.
+    ///   6. renders banded layers through BoardView (Layer.Bands on the top layer of GoldenBoards.StarOnFullBoard and
+    ///      Tiled2x2, thin black outlines): bands-* (Double, structure shown), bands-stripped-*, interlace-* and
+    ///      interlace-inner-* (8 mm), the tiled bands-tiled-* / interlace-tiled-*, and interlace with the structure line
+    ///      shown (cut under every over band): interlace-structure-*, interlace-inner-structure-* (10 mm), for
+    ///      comparison with the book (p22-23); 45 cm, 90 cm and straight down.
+    ///   7. renders fills (fill-*, fill-interlace-*): filled star faces, and a woven tiled pattern with a gap, a star
+    ///      centre and a band piece filled.
     /// Batch (needs graphics, so no -nographics):
     ///   -executeMethod GeoART.EditorTools.ToolsRenderCheck.RunBatch   (PNGs go to $GEOART_RENDER_OUT or Logs/GeoARtRenderCheck)
     /// </summary>
@@ -94,9 +101,78 @@ namespace GeoART.EditorTools
             // 5. Undo: the first Undo cancels the open green ghost and removes the last stroke (blue dotted circle), the
             //    second removes the tiny circle.
             RenderScenario(outDir, "undo-", s => { DrawTestDesign(s); s.Undo(); s.Undo(); }, showBase: true, dark: false);
+            // 6. Bands, drawn from the engine geometry directly.
+            RenderBands(outDir, "bands-", GoldenBoards.StarOnFullBoard, 0.015, false, false, true);
+            RenderBands(outDir, "bands-stripped-", GoldenBoards.StarOnFullBoard, 0.015, false, false, false);
+            RenderBands(outDir, "interlace-", GoldenBoards.StarOnFullBoard, 0.015, true, false, false);
+            RenderBands(outDir, "interlace-inner-", GoldenBoards.StarOnFullBoard, 0.02, true, true, false);
+            RenderBands(outDir, "bands-tiled-", GoldenBoards.Tiled2x2, 0.015, false, false, true);
+            RenderBands(outDir, "interlace-tiled-", GoldenBoards.Tiled2x2, 0.02, true, true, false);
+            // Interlace with the structure line shown: the under band's structure line is cut at every crossing.
+            RenderBands(outDir, "interlace-structure-", GoldenBoards.StarOnFullBoard, 0.015, true, false, true);
+            RenderBands(outDir, "interlace-inner-structure-", GoldenBoards.StarOnFullBoard, 0.025, true, true, true);
+            // 7. Fills (docs/FILL.md): a plain star with its octagon and two tips filled; the tiled pattern woven, with a gap
+            //    and band pieces filled.
+            RenderScenario(outDir, "fill-", s => DrawFills(s, false), showBase: true, dark: false, topView: true);
+            RenderScenario(outDir, "fill-interlace-", s => DrawFills(s, true), showBase: true, dark: false, topView: true);
         }
 
-        static void RenderScenario(string outDir, string prefix, Action<EditorSession> draw, bool showBase, bool dark)
+        /// <summary>
+        /// The board's top layer only (others hidden) with bands on (BoardView draws them through its BandCache):
+        /// Double / Interlace, inner lines, structure shown or hidden. Logs the engine's safety numbers for the layer.
+        /// </summary>
+        static void RenderBands(string outDir, string prefix, Func<Board> make, double width, bool interlace, bool inner,
+            bool structure)
+        {
+            Board shown = make();
+            Layer layer = shown.Layers[shown.Layers.Count - 1];
+            for (int i = 0; i < shown.Layers.Count - 1; i++) shown.Layers[i].Visible = false;
+            layer.Bands = new LayerBands
+            {
+                On = true, Mode = interlace ? BandMode.Interlace : BandMode.Double, Width = width, HideStructure = !structure,
+                InnerLines = inner, OutlineColor = Palette.Black, OutlineWidth = LineWidth.Thin,
+            };
+            var outline = BandOutline.Build(BandGraph.Build(layer.Shapes), BandOutlineOptions.ForBoard(layer.Bands, BoardGeometry.DefaultSideMeters));
+            Debug.Log($"[GeoART] Bands {prefix}: {outline.Runs.Count} runs, {outline.InnerRuns.Count} inner, " +
+                      $"{outline.Bridges.Count / 2} bridges, max safe {outline.MaxSafeWidth:0.####}, collapsed {outline.Collapsed}, " +
+                      $"self-intersections {outline.SelfIntersections}, conflicts {outline.WeaveConflicts}, structure cuts {outline.StructureCuts.Count}");
+            // Snapping off: no candidate dots on top of the crossings, like the book's drawings.
+            RenderScenario(outDir, prefix, s => { s.LoadBoard(shown); s.SetSnapEnabled(false); }, showBase: true, dark: false,
+                topView: true);
+        }
+
+        static void DrawFills(EditorSession s, bool tiled)
+        {
+            Board b = tiled ? GoldenBoards.Tiled2x2() : GoldenBoards.StarOnFullBoard();
+            Layer layer = b.Layers[b.Layers.Count - 1];
+            for (int i = 0; i < b.Layers.Count - 1; i++) b.Layers[i].Visible = false;
+            if (tiled)
+                layer.Bands = new LayerBands { On = true, Mode = BandMode.Interlace, Width = 0.02, OutlineColor = Palette.Black };
+            s.LoadBoard(b);
+            s.SetSnapEnabled(false);
+            s.SetTool(ToolId.Fill);
+            void Fill(RgbaColor c, double x, double y)
+            {
+                s.Style = s.Style.WithColor(c);
+                s.Pointer(new PointerEvent(PointerPhase.Down, new Vec2(x, y), true, 0));
+                s.Pointer(new PointerEvent(PointerPhase.Up, new Vec2(x, y), true, 0));
+            }
+            if (tiled)
+            {
+                Fill(Palette.Blue, 0.5, 0.5);                       // the gap between four stars
+                Fill(Palette.Orange, 0.25, 0.25);                   // a star's centre
+                Fill(Palette.Red, 0.25 + 0.25 * 0.707, 0.25);       // on a band near a tip
+            }
+            else
+            {
+                Fill(Palette.Blue, 0.5, 0.5);                       // the octagon
+                Fill(Palette.Red, 0.5, 0.82);                       // the top tip
+                Fill(Palette.Green, 0.82, 0.5);                     // the right tip
+            }
+        }
+
+        static void RenderScenario(string outDir, string prefix, Action<EditorSession> draw, bool showBase, bool dark,
+            bool topView = false)
         {
             var material = AssetDatabase.LoadAssetAtPath<Material>(MaterialPath);
             var boardGo = new GameObject("RenderCheckBoard");
@@ -125,6 +201,11 @@ namespace GeoART.EditorTools
 
                 Shoot(cam, new Vector3(0f, 0.36f, -0.3f), outDir, prefix + "near45cm");
                 Shoot(cam, new Vector3(0f, 0.6f, -0.7f), outDir, prefix + "far90cm");
+                if (topView)
+                {
+                    Shoot(cam, new Vector3(0f, 0.8f, -0.0001f), outDir, prefix + "top80cm");   // straight down
+                    Shoot(cam, new Vector3(0f, 0.3f, -0.0001f), outDir, prefix + "top30cm");   // close-up of the centre
+                }
                 Invoke(view, "OnDestroy");
             }
             finally

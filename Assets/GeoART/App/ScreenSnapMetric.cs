@@ -18,8 +18,8 @@ namespace GeoART.App
     /// </summary>
     public sealed class ScreenSnapMetric : ISnapMetric
     {
-        /// <summary>Snap/tap radius in reference pixels (390x844 reference screen).</summary>
-        public const float ToleranceReferencePx = 24f;
+        /// <summary>Snap/tap radius in reference pixels (390x844 reference screen): a 64 pt circle, wider than a fingertip.</summary>
+        public const float ToleranceReferencePx = 32f;
 
         /// <summary>UI reference resolution shared with ToolBar's CanvasScaler.</summary>
         public static readonly Vector2 ReferenceResolution = new Vector2(390f, 844f);

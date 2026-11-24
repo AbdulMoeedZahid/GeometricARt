@@ -158,6 +158,19 @@ namespace GeoART.BoardRender
             }
         }
 
+        /// <summary>Solid triangles (3 points each), e.g. a fill region. Not anti-aliased: the strokes drawn on top hide the edge.</summary>
+        public void AddTriangles(IReadOnlyList<Vector3> points, Color32 color)
+        {
+            for (int i = 0; i + 2 < points.Count; i += 3)
+            {
+                int v = _vertices.Count;
+                AddVertex(points[i], color, Vector4.zero);
+                AddVertex(points[i + 1], color, Vector4.zero);
+                AddVertex(points[i + 2], color, Vector4.zero);
+                _indices.Add(v); _indices.Add(v + 1); _indices.Add(v + 2);
+            }
+        }
+
         /// <summary>Solid quad from four corners in order (either winding; the shader does not cull). Not anti-aliased.</summary>
         public void AddQuad(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, Color32 color)
         {
@@ -169,7 +182,11 @@ namespace GeoART.BoardRender
             AddQuadIndices(i);
         }
 
-        void AddSegmentNoCaps(Vector3 a, Vector3 b, float width, Color32 color)
+        /// <summary>
+        /// A ribbon from a to b without the half-width end extension of <see cref="AddSegment"/>: interlace bridges join
+        /// band corners exactly, so at layer opacity &lt; 1 they never double-blend over the corners.
+        /// </summary>
+        public void AddSegmentNoCaps(Vector3 a, Vector3 b, float width, Color32 color)
         {
             Vector3 d = b - a;
             d.y = 0f;
@@ -190,7 +207,40 @@ namespace GeoART.BoardRender
             AddQuadIndices(i);
         }
 
-        void AddStrip(IReadOnlyList<Vector3> points, bool closed, float width, Color32 color)
+        /// <summary>
+        /// Open solid polyline whose two ends are chosen separately: a square cap (as <see cref="AddPolyline"/>), or a cut
+        /// end that stops exactly at the last point, its cross-section running along <paramref name="cutStart"/> /
+        /// <paramref name="cutEnd"/> (a flat direction, e.g. the edge of the band the line goes under; zero = square to the
+        /// line). Joins stay mitred. Used for structure lines interrupted by an interlace crossing.
+        /// </summary>
+        public void AddOpenPolyline(IReadOnlyList<Vector3> points, float width, Color32 color, bool capStart, Vector3 cutStart,
+            bool capEnd, Vector3 cutEnd)
+        {
+            if (points.Count < 2 || width <= 0f) return;
+            AddStrip(points, false, width, color, capStart, cutStart, capEnd, cutEnd);
+        }
+
+        void AddStrip(IReadOnlyList<Vector3> points, bool closed, float width, Color32 color) =>
+            AddStrip(points, closed, width, color, true, Vector3.zero, true, Vector3.zero);
+
+        /// <summary>Cross-section offset at an open end with direction <paramref name="d"/>: square, or along a cut direction.</summary>
+        static Vector3 EndOffset(Vector3 d, Vector3 cut, float half, out float miter)
+        {
+            Vector3 n = Perp(d);
+            miter = 1f;
+            cut.y = 0f;
+            float len = cut.magnitude;
+            if (len < 1e-6f) return n * half;
+            Vector3 e = cut / len;
+            float sin = Mathf.Abs(d.x * e.z - d.z * e.x);   // |d x e|: 1 when the cut is square to the line
+            if (sin < 1e-3f) return n * half;
+            miter = Mathf.Min(1f / sin, MiterLimit);
+            if (Vector3.Dot(e, n) < 0f) e = -e;             // same side as the left normal
+            return e * (half * miter);
+        }
+
+        void AddStrip(IReadOnlyList<Vector3> points, bool closed, float width, Color32 color, bool capStart, Vector3 cutStart,
+            bool capEnd, Vector3 cutEnd)
         {
             // Drop repeated points (a zero-length piece has no direction).
             _clean.Clear();
@@ -200,7 +250,8 @@ namespace GeoART.BoardRender
                 _clean.RemoveAt(_clean.Count - 1);
             int n = _clean.Count;
             if (n < 2) return;
-            if (n == 2 || (closed && n < 3)) { AddSegment(_clean[0], _clean[1], width, color); return; }
+            if (closed && n < 3) { AddSegment(_clean[0], _clean[1], width, color); return; }
+            if (n == 2 && capStart && capEnd) { AddSegment(_clean[0], _clean[1], width, color); return; }
 
             float half = width * 0.5f;
             int first = _vertices.Count;
@@ -214,13 +265,21 @@ namespace GeoART.BoardRender
                 float miter = 1f;
                 if (!hasPrev)
                 {
-                    offset = Perp(dOut) * half;
-                    c -= dOut * half;   // square cap
+                    if (capStart)
+                    {
+                        offset = Perp(dOut) * half;
+                        c -= dOut * half;   // square cap
+                    }
+                    else offset = EndOffset(dOut, cutStart, half, out miter);
                 }
                 else if (!hasNext)
                 {
-                    offset = Perp(dIn) * half;
-                    c += dIn * half;
+                    if (capEnd)
+                    {
+                        offset = Perp(dIn) * half;
+                        c += dIn * half;
+                    }
+                    else offset = EndOffset(dIn, cutEnd, half, out miter);
                 }
                 else
                 {

@@ -35,7 +35,9 @@ namespace GeoART.Tests.Verifier
             public bool TryBoardToScreen(Vec2 b, out Vec2 px) { px = default; return false; }
         }
 
-        static readonly string[] ButtonOrder = { "Line", "Circle", "Select", "Dotted", "Medium", "Square", "2x2", "Snap", "HV" };
+        static readonly string[] ButtonOrder = ToolBar.FillEnabled
+            ? new[] { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Square", "2x2", "Snap" }
+            : new[] { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap" };   // Fill switched off (docs/FILL.md)
 
         EditorSession _session;
         Space _space;
@@ -315,10 +317,12 @@ namespace GeoART.Tests.Verifier
             var canvas = _appGo.GetComponentInChildren<Canvas>(true);
             Vector3[] cc = new Vector3[4], bc = new Vector3[4];
             ((RectTransform)canvas.transform).GetWorldCorners(cc);
-            // The column has nine buttons; the contextual action bar (Move, Scale, Duplicate, Deselect) has its own four.
+            // The column's buttons; the contextual action bar (Move, Scale, Duplicate, Extend, Delete, Deselect) has its own six.
             var buttons = new List<Button>(Find("Column").GetComponentsInChildren<Button>(true));
-            Assert.AreEqual(9, buttons.Count, "nine buttons in the column");
-            Assert.AreEqual(14, _appGo.GetComponentsInChildren<Button>(true).Length, "plus the four action bar buttons and Undo");
+            int column = ToolBar.FillEnabled ? 9 : 8;   // Fill switched off for now (docs/FILL.md)
+            Assert.AreEqual(column, buttons.Count, "the column's buttons");
+            Assert.AreEqual(column + 13, _appGo.GetComponentsInChildren<Button>(true).Length,
+                "plus the six action bar buttons, Undo, Redo, the Line and Circle menus' two mode chips each and Snap's H/V chip");
 
             float prevBottom = float.MaxValue;
             var tops = new float[ButtonOrder.Length];
@@ -337,7 +341,8 @@ namespace GeoART.Tests.Verifier
                 prevBottom = bc[0].y;
             }
             float inPair = bottoms[1] - tops[2];      // Circle -> Select: same group
-            float betweenGroups = bottoms[2] - tops[3];   // Select -> Dotted: next group
+            int lastOfFirst = ToolBar.FillEnabled ? 3 : 2;   // Fill (when on) or Select ends the first group
+            float betweenGroups = bottoms[lastOfFirst] - tops[lastOfFirst + 1];   // -> Bands: next group
             Assert.Greater(betweenGroups, inPair * 1.3f, $"Line, Circle, Select form one group (gaps {inPair} and {betweenGroups})");
 
             // Unless the column had to shrink to its minimum, it stays between the placement row and the coach text.

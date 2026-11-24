@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using GeoART.Contracts;
+using GeoART.Engine;
 using UnityEngine;
 
 namespace GeoART.BoardRender
@@ -13,10 +14,18 @@ namespace GeoART.BoardRender
     ///             dark colours, default) or White (light, for dark surfaces). Nothing is filled in AR
     ///             from <see cref="TileGrid"/> (D-07; drawn whenever showGrid is on, so also in AR)
     ///   Shapes  - committed lines/circles/polygons on visible layers + user snap points  (BoardChanged)
+    ///             A layer's fills (FillCache, docs/FILL.md) are drawn first, under its bands and strokes.
+    ///             A layer with bands on (Layer.Bands, docs/BANDS.md) draws its band outlines first (BandCache: the
+    ///             topology is rebuilt only on shape changes, the outline only when the band settings change), then its
+    ///             lines and polygons unless the structure is hidden, then circles and snap points as usual. Like every
+    ///             part, it is rebuilt at most once per frame (LateUpdate), however many changes arrive.
     ///   Selection - each selected shape on a visible layer: a wide translucent halo (solid even for dotted shapes), then
     ///             the shape's own stroke again on top, so it reads above its neighbours  (BoardChanged/StateChanged)
     ///   Candidates - snap candidate dots, tinted and sized by SnapKind tier               (BoardChanged/StateChanged)
     ///   Overlay - tool preview ghosts (incl. the engine's snap hover ring), cursor         (PreviewChanged/StateChanged)
+    ///             The snapped dot is a filled orange disc under the hover ring, and on every new acquisition
+    ///             (EditorSession.SnapAcquired) the ring "pops" from 1.6x to 1x over <see cref="RingPopSeconds"/>; the
+    ///             overlay is rebuilt each frame only while that runs.
     ///   SelectionFrame - while something is selected: a dashed cyan box around the selection's union bounds and the
     ///             pivot marker (ring and "+") at its centre, the point Move/Scale work about. Bounds come from the
     ///             engine's <see cref="GeoART.Engine.SelectionGeometry"/>, so the drawn pivot is the engine's pivot.
@@ -94,7 +103,17 @@ namespace GeoART.BoardRender
         const float SelectionHaloMeters = 0.0018f;  // halo reaches this far beyond each side of the stroke (times StrokeScale)
 
         IEditorSession _session;
+        EditorSession _engine;   // the concrete session, when it is one (SnapAcquired, HoverRing)
         bool _subscribed;
+
+        /// <summary>Duration of the hover ring pop on a new snap acquisition.</summary>
+        public const float RingPopSeconds = 0.12f;
+        /// <summary>Starting scale of the popping hover ring.</summary>
+        public const float RingPopScale = 1.6f;
+        /// <summary>Seconds, monotonic; EditMode tests swap in a fake clock.</summary>
+        public System.Func<float> Clock = () => Time.unscaledTime;
+        float _popStart;
+        bool _popping;
         Part _base, _shapes, _selection, _candidates, _overlay, _selectionFrame;
         bool _baseDirty = true, _shapesDirty = true, _selectionDirty = true, _candidatesDirty = true, _overlayDirty = true;
         int _lastGridN = -1;
@@ -102,6 +121,14 @@ namespace GeoART.BoardRender
         readonly List<(Vec2 A, Vec2 B)> _gridEdges = new List<(Vec2 A, Vec2 B)>(64);
         float _surfaceW = float.NaN, _surfaceH = float.NaN;
         readonly List<Vector3> _poly = new List<Vector3>(16);
+        readonly BandCache _bandCache = new BandCache();
+        readonly FillCache _fillCache = new FillCache();
+
+        /// <summary>The fill cache (tests).</summary>
+        public FillCache Fills => _fillCache;
+
+        /// <summary>The band geometry cache (counters for tests and the width-slider cost estimate).</summary>
+        public BandCache Bands => _bandCache;
 
         public float SideMeters => sideMeters;
 
@@ -163,6 +190,8 @@ namespace GeoART.BoardRender
         {
             Unsubscribe();
             _session = session;
+            _bandCache.Clear();
+            _fillCache.Clear();
             if (isActiveAndEnabled) Subscribe();
             MarkAllDirty();
         }
@@ -198,6 +227,8 @@ namespace GeoART.BoardRender
             _session.BoardChanged += OnBoardChanged;
             _session.PreviewChanged += OnPreviewChanged;
             _session.StateChanged += OnStateChanged;
+            _engine = _session as EditorSession;
+            if (_engine != null) _engine.SnapAcquired += OnSnapAcquired;
             _subscribed = true;
         }
 
@@ -207,7 +238,26 @@ namespace GeoART.BoardRender
             _session.BoardChanged -= OnBoardChanged;
             _session.PreviewChanged -= OnPreviewChanged;
             _session.StateChanged -= OnStateChanged;
+            if (_engine != null) _engine.SnapAcquired -= OnSnapAcquired;
+            _engine = null;
+            _popping = false;
             _subscribed = false;
+        }
+
+        void OnSnapAcquired(SnapCandidate _)
+        {
+            _popStart = Clock();
+            _popping = true;
+            _overlayDirty = true;
+        }
+
+        /// <summary>Hover ring scale now: 1.6 easing out to 1 over the pop, 1 when idle.</summary>
+        float RingScale()
+        {
+            if (!_popping) return 1f;
+            float t = Mathf.Clamp01((Clock() - _popStart) / RingPopSeconds);
+            float ease = 1f - (1f - t) * (1f - t);
+            return Mathf.Lerp(RingPopScale, 1f, ease);
         }
 
         void OnBoardChanged(BoardChangeKind kind)
@@ -217,6 +267,11 @@ namespace GeoART.BoardRender
             _candidatesDirty = true;   // candidates depend on geometry, layer visibility and grid
             _overlayDirty = true;
             if ((kind & (BoardChangeKind.Grid | BoardChangeKind.Reset)) != 0) _baseDirty = true;
+            if ((kind & (BoardChangeKind.Shapes | BoardChangeKind.Reset | BoardChangeKind.History)) != 0) _bandCache.MarkTopologyDirty();
+            const BoardChangeKind fillKinds = BoardChangeKind.Shapes | BoardChangeKind.Fills | BoardChangeKind.Reset
+                                            | BoardChangeKind.History;
+            if ((kind & fillKinds) != 0) _fillCache.MarkDirty();
+            else if ((kind & BoardChangeKind.Layers) != 0) _fillCache.MarkStale();   // band width drags: rebuilt a moment later
         }
 
         void OnPreviewChanged() => _overlayDirty = true;
@@ -242,9 +297,15 @@ namespace GeoART.BoardRender
                 _lastGridKind = gridKind;
                 _baseDirty = false;
             }
+            if (_fillCache.StaleDue(Clock())) _shapesDirty = true;   // a deferred fill rebuild is due
             if (_shapesDirty) { RebuildShapes(board); _shapesDirty = false; }
             if (_selectionDirty) { RebuildSelection(board); _selectionDirty = false; }
             if (_candidatesDirty) { RebuildCandidates(); _candidatesDirty = false; }
+            if (_popping)
+            {
+                _overlayDirty = true;   // animate: rebuild every frame while the pop runs, then once more at exactly 1x
+                if (Clock() - _popStart >= RingPopSeconds) _popping = false;
+            }
             if (_overlayDirty) { RebuildOverlay(); _overlayDirty = false; }
         }
 
@@ -331,6 +392,8 @@ namespace GeoART.BoardRender
         {
             var mb = _shapes.Builder;
             mb.Clear();
+            _bandCache.BeginFrame();
+            _fillCache.BeginFrame();
             if (board != null)
             {
                 foreach (var layer in board.Layers)
@@ -338,14 +401,169 @@ namespace GeoART.BoardRender
                     if (layer == null || !layer.Visible) continue;
                     float opacity = Mathf.Clamp01((float)layer.Opacity);
                     if (opacity <= 0f) continue;
-                    foreach (var shape in layer.Shapes)
-                        if (shape != null) AddShape(mb, shape, WithOpacity(ToColor32(shape.Style.Color), opacity), ShapesLift);
+                    // Fills first: under the layer's bands and strokes (one mesh, so layer order is kept).
+                    if (layer.Fills.Count > 0)
+                        foreach (var piece in _fillCache.Get(layer, Clock()))
+                        {
+                            _poly.Clear();
+                            foreach (var p in piece.Triangles) _poly.Add(P(p, ShapesLift));
+                            mb.AddTriangles(_poly, WithOpacity(ToColor32(piece.Color), opacity));
+                        }
+                    LayerBands bands = layer.Bands.Sanitized();
+                    bool hideStructure = false;
+                    BandOutline outline = null;
+                    if (bands.On)
+                    {
+                        outline = AddBands(mb, layer, bands, opacity);
+                        hideStructure = bands.HideStructure;
+                    }
+                    List<StructureCut> cuts = outline?.StructureCuts;
+                    int cut = 0;
+                    for (int i = 0; i < layer.Shapes.Count; i++)
+                    {
+                        Shape shape = layer.Shapes[i];
+                        if (shape == null || (hideStructure && !(shape is CircleShape))) continue;   // circles are never banded
+                        Color32 color = WithOpacity(ToColor32(shape.Style.Color), opacity);
+                        // Interlace with the structure shown: an under band's structure line is cut where the over band covers it.
+                        while (cuts != null && cut < cuts.Count && cuts[cut].Shape < i) cut++;
+                        int end = cut;
+                        while (cuts != null && end < cuts.Count && cuts[end].Shape == i) end++;
+                        if (end > cut && (shape is LineShape || shape is PolygonShape)) AddCutShape(mb, shape, cuts, cut, end, color);
+                        else AddShape(mb, shape, color, ShapesLift);
+                        cut = end;
+                    }
                     Color32 snapColor = WithOpacity(SnapPointColor, opacity);
                     foreach (var sp in layer.SnapPoints)
                         if (sp != null) mb.AddDisc(P(sp.Position, ShapesLift), 0.0035f * StrokeScale, snapColor);
                 }
             }
+            _bandCache.EndFrame();
+            _fillCache.EndFrame();
             _shapes.Apply();
+        }
+
+        /// <summary>
+        /// Band options for this board (shared with the layer popup: BandOutlineOptions.ForBoard): the inner-line inset
+        /// floor (2 mm) and minimum half width scale like the strokes. Drawing skips the global crossing count.
+        /// </summary>
+        BandOutlineOptions BandOptions(in LayerBands bands)
+        {
+            BandOutlineOptions o = BandOutlineOptions.ForBoard(bands, sideMeters);
+            o.SkipSelfIntersections = true;
+            return o;
+        }
+
+        BandOutline AddBands(BoardMeshBuilder mb, Layer layer, in LayerBands bands, float opacity)
+        {
+            BandOutline o = _bandCache.Get(layer, BandOptions(bands));
+            Color32 color = WithOpacity(ToColor32(bands.OutlineColor), opacity);
+            float width = WidthOf(bands.OutlineWidth);
+            AddRuns(mb, o, o.Runs, width, color);
+            AddRuns(mb, o, o.InnerRuns, width, color);
+            AddBridges(mb, o.Bridges, width, color);
+            AddBridges(mb, o.InnerBridges, width, color);
+            return o;
+        }
+
+        /// <summary>Flat local direction of a board direction at a board point (zero stays zero).</summary>
+        Vector3 LocalDir(Vec2 at, Vec2 dir)
+        {
+            if (dir.X == 0 && dir.Y == 0) return Vector3.zero;
+            Vector3 d = P(new Vec2(at.X + dir.X * 1e-3, at.Y + dir.Y * 1e-3), 0f) - P(at, 0f);
+            d.y = 0f;
+            return d;
+        }
+
+        static Vec2 Along(Vec2 a, Vec2 b, double t) => new Vec2(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t);
+
+        /// <summary>
+        /// A line or polygon with cuts[from..to) hidden (StructureCuts of one shape, sorted by edge and T0): the visible
+        /// pieces as open polylines, square caps at the shape's own ends, cut ends along the over band's edge, mitred joins
+        /// at polygon corners. Dotted pieces carry the dash phase across the gaps.
+        /// </summary>
+        void AddCutShape(BoardMeshBuilder mb, Shape shape, List<StructureCut> cuts, int from, int to, Color32 color)
+        {
+            float width = WidthOf(shape.Style.Width);
+            bool dashed = shape.Style.Dash == LineStyle.Dotted;
+            float phase = 0f;
+            if (shape is LineShape line)
+            {
+                double prev = 0;
+                Vec2 prevDir = default;
+                bool prevCap = true;
+                for (int k = from; k < to; k++)
+                {
+                    StructureCut c = cuts[k];
+                    if (c.T0 > prev) AddPiece(mb, Along(line.A, line.B, prev), Along(line.A, line.B, c.T0), null, prevCap, prevDir, false, c.Dir0, width, color, dashed, ref phase);
+                    phase += (float)(Vec2.Distance(line.A, line.B) * (c.T1 - System.Math.Max(prev, c.T0)) * sideMeters);
+                    prev = System.Math.Max(prev, c.T1);
+                    prevDir = c.Dir1;
+                    prevCap = false;
+                }
+                if (prev < 1) AddPiece(mb, Along(line.A, line.B, prev), line.B, null, prevCap, prevDir, true, default, width, color, dashed, ref phase);
+                return;
+            }
+            var poly = (PolygonShape)shape;
+            int n = poly.Sides;
+            int m = to - from;
+            for (int i = 0; i < m; i++)
+            {
+                StructureCut start = cuts[from + i], next = cuts[from + (i + 1) % m];
+                Vec2 a0 = BandGraph.PolygonVertex(poly, start.Edge), a1 = BandGraph.PolygonVertex(poly, (start.Edge + 1) % n);
+                Vec2 b0 = BandGraph.PolygonVertex(poly, next.Edge), b1 = BandGraph.PolygonVertex(poly, (next.Edge + 1) % n);
+                _cutPoints.Clear();
+                _cutPoints.Add(Along(a0, a1, start.T1));
+                bool sameEdgeAhead = m > 1 && next.Edge == start.Edge && next.T0 >= start.T1;
+                if (!sameEdgeAhead)
+                {
+                    int k = start.Edge;
+                    do
+                    {
+                        k = (k + 1) % n;
+                        _cutPoints.Add(BandGraph.PolygonVertex(poly, k));
+                    } while (k != next.Edge);
+                }
+                _cutPoints.Add(Along(b0, b1, next.T0));
+                AddPiece(mb, default, default, _cutPoints, false, start.Dir1, false, next.Dir0, width, color, dashed, ref phase);
+                phase += (float)(Vec2.Distance(b0, b1) * (next.T1 - next.T0) * sideMeters);   // dots continue across the gap
+            }
+        }
+
+        readonly List<Vec2> _cutPoints = new List<Vec2>(16);
+
+        /// <summary>One visible piece: a..b, or the board points in <paramref name="points"/> when given.</summary>
+        void AddPiece(BoardMeshBuilder mb, Vec2 a, Vec2 b, List<Vec2> points, bool capStart, Vec2 dirStart, bool capEnd,
+            Vec2 dirEnd, float width, Color32 color, bool dashed, ref float phase)
+        {
+            _poly.Clear();
+            if (points == null) { _poly.Add(P(a, ShapesLift)); _poly.Add(P(b, ShapesLift)); }
+            else foreach (var p in points) _poly.Add(P(p, ShapesLift));
+            if (_poly.Count < 2) return;
+            if (dashed)
+            {
+                for (int i = 0; i + 1 < _poly.Count; i++)
+                    mb.AddDashedSegment(_poly[i], _poly[i + 1], width, color, StrokeDash, StrokeGap, ref phase);
+                return;
+            }
+            Vec2 first = points == null ? a : points[0], last = points == null ? b : points[points.Count - 1];
+            mb.AddOpenPolyline(_poly, width, color, capStart, LocalDir(first, dirStart), capEnd, LocalDir(last, dirEnd));
+        }
+
+        void AddRuns(BoardMeshBuilder mb, BandOutline o, List<BandRun> runs, float width, Color32 color)
+        {
+            for (int r = 0; r < runs.Count; r++)
+            {
+                BandRun run = runs[r];
+                _poly.Clear();
+                for (int i = 0; i < run.Count; i++) _poly.Add(P(o.Points[run.Start + i], ShapesLift));
+                mb.AddPolyline(_poly, run.Closed, width, color);
+            }
+        }
+
+        void AddBridges(BoardMeshBuilder mb, List<Vec2> pairs, float width, Color32 color)
+        {
+            for (int i = 0; i + 1 < pairs.Count; i += 2)
+                mb.AddSegmentNoCaps(P(pairs[i], ShapesLift), P(pairs[i + 1], ShapesLift), width, color);
         }
 
         /// <summary>
@@ -484,9 +702,22 @@ namespace GeoART.BoardRender
             if (_session != null)
             {
                 IReadOnlyList<Shape> preview = _session.Preview;   // index loop: no enumerator allocation per frame
+                Shape hoverRing = _engine?.HoverRing;
                 if (preview != null)
                     for (int i = 0; i < preview.Count; i++)
-                        if (preview[i] != null) AddShape(mb, preview[i], previewColor, OverlayLift);
+                    {
+                        Shape shape = preview[i];
+                        if (shape == null) continue;
+                        if (ReferenceEquals(shape, hoverRing) && shape is CircleShape ring && ring.Center.IsFinite)
+                        {
+                            // The snapped dot as a filled orange disc, then the (popping) hover ring around it.
+                            Vector3 c = P(ring.Center, OverlayLift);
+                            mb.AddDisc(c, GuideDotRadius * StrokeScale, cursorColor, 14);
+                            mb.AddCircle(c, (float)(ring.Radius * sideMeters) * RingScale(), WidthOf(ring.Style.Width), previewColor);
+                            continue;
+                        }
+                        AddShape(mb, shape, previewColor, OverlayLift);
+                    }
 
                 if (_session.Cursor is Vec2 cursor && cursor.IsFinite)
                 {

@@ -12,8 +12,30 @@ divisions...), and tapping two points connects them with a line. An H/V lock kee
 2. **Line** (default tool): touch the board at the start point, drag, lift at the end point. An orange ghost follows the
    finger while dragging.
 3. **Circle**: touch the centre, drag outwards, lift. The ghost shows the circle and a dotted radius line.
-4. **Dotted** toggles dashed strokes for new shapes (orange when on). **Width** cycles Thin / Medium / Thick for new shapes.
-   **Snap** (orange = on, the default) and **H/V** (orange = on) are at the bottom of the tool bar; see `docs/SNAPPING.md`.
+4. **Line mode** (Solid or Dotted, for new lines and circles; shared by Line and Circle). Line and Circle show the mode in
+   their icon (solid or dashed diagonal, solid or dashed ring); a small corner triangle marks the hold menu.
+   - **Tap** Line or Circle: selects the tool and keeps the mode. Tapping the active tool again never opens the menu.
+   - **Hold** Line or Circle for 0.45 s without moving: the button brightens while it "charges", then that tool is selected
+     and a row of chips (**Solid**, **Dotted**) pops out to the left of the button, the current mode in orange.
+     Moving more than 8 reference px before 0.45 s cancels the hold (the release can still be a tap).
+   - **Slide** onto a chip (it lights up) and release to pick it; the row closes. Release anywhere else and the row stays
+     open: tap a chip to pick, or tap anywhere outside the chips to close without a change (that whole touch only
+     closes the row: nothing is drawn and no other button is pressed). Holding the other button opens its row and closes
+     this one; rotating or resizing the screen closes an open row.
+   - After the first placement a one-time toast says "Hold Line or Circle for line styles" (remembered once shown).
+   **Bands** (under Select): tap turns the active layer's bands (double lines) on or off, keeping its remembered mode
+   and width; hold opens the layer popup with the band settings; the label shows Off / Double / Weave and the button is
+   orange while on (`docs/BANDS.md`). **Width** cycles Thin / Medium / Thick for new shapes.
+   - **Restyle selection**: while something is selected (Select, Move, Scale, Duplicate), a colour swatch, the Width
+     button or a line-mode chip also applies that one attribute to the selected shapes (one "Style" undo step, toast
+     "Restyled N shapes"), besides setting it for new shapes. Holding Line or Circle with a selection opens the chips
+     **without** switching tool or clearing the selection; a plain tap still switches tools. This is how a band's
+     structure line is highlighted in colour or weight, as in the book (p22).
+   **Snap** (orange = on, the default) is at the bottom of the tool bar; **hold Snap** for the **H/V** lock chip (the Snap
+   label reads "H/V" while the lock is on); see `docs/SNAPPING.md`. H/V had its own button until the **Fill** tool
+   (paint bucket) needed the slot. Fill is **switched off for now** (`ToolBar.FillEnabled`, known issue in
+   `docs/FILL.md`), so the column has 8 buttons: [Line, Circle, Select] [Bands, Width] [Square, 2x2] [Snap]; with Fill on
+   it goes after Select. Suggestions for later work: `docs/FUTURE_WORK.md`.
 5. Shapes go into the active layer (the one selected in the left sidebar). If that layer is hidden, nothing is drawn and a
    toast says "Layer is hidden: double-tap it in the sidebar to show it".
 
@@ -36,7 +58,7 @@ selects: nothing is moved, added or removed, the board never raises `BoardChange
    touch-down point to the finger; never snapped, no H/V lock). Every shape that lies **wholly** inside the box (edges
    count) is highlighted in cyan as you drag; a shape the box only partly covers is not. Lift: the selection stays and a
    toast says "N shapes selected", or "Nothing selected: the box must enclose whole shapes".
-3. **Tap a stroke**: selects only the shape whose line or circle outline is nearest the finger (within 24 screen px, at
+3. **Tap a stroke**: selects only the shape whose line or circle outline is nearest the finger (within 32 screen px, at
    most 1.2 cm on the 40 cm board; the topmost shape wins a tie). Tapping inside a circle away from its outline does not
    pick it. A tap on empty board clears the selection.
 4. A new box or tap always **replaces** the selection (no add mode).
@@ -59,12 +81,29 @@ Rules:
 Act on the selection. While something is selected, a cyan **dashed box** surrounds the selection and a cyan **pivot
 mark** (a ring with a "+") sits at the centre of that box: the selection's "origin". Move and Scale work about it.
 
-**Action bar.** With a selection, in Select, Move, Scale or Duplicate, a row of four buttons appears at the bottom, left
-of the tool column and just above "Re-place board": **Move | Scale | Duplicate | Deselect** (64x52 reference px each,
-280 wide; on narrow screens it shrinks, never below 40%). Move, Scale and Duplicate are modes: the active one is orange
+**Action bar.** With a selection, in Select, Move, Scale or Duplicate, a row of six buttons appears at the bottom, left
+of the tool column and just above "Re-place board": **Move | Scale | Duplicate | Extend | Delete | Deselect** (48x52
+reference px each with 4 px gaps, 308 wide, so it fits the 310 px left of the column on a 390-wide phone such as the 14 Pro
+Max without shrinking; on narrower screens it shrinks, never below 40%). Move, Scale and Duplicate are modes: the active one is orange
 (and so is the column's Select button), tapping it again returns to Select, tapping another switches. **Deselect** empties
-the selection; the bar hides and the tool returns to Select. The bar is hidden with no selection, before placement and
+the selection; the bar hides and the tool returns to Select. **Delete** (between Duplicate and Deselect, a trash can)
+removes the selected shapes: one "Delete" undo step, toast "Deleted N shapes", and the tool returns to Select. The bar is hidden with no selection, before placement and
 in Line or Circle. Entering a mode without a selection toasts "Select shapes first".
+
+**Extend** (between Duplicate and Delete, an arrow running into a bar) lengthens the selected lines, the way a ruler line
+is run on until it meets the next line of the construction. Each end of every selected line moves along the line's own
+direction to the first drawn thing in the way: another line, a circle, or a polygon edge, on any visible layer, selected
+or not. The new end is the exact crossing (`Intersect.LineSegment` / `LineCircle`; when the boundary is horizontal or
+vertical its fixed coordinate is copied exactly, so a horizontal line run into a vertical one ends on exactly its x).
+- An end with nothing in the way stays where it is. The board edge, the grid and snap points are not boundaries.
+- Hits at or behind the end (within 1e-9 board units) do not count, so an end that already sits on a line or circle goes
+  on to the next boundary beyond it. Lines and polygon edges collinear with (or parallel to) the line are ignored.
+- Circles and polygons in the selection are not extended (they still act as boundaries). Shapes on hidden layers are
+  neither extended nor boundaries.
+- All new ends are worked out against the board as it was before the tap, then applied together, so the order of the
+  selected lines does not matter. Ids, styles and layers are kept; bands, fills and snap points update as for any edit.
+- One "Extend" undo step, one board change, toast "Extended N ends" ("Extended 1 end"). If no end moves: no step and the
+  toast "Nothing in the way to extend to". The selection, the tool and the bar stay.
 
 Shared rules (all three modes):
 - A drag can start **anywhere on the board**, not only on the shapes (the finger never has to cover small geometry).
@@ -111,6 +150,9 @@ Render check: `board-xform-*.png`, `board-xform-dark-*.png`, `board-xform-scale-
 
 ## Undo
 
+**Redo.** A "Redo" button (the arrow mirrored) sits right of Undo (x 72-128 on 390x844), shown and dimmed by the same
+rules with `CanRedo`; it re-applies the last undone step, and any new edit clears what can be redone.
+
 **Button.** "Undo" (U-turn arrow) sits at the top-left corner of the safe area, 8 ref px in from the corner, 56x52 and
 scaled with the tool column (`ToolBar.Undo.cs`). On a 390x844 screen it covers x 8-64, 1-7% from the top; on an iPhone 14
 Pro Max it sits just below the status bar (about 7-13% from the top), clear of the column, the action bar, the layer
@@ -129,10 +171,15 @@ layer opacity popup is open its full-screen blocker covers the button. One tap =
 | Add layer / Delete (bottom) layer / reorder | Add layer / Delete layer / Layer order |
 | Hide / show a layer | Hide layer / Show layer |
 | Layer opacity (one popup session on one layer) | Layer opacity |
+| Band width (one slider session on one layer) / any other band setting | Band width / Bands |
+| Restyle selection (colour, width or dash) | Style |
+| Extend (action bar) | Extend |
+| Delete (action bar) | Delete |
+| Fill a region / clear a fill | Fill / Clear fill |
 | Grid Square/Hex / Tiles | Grid type / Tiles |
 | ClearBoard (API only, no button) | Clear board |
 
-Never a step: selecting a layer, switching tools, selecting (marquee, tap, Deselect), Snap, H/V, Dotted, Width, the first
+Never a step: selecting a layer, switching tools, selecting (marquee, tap, Deselect), Snap, H/V, the line mode, Width, the first
 tap of tap-to-connect, refused actions (hidden layer, too short, 12 layers, only layer, unchanged values), identity
 transforms, cancelled gestures and re-placing the board.
 
@@ -199,7 +246,14 @@ finger every frame and filters the board point with a One Euro filter (`Engine/O
 
 A slim colour bar sits at the bottom-left, just above the placement buttons, once the board is placed. It ends left of the tool column.
 
-- **Shape colour:** 5 round swatches, Black, White, Red, Green, Blue (the D-08 `Palette` values). The selected swatch has an orange ring. The colour applies to **new** lines, circles and polygons, exactly like the Width button. Shapes you already drew keep their colour, so one pattern can mix colours. The preview while dragging stays orange, as before. Default: Black.
+- **Shape colour:** 5 round swatches, Black, White, Red, Green, Blue (the D-08 `Palette` values). The selected swatch has an orange ring. The colour applies to **new** lines, circles and polygons, exactly like the Width button. Shapes you already drew keep their colour, so one pattern can mix colours; with a selection the swatch also restyles it (above). The preview while dragging stays orange, as before. Default: Black.
+- **Custom colour / colour wheel:** the sixth swatch is a rainbow ring around the last colour picked on the wheel (grey
+  until one is picked). A tap selects that colour; when there is none yet, or it already is the current colour, the tap
+  opens the **colour wheel**: a hue/saturation disc (drag on it), a brightness slider and a preview. **Use colour**
+  makes it the current colour, restyles the selection if there is one, keeps it on the custom swatch (remembered between
+  sessions, PlayerPrefs) and closes. A touch outside closes without a change (on release, so it never draws). Custom
+  colours are saved in designs like any other colour. Swatch slots are 36 ref px (40 before) so the bar still ends left
+  of the tool column.
 - **Board colour:** the Board button switches the board's **guide lines** between **Black** (default, the original look) and **White** (for dark surfaces). Only the dashed grid and outline (and the frame and user snap points) change colour. Nothing is filled: the real surface stays visible under the board.
 
 Reference colours:
@@ -225,12 +279,16 @@ Notes for developers:
 - `Assets/GeoART/Engine/EditorSession.Select.cs`, `Engine/Geometry/SelectionGeometry.cs`: the Select tool.
 - `Assets/GeoART/Engine/EditorSession.Transform.cs`, `Engine/Geometry/TransformGeometry.cs`: Move, Scale, Duplicate;
   `Engine/Snap/SnapIndex.cs` `ExcludedShapes` (a transform's own shapes are not snap sources).
-- `Assets/GeoART/App/ToolBar.ActionBar.cs`: the Move | Scale | Duplicate | Deselect bar.
+- `Assets/GeoART/App/ToolBar.ActionBar.cs`: the Move | Scale | Duplicate | Extend | Delete | Deselect bar.
+- `Assets/GeoART/Engine/EditorSession.Extend.cs`: Extend (`ExtendSelection`); checks in `tools/enginecheck/ExtendChecks.cs`.
 - `Assets/GeoART/Engine/EditorSession.Undo.cs`, `Contracts/Model/Board.cs` (`DeepClone`): undo/redo history.
   `Assets/GeoART/App/ToolBar.Undo.cs`: the Undo button.
 - `Assets/GeoART/Engine/OneEuroFilter2D.cs` (new): the smoothing filter.
 - `Assets/GeoART/App/BoardInputRouter.cs`: touch/mouse to `IEditorSession.Pointer`.
 - `Assets/GeoART/App/ToolBar.cs`: right-edge tool column (procedural icons).
+- `Assets/GeoART/App/ToolHoldMenu.cs`: the reusable hold-to-pick menu (hold timer, slide-to-pick, blocker);
+  `Assets/GeoART/App/ToolBar.HoldMenus.cs`: the Line and Circle mode menus, mode icons, the Bands slot.
+  EditMode `ToolHoldMenuViewTests`: tap, hold, slide, release-then-tap, blocker, slop cancel, icons.
 - `Assets/GeoART/BoardRender/BoardView.cs`, `BoardMeshBuilder.cs`, `Shaders/BoardUnlit.shader`: widths, AA, joins, circles.
 - `Assets/Settings/Mobile_RPAsset.asset`: MSAA 4x, render scale 1.
 - `Assets/Editor/Build/ToolsRenderCheck.cs` (new): shader compile + render check.

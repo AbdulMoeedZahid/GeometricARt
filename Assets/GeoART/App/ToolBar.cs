@@ -8,14 +8,22 @@ namespace GeoART.App
     /// Tool picker built as uGUI at runtime (like PlacementControls): a compact vertical column on the RIGHT edge,
     /// vertically centred inside the safe area (the left edge belongs to the layer sidebar).
     ///   Line / Circle / Select   pick the tool (radio buttons); the active one is filled with the accent orange.
+    ///                   Line and Circle show the shared line mode (Solid or Dotted, IEditorSession.Style.Dash) in their
+    ///                   icon; holding either opens a row of mode chips to its left (ToolHoldMenu, ToolBar.HoldMenus.cs).
     ///                   Select (marquee-corner icon) sets ToolId.SelectMove: drag a box or tap a stroke to select. It
     ///                   stays orange in Move, Scale and Duplicate too (the selection tools)
-    ///   Dotted          toggles IEditorSession.ToggleDottedLine (orange when on)
+    ///   Bands           per-layer band treatment of the active layer (label Off / Double / Weave, orange while on): tap
+    ///                   toggles it, hold opens the layer popup (ToolBar.HoldMenus.cs)
+    ///   Width / colour  with a selection, also restyle the selected shapes (one "Style" step each)
     ///   Width           cycles the stroke width Thin -> Medium -> Thick (label shows the current one)
     ///   Grid            switches the tile grid Square <-> Hex (icon and label show the current kind)
     ///   Tiles           cycles tiles per side 1 -> 2 -> 3 -> 4 -> 1 (label "2x2" etc.)
     ///   Snap            toggles IEditorSession.SetSnapEnabled (orange when on; on by default)
-    ///   HV              toggles IEditorSession.SetOrthoLock: Line tool draws horizontal/vertical lines (orange when on)
+    ///                   Hold Snap: a chip toggles the H/V lock (IEditorSession.SetOrthoLock: the Line tool draws
+    ///                   horizontal/vertical lines); the Snap label reads "H/V" while the lock is on. H/V had its own
+    ///                   button until the Fill tool needed the slot (decisions: fewer, bigger buttons, pulled forward)
+    ///   Fill            selects ToolId.Fill (paint bucket): tap inside a closed region to fill it (docs/FILL.md). Only
+    ///                   while <see cref="FillEnabled"/> is on (off for now: 8 buttons)
     /// Nine buttons in four groups (3, 2, 2, 2), 550 reference px tall: fits a 390x844 portrait screen with room for
     /// the placement row and the coach text. Shorter screens (landscape: Android 16 ignores the portrait lock on large
     /// screens) shrink the column to stay between the two, see <see cref="ApplySafeArea"/>.
@@ -41,14 +49,25 @@ namespace GeoART.App
         // Screen-height fractions the column stays clear of: PlacementControls' row ends 11% above the safe-area bottom
         // (its Re-place button shows while the bar does), DevHud's coach text starts 20% below the top of the screen.
         const float PlacementRowTop = 0.11f, CoachTextBottom = 0.80f, MinFit = 0.4f;
-        const int ButtonCount = 9, GroupCount = 4;
+        /// <summary>
+        /// Switch for the Fill tool (docs/FILL.md). Off for now: the triangulator has a known issue with holes sharing a
+        /// rightmost x. Off = no Fill button (the column has 8 buttons) and the colour bar never shows "No fill"; the
+        /// engine, the model, saving and drawing of fills stay, so saved fills load, draw and survive a re-save.
+        /// </summary>
+        public const bool FillEnabled = false;
 
-        /// <summary>Column height in reference px: 9 buttons, one spacing between buttons of a group, a gap between groups.</summary>
+        const int ButtonCount = FillEnabled ? 9 : 8, GroupCount = 4;
+
+        /// <summary>Column height in reference px: ButtonCount buttons (8, or 9 with Fill), one spacing between buttons of a group, a gap between groups.</summary>
         public const float ColumnHeight =
             ButtonCount * ButtonH + (ButtonCount - GroupCount) * Spacing + (GroupCount - 1) * GroupGap;
 
-        enum Glyph { Line, Circle, Dotted, Width, Square, Hex, Tiles, Snap, HV, Select, Move, Scale, Duplicate, Deselect, Undo }
-        const int GlyphCount = 15;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
+        enum Glyph
+        {
+            Line, Circle, Dotted, Width, Square, Hex, Tiles, Snap, HV, Select, Move, Scale, Duplicate, Deselect, Undo,
+            CircleDotted, Bands, HoldMark, Fill, Delete, Redo, Extend,
+        }
+        const int GlyphCount = 22;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
 
         IEditorSession _session;
         IBoardSpace _boardSpace;
@@ -56,8 +75,8 @@ namespace GeoART.App
         RectTransform _column;
         Rect _safeArea;
         int _screenW, _screenH;   // ApplySafeArea depends on the screen size too, not just the safe area
-        Image _lineBg, _circleBg, _selectBg, _dottedBg, _snapBg, _hvBg;
-        Text _widthLabel, _gridLabel, _tilesLabel;
+        Image _lineBg, _circleBg, _selectBg, _fillBg, _snapBg;
+        Text _widthLabel, _gridLabel, _tilesLabel, _snapLabel;
         RawImage _gridIcon;
         Texture _squareGlyph, _hexGlyph;
         readonly Texture2D[] _textures = new Texture2D[GlyphCount + 1];   // glyphs, then the rounded sprite
@@ -87,11 +106,14 @@ namespace GeoART.App
             var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             _rounded = MakeRoundedSprite(0);
             float y = 0f;
-            _lineBg = CreateButton("Line", Glyph.Line, font, ref y, () => _session?.SetTool(ToolId.Line), out _);
-            _circleBg = CreateButton("Circle", Glyph.Circle, font, ref y, () => _session?.SetTool(ToolId.Circle), out _);
+            _lineBg = CreateButton("Line", Glyph.Line, font, ref y, () => TapTool(_lineMenu, ToolId.Line), out _);
+            _circleBg = CreateButton("Circle", Glyph.Circle, font, ref y, () => TapTool(_circleMenu, ToolId.Circle), out _);
             _selectBg = CreateButton("Select", Glyph.Select, font, ref y, () => _session?.SetTool(ToolId.SelectMove), out _);
+#pragma warning disable 162   // FillEnabled is a compile-time switch
+            if (FillEnabled) _fillBg = CreateButton("Fill", Glyph.Fill, font, ref y, () => _session?.SetTool(ToolId.Fill), out _);
+#pragma warning restore 162
             y += GroupGap - Spacing;
-            _dottedBg = CreateButton("Dotted", Glyph.Dotted, font, ref y, () => _session?.ToggleDottedLine(), out _);
+            BuildBandsButton(font, ref y);
             CreateButton("Medium", Glyph.Width, font, ref y, CycleWidth, out _widthLabel);
             y += GroupGap - Spacing;
             _hexGlyph = MakeGlyph(Glyph.Hex);
@@ -100,11 +122,10 @@ namespace GeoART.App
             _squareGlyph = _gridIcon.texture;
             CreateButton("2x2", Glyph.Tiles, font, ref y, CycleGridN, out _tilesLabel);
             y += GroupGap - Spacing;
-            _snapBg = CreateButton("Snap", Glyph.Snap, font, ref y, ToggleSnap, out _);
-            _hvBg = CreateButton("HV", Glyph.HV, font, ref y, ToggleOrthoLock, out var hvLabel);
-            hvLabel.text = "H/V";
+            _snapBg = CreateButton("Snap", Glyph.Snap, font, ref y, ToggleSnap, out _snapLabel);
             BuildActionBar(font);
             BuildUndoButton(font);
+            BuildHoldMenus(font);   // last: the open menus and their blockers draw over everything else
 
             _canvas.enabled = false;
         }
@@ -140,24 +161,32 @@ namespace GeoART.App
             if (Screen.safeArea != _safeArea || Screen.width != _screenW || Screen.height != _screenH) ApplySafeArea();
         }
 
-        void OnPlacementChanged(PlacementState _) => Refresh();
+        void OnPlacementChanged(PlacementState _)
+        {
+            Refresh();
+            MaybeShowLineMenuHint();
+        }
 
         void Refresh()
         {
             bool visible = show && _session != null && (_boardSpace == null || _boardSpace.IsPlaced);
             if (_canvas.enabled != visible) _canvas.enabled = visible;
+            if (!visible) CloseHoldMenus();   // a hidden bar never keeps a menu (or a running hold) open
             if (_session == null) return;
 
             ToolId tool = _session.ActiveTool;
             SetColor(_lineBg, tool == ToolId.Line ? Accent : Idle);
             SetColor(_circleBg, tool == ToolId.Circle ? Accent : Idle);
             SetColor(_selectBg, IsSelectionTool(tool) ? Accent : Idle);
-            SetColor(_dottedBg, _session.DottedLine ? Accent : Idle);
+            SetColor(_fillBg, tool == ToolId.Fill ? Accent : Idle);
             SetColor(_snapBg, _session.SnapEnabled ? Accent : Idle);
-            SetColor(_hvBg, _session.OrthoLock ? Accent : Idle);
+            string snap = _session.OrthoLock ? "H/V" : "Snap";
+            if (!ReferenceEquals(_snapLabel.text, snap) && _snapLabel.text != snap) _snapLabel.text = snap;
             string width = WidthLabel(_session.Style.Width);
             if (!ReferenceEquals(_widthLabel.text, width)) _widthLabel.text = width;
             RefreshGrid();
+            RefreshLineMode();
+            RefreshBands();
             RefreshActionBar(visible);
             RefreshUndo(visible);
         }
@@ -169,6 +198,7 @@ namespace GeoART.App
         void OnBoardChanged(BoardChangeKind kind)
         {
             if ((kind & (BoardChangeKind.Grid | BoardChangeKind.Reset)) != 0) RefreshGrid();
+            if ((kind & (BoardChangeKind.Layers | BoardChangeKind.Reset | BoardChangeKind.History)) != 0) RefreshBands();
             RefreshUndo(_canvas.enabled);   // CanUndo changes only together with BoardChanged (no StateChanged)
         }
 
@@ -202,7 +232,7 @@ namespace GeoART.App
 
         void ToggleSnap()
         {
-            if (_session == null) return;
+            if (_session == null || (_snapMenu != null && _snapMenu.SuppressClick)) return;
             _session.SetSnapEnabled(!_session.SnapEnabled);   // raises StateChanged -> Refresh
         }
 
@@ -223,6 +253,8 @@ namespace GeoART.App
             LineWidth next = s.Width == LineWidth.Thin ? LineWidth.Medium
                            : s.Width == LineWidth.Medium ? LineWidth.Thick : LineWidth.Thin;
             _session.Style = s.WithWidth(next);
+            // With a selection the new width also goes to the selected shapes (one "Style" step).
+            if (_session.Selection.Ids.Count > 0) _session.RestyleSelection(StyleParts.Width, _session.Style);
         }
 
         static string WidthLabel(LineWidth w) =>
@@ -326,14 +358,17 @@ namespace GeoART.App
             _column.localScale = new Vector3(fit, fit, 1f);
             PlaceActionBar(w, h, scale, fit);
             PlaceUndoButton(w, h, scale, fit);
+            CloseHoldMenus();   // an open row was placed for the old layout
         }
 
         // ---------- procedural icons (white on transparent, anti-aliased with a signed distance) ----------
 
         const int GlyphPx = 64;
 
+        /// <summary>The glyph's texture, drawn on first use and cached in <see cref="_textures"/> (freed in OnDestroy).</summary>
         Texture2D MakeGlyph(Glyph g)
         {
+            if (_textures[(int)g] != null) return _textures[(int)g];
             var tex = NewTexture(GlyphPx);
             var px = new Color32[GlyphPx * GlyphPx];
             for (int j = 0; j < GlyphPx; j++)
@@ -371,6 +406,43 @@ namespace GeoART.App
                     Vector2 s0 = a + ab * ((k + 0.08f) / 4f), s1 = a + ab * ((k + 0.62f) / 4f);
                     return SegmentDistance(p, s0, s1) - 0.05f;
                 }
+                case Glyph.CircleDotted:   // the Circle glyph's ring as 8 dashes, with its centre dot
+                {
+                    var o = new Vector2(0.5f, 0.5f);
+                    const float r = 0.36f, dashes = 8f;
+                    float ang = Mathf.Atan2(p.y - o.y, p.x - o.x) / (2f * Mathf.PI);
+                    float cell = (ang + 1f) * dashes;
+                    float k = Mathf.Floor(cell), f = cell - k;
+                    float d;
+                    if (f >= 0.1f && f <= 0.6f) d = Mathf.Abs(Vector2.Distance(p, o) - r);
+                    else
+                    {
+                        // nearest dash end: the end of this cell's dash or the start of the next one
+                        float a0 = (k + (f < 0.1f ? -0.4f : 0.6f)) / dashes * 2f * Mathf.PI;
+                        float a1 = (k + (f < 0.1f ? 0.1f : 1.1f)) / dashes * 2f * Mathf.PI;
+                        d = Mathf.Min(Vector2.Distance(p, o + r * new Vector2(Mathf.Cos(a0), Mathf.Sin(a0))),
+                            Vector2.Distance(p, o + r * new Vector2(Mathf.Cos(a1), Mathf.Sin(a1))));
+                    }
+                    return Mathf.Min(d - 0.05f, Vector2.Distance(p, o) - 0.07f);
+                }
+                case Glyph.Bands:   // two bands crossing: one passes over, the other is broken where it goes under
+                {
+                    var o = new Vector2(0.5f, 0.5f);
+                    var u = new Vector2(0.7071f, 0.7071f);
+                    var n = new Vector2(-0.7071f, 0.7071f);
+                    const float half = 0.11f, len = 0.36f, under = half + 0.07f;
+                    float d = Mathf.Min(SegmentDistance(p, o + n * half - u * len, o + n * half + u * len),
+                        SegmentDistance(p, o - n * half - u * len, o - n * half + u * len));
+                    for (int s = -1; s <= 1; s += 2)
+                    {
+                        Vector2 side = o + u * (s * half);
+                        d = Mathf.Min(d, SegmentDistance(p, side + n * under, side + n * len));
+                        d = Mathf.Min(d, SegmentDistance(p, side - n * under, side - n * len));
+                    }
+                    return d - 0.035f;
+                }
+                case Glyph.HoldMark:   // a filled corner triangle with its right angle at the bottom right: "hold for more"
+                    return Mathf.Max(Mathf.Max(0.12f - p.y, p.x - 0.88f), (p.y - p.x) * 0.7071f);
                 case Glyph.Square:   // 2x2 squares
                 {
                     float d = Mathf.Abs(BoxDistance(p, new Vector2(0.5f, 0.5f), 0.32f));
@@ -396,6 +468,18 @@ namespace GeoART.App
                     float d = SegmentDistance(p, new Vector2(0.16f, 0.16f), dot) - 0.04f;
                     d = Mathf.Min(d, Mathf.Abs(Vector2.Distance(p, dot) - 0.17f) - 0.035f);
                     return Mathf.Min(d, Vector2.Distance(p, dot) - 0.07f);
+                }
+                case Glyph.Fill:   // paint bucket: a tilted bucket with a handle, and a drop falling from its lip
+                {
+                    var c = new Vector2(0.42f, 0.5f);
+                    float ang = -0.6f, cs = Mathf.Cos(ang), sn = Mathf.Sin(ang);
+                    Vector2 q = p - c;
+                    q = new Vector2(cs * q.x - sn * q.y, sn * q.x + cs * q.y);
+                    float body = Mathf.Abs(BoxDistance(q + c, c, 0.2f)) - 0.04f;
+                    float handle = Mathf.Abs(Vector2.Distance(q, new Vector2(0f, 0.2f)) - 0.17f) - 0.03f;
+                    if (q.y < 0.2f) handle = 1f;
+                    float drop = Vector2.Distance(p, new Vector2(0.78f, 0.26f)) - 0.08f;
+                    return Mathf.Min(body, Mathf.Min(handle, drop));
                 }
                 case Glyph.HV:   // a plus with end ticks: horizontal and vertical only
                 {
@@ -460,6 +544,27 @@ namespace GeoART.App
                     d = Mathf.Min(d, SegmentDistance(p, tip, new Vector2(0.37f, 0.755f)));
                     d = Mathf.Min(d, SegmentDistance(p, tip, new Vector2(0.37f, 0.495f)));
                     return d - 0.045f;
+                }
+                case Glyph.Redo:   // the Undo arrow mirrored: pointing forward
+                    return GlyphDistance(Glyph.Undo, new Vector2(1f - p.x, p.y));
+                case Glyph.Delete:   // trash can: lid with a handle, a tapered bin with two ribs
+                {
+                    float d = SegmentDistance(p, new Vector2(0.2f, 0.74f), new Vector2(0.8f, 0.74f)) - 0.04f;
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.4f, 0.84f), new Vector2(0.6f, 0.84f)) - 0.035f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.4f, 0.84f), new Vector2(0.4f, 0.76f)) - 0.035f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.6f, 0.84f), new Vector2(0.6f, 0.76f)) - 0.035f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.27f, 0.66f), new Vector2(0.33f, 0.16f)) - 0.04f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.73f, 0.66f), new Vector2(0.67f, 0.16f)) - 0.04f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.33f, 0.16f), new Vector2(0.67f, 0.16f)) - 0.04f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.43f, 0.58f), new Vector2(0.45f, 0.26f)) - 0.03f);
+                    return Mathf.Min(d, SegmentDistance(p, new Vector2(0.57f, 0.58f), new Vector2(0.55f, 0.26f)) - 0.03f);
+                }
+                case Glyph.Extend:   // an arrow running into a bar: a line pushed out to the next boundary
+                {
+                    float d = SegmentDistance(p, new Vector2(0.12f, 0.5f), new Vector2(0.66f, 0.5f)) - 0.045f;
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.66f, 0.5f), new Vector2(0.5f, 0.66f)) - 0.045f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.66f, 0.5f), new Vector2(0.5f, 0.34f)) - 0.045f);
+                    return Mathf.Min(d, SegmentDistance(p, new Vector2(0.84f, 0.16f), new Vector2(0.84f, 0.84f)) - 0.05f);
                 }
                 case Glyph.Deselect:   // an X
                     return Mathf.Min(SegmentDistance(p, new Vector2(0.26f, 0.26f), new Vector2(0.74f, 0.74f)),

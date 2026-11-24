@@ -75,20 +75,23 @@ namespace GeoART.Contracts
         public string Name;
         public bool Visible = true;
         public double Opacity = 1.0;                                     // [0,1], multiplies stroke alpha
+        public LayerBands Bands;                                         // band treatment; default = off (Bands.cs)
         public readonly List<Shape> Shapes = new List<Shape>();          // first = back
         public readonly List<SnapPoint> SnapPoints = new List<SnapPoint>();
+        public readonly List<FillSeed> Fills = new List<FillSeed>();     // drawn under the strokes, bottom first (Fills.cs)
 
         public Layer() { }
         public Layer(EntityId id, string name) { Id = id; Name = name; }
 
-        /// <summary>Deep copy: same id, name, visibility, opacity; cloned shapes and snap points (null entries kept).</summary>
+        /// <summary>Deep copy: same id, name, visibility, opacity, bands, fills; cloned shapes and snap points (null entries kept).</summary>
         public Layer DeepClone()
         {
-            var c = new Layer(Id, Name) { Visible = Visible, Opacity = Opacity };
+            var c = new Layer(Id, Name) { Visible = Visible, Opacity = Opacity, Bands = Bands };   // Bands: a value type
             c.Shapes.Capacity = Shapes.Count;
             for (int i = 0; i < Shapes.Count; i++) c.Shapes.Add(Shapes[i]?.Clone());
             c.SnapPoints.Capacity = SnapPoints.Count;
             for (int i = 0; i < SnapPoints.Count; i++) c.SnapPoints.Add(SnapPoints[i]?.Clone());
+            c.Fills.AddRange(Fills);   // value types
             return c;
         }
     }
@@ -132,5 +135,6 @@ namespace GeoART.Contracts
     {
         None = 0, Shapes = 1, Layers = 2, SnapPoints = 4, Grid = 8, Reset = 16,
         History = 32,   // Undo/Redo restored a snapshot (raised with the content flags)
+        Fills = 64,     // a layer's fills changed (shapes did not)
     }
 }

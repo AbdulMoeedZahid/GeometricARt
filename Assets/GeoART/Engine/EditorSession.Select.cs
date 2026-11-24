@@ -30,7 +30,7 @@ namespace GeoART.Engine
         /// <summary>"1 shape selected" or "N shapes selected".</summary>
         public static string SelectedCountToast(int n) => n == 1 ? "1 shape selected" : n + " shapes selected";
 
-        /// <summary>Board-distance cap for tap-picking a stroke, in board units (as <see cref="MaxSnapBoardDistance"/>).</summary>
+        /// <summary>Board-distance cap for tap-picking a stroke, in board units (as <see cref="SnapCapFloor"/>).</summary>
         public const double MaxPickBoardDistance = 0.03;
 
         const double PickProbe = 0.01;   // board step used to measure px per board unit at the tap point
@@ -126,6 +126,33 @@ namespace GeoART.Engine
         public void ClearSelection()
         {
             if (ClearSelectionNoEvent()) RaiseStateChanged();
+        }
+
+        /// <summary>"Deleted 1 shape" or "Deleted N shapes".</summary>
+        public static string DeletedToast(int n) => n == 1 ? "Deleted 1 shape" : "Deleted " + n + " shapes";
+
+        readonly List<SelectedShape> _deleteScratch = new List<SelectedShape>();
+
+        /// <summary>
+        /// Delete (the action bar's button, plan 5.1): removes every selected shape on a visible layer. One "Delete" undo
+        /// step, BoardChanged(Shapes) (snap points are rebuilt), the selection is emptied (so Move/Scale/Duplicate fall
+        /// back to Select) and a toast counts the shapes. Any open gesture is cancelled first. Nothing selected: nothing.
+        /// </summary>
+        public void DeleteSelection()
+        {
+            GetSelectedShapes(_deleteScratch);
+            if (_deleteScratch.Count == 0) return;
+            EndGesture(false, false);
+            GetSelectedShapes(_deleteScratch);   // a cancelled drag may have restored a different selection
+            if (_deleteScratch.Count == 0) { RaiseStateChanged(); return; }
+            RecordUndo(UndoLabels.Delete);
+            int n = _deleteScratch.Count;
+            for (int i = 0; i < n; i++) _deleteScratch[i].Layer.Shapes.Remove(_deleteScratch[i].Shape);
+            _deleteScratch.Clear();
+            ClearSelectionNoEvent();
+            RaiseBoardChanged(BoardChangeKind.Shapes);
+            RaiseStateChanged();   // the transform tools fall back to Select (NormalizeTool)
+            RaiseToast(DeletedToast(n));
         }
 
         /// <summary>Tools that work on the selection; switching to any other tool clears it.</summary>

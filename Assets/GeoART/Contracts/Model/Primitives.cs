@@ -32,6 +32,10 @@ namespace GeoART.Contracts
     }
 
     public enum LineStyle { Solid, Dotted }
+
+    /// <summary>Which parts of a <see cref="StrokeStyle"/> RestyleSelection applies.</summary>
+    [Flags]
+    public enum StyleParts { None = 0, Color = 1, Width = 2, Dash = 4 }
     public enum LineWidth { Thin, Medium, Thick }
     public enum StampKind { Triangle = 3, Square = 4, Hexagon = 6 }
 

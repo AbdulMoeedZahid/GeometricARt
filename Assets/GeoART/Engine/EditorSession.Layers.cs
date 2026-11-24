@@ -31,10 +31,10 @@ namespace GeoART.Engine
             return layer.Id;
         }
 
-        /// <summary>Makes the layer active. Not an undo step; ends a layer-opacity merge even when nothing changes.</summary>
+        /// <summary>Makes the layer active. Not an undo step; ends an opacity / band-width merge even when nothing changes.</summary>
         public void SelectLayer(EntityId id)
         {
-            _opacityStepLayer = EntityId.None;
+            EndMerge();
             if (_board.ActiveLayerId == id || _board.FindLayer(id) == null) return;
             _board.ActiveLayerId = id;
             RaiseBoardChanged(BoardChangeKind.Layers);
@@ -93,12 +93,28 @@ namespace GeoART.Engine
             if (layer == null) return;
             opacity = Math.Max(0.0, Math.Min(1.0, opacity));
             if (layer.Opacity == opacity) return;
-            if (_opacityStepLayer != id)
-            {
-                RecordUndo(UndoLabels.LayerOpacity);
-                _opacityStepLayer = id;
-            }
+            RecordMergedUndo(id, MergeKind.Opacity, UndoLabels.LayerOpacity);
             layer.Opacity = opacity;
+            RaiseBoardChanged(BoardChangeKind.Layers);
+        }
+
+        /// <summary>
+        /// Sets a layer's band treatment (sanitized; compared sanitized, so a fresh layer's default value equals
+        /// LayerBands.Default with On false). Unknown layer or no change: nothing. A width-only change is a "Band width"
+        /// step that merges with the next width-only changes of the same layer (one slider session = one step); any
+        /// other change is a "Bands" step. Raises BoardChanged(Layers).
+        /// </summary>
+        public void SetLayerBands(EntityId id, LayerBands bands)
+        {
+            Layer layer = _board.FindLayer(id);
+            if (layer == null) return;
+            LayerBands next = bands.Sanitized(), now = layer.Bands.Sanitized();
+            if (next == now) return;
+            LayerBands widthOnly = now;
+            widthOnly.Width = next.Width;
+            if (widthOnly == next) RecordMergedUndo(id, MergeKind.BandWidth, UndoLabels.BandWidth);
+            else RecordUndo(UndoLabels.Bands);
+            layer.Bands = next;
             RaiseBoardChanged(BoardChangeKind.Layers);
         }
 

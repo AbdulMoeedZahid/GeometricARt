@@ -365,7 +365,7 @@ namespace GeoART.EngineCheck
 
         public static void TapSlopUsesMaximumDistance()
         {
-            var s = new EditorSession();   // fallback slop = 0.02 * 10/24 = 0.00833 board units
+            var s = new EditorSession();   // fallback slop = 0.02 * 10/32 = 0.00625 board units
             s.Pointer(Ev(PointerPhase.Down, 0.5, 0.5));
             s.Pointer(Ev(PointerPhase.Move, 0.5, 0.509));
             s.Pointer(Ev(PointerPhase.Move, 0.5, 0.5));
@@ -373,8 +373,8 @@ namespace GeoART.EngineCheck
             Check.That(!s.PendingConnectStart.HasValue, "wandered out and back: a drag, not a tap");
 
             s.Pointer(Ev(PointerPhase.Down, 0.5, 0.5));
-            s.Pointer(Ev(PointerPhase.Move, 0.5, 0.508));
-            s.Pointer(Ev(PointerPhase.Up, 0.5, 0.505));
+            s.Pointer(Ev(PointerPhase.Move, 0.5, 0.506));
+            s.Pointer(Ev(PointerPhase.Up, 0.5, 0.504));
             Check.That(s.PendingConnectStart == new Vec2(0.5, 0.5), "stayed inside the slop: a tap");
             Check.That(ShapeCount(s) == 0, "never a zero-length commit");
         }
@@ -444,15 +444,19 @@ namespace GeoART.EngineCheck
             Drag(s, 0.1, 0.12, 0.5, 0.526);   // 26 px
             Check.That(((LineShape)s.ActiveLayer.Shapes[1]).B == new Vec2(0.5, 0.526), "26 px stays raw");
 
-            // Scale 500: the same 24 px are 0.048 board units, but the board cap (MaxSnapBoardDistance = 0.03) also applies.
+            // Scale 500: the same 24 px are 0.048 board units. The board cap is adaptive (1.5 x 24 / 500 = 0.072 straight
+            // down), so it no longer cuts the pixel radius short as the old fixed 0.03 did; pixels decide.
             var h = new EditorSession { SnapMetric = new AffineMetric { Scale = 500, OffX = -300, OffY = 999, Tol = 24 } };
+            Check.Near(h.BoardCap(new Vec2(0.5, 0.54)), 0.072, "adaptive cap straight down", 1e-9);
             Drag(h, 0.1, 0.12, 0.5, 0.528);   // 0.028 board = 14 px: inside both (the fallback 0.02 would not snap)
             Check.That(((LineShape)h.ActiveLayer.Shapes[0]).B == new Vec2(0.5, 0.5), "0.028 board units = 14 px snaps at scale 500");
-            Drag(h, 0.1, 0.12, 0.5, 0.54);    // 0.04 board = 20 px: inside the screen tolerance, outside the board cap
-            Check.That(((LineShape)h.ActiveLayer.Shapes[1]).B == new Vec2(0.5, 0.54), "0.04 board units stays raw (board cap)");
+            Drag(h, 0.1, 0.12, 0.5, 0.54);    // 0.04 board = 20 px: inside the pixels and the adaptive cap (old cap: raw)
+            Check.That(((LineShape)h.ActiveLayer.Shapes[1]).B == new Vec2(0.5, 0.5), "0.04 board units = 20 px now snaps");
+            Drag(h, 0.1, 0.12, 0.5, 0.55);    // 0.05 board = 25 px: outside the pixels
+            Check.That(((LineShape)h.ActiveLayer.Shapes[2]).B == new Vec2(0.5, 0.55), "25 px stays raw");
 
-            // Tap slop is in pixels too: at scale 2000, 0.008 board units = 16 px > 10 px slop, so it is a drag.
-            var t = new EditorSession { SnapMetric = new AffineMetric { Scale = 2000, Tol = 24 } };
+            // Tap slop is in pixels too (10 of 32 px): at scale 2000, 0.008 board units = 16 px > 10 px slop, a drag.
+            var t = new EditorSession { SnapMetric = new AffineMetric { Scale = 2000, Tol = 32 } };
             t.Pointer(Ev(PointerPhase.Down, 0.5, 0.5));
             t.Pointer(Ev(PointerPhase.Up, 0.5, 0.508));
             Check.That(!t.PendingConnectStart.HasValue, "16 px movement is a drag (fallback would call 0.008 a tap)");

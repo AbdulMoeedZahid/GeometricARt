@@ -97,6 +97,40 @@ namespace GeoART.Mocks
             BoardChanged?.Invoke(BoardChangeKind.Layers);
         }
 
+        public void SetLayerBands(EntityId id, LayerBands bands)
+        {
+            var layer = _board.FindLayer(id);
+            if (layer == null) return;
+            layer.Bands = bands.Sanitized();
+            BoardChanged?.Invoke(BoardChangeKind.Layers);
+        }
+
+        public void RestyleSelection(StyleParts parts, StrokeStyle style)
+        {
+            bool any = false;
+            foreach (var layer in _board.Layers)
+                foreach (var s in layer.Shapes)
+                {
+                    if (s == null || !Selection.Ids.Contains(s.Id)) continue;
+                    StrokeStyle st = s.Style;
+                    if ((parts & StyleParts.Color) != 0) st = st.WithColor(style.Color);
+                    if ((parts & StyleParts.Width) != 0) st = st.WithWidth(style.Width);
+                    if ((parts & StyleParts.Dash) != 0) st = st.WithDash(style.Dash);
+                    s.Style = st;
+                    any = true;
+                }
+            if (any) BoardChanged?.Invoke(BoardChangeKind.Shapes);
+        }
+
+        public bool FillErase { get; private set; }
+
+        public void SetFillErase(bool erase)
+        {
+            if (FillErase == erase) return;
+            FillErase = erase;
+            StateChanged?.Invoke();
+        }
+
         public void ClearBoard() => LoadBoard(GoldenBoards.Empty());
 
         public void LoadBoard(Board b)
@@ -115,6 +149,17 @@ namespace GeoART.Mocks
         public void SetTool(ToolId t) { }
         public void SetStamp(StampKind k) { }
         public void ClearSelection() => Selection.Ids.Clear();
+
+        public void DeleteSelection()
+        {
+            bool any = false;
+            foreach (var layer in _board.Layers)
+                any |= layer.Shapes.RemoveAll(s => s != null && Selection.Ids.Contains(s.Id)) > 0;
+            Selection.Ids.Clear();
+            if (any) BoardChanged?.Invoke(BoardChangeKind.Shapes);
+            StateChanged?.Invoke();
+        }
+        public void ExtendSelection() { }
         public EntityId AddLayer() => EntityId.None;
         public void SelectLayer(EntityId id) { }
         public void MoveLayer(EntityId id, int newIndex) { }

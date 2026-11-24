@@ -27,9 +27,19 @@ namespace GeoART.Tests.Save
                 Assert.That(a.Name, Is.EqualTo(e.Name), at + " Name");
                 Assert.That(a.Visible, Is.EqualTo(e.Visible), at + " Visible");
                 Same(e.Opacity, a.Opacity, at + " Opacity");
+                // default(LayerBands) and its sanitized form mean the same thing ("no bands"); compare that meaning.
+                LayerBands eb = e.Bands.Sanitized(), ab = a.Bands.Sanitized();
+                Assert.That(ab == eb, Is.True, $"{at} Bands: expected {Describe(eb)} got {Describe(ab)}");
+                Same(eb.Width, ab.Width, at + " Bands.Width");
                 Assert.That(a.Shapes.Count, Is.EqualTo(e.Shapes.Count), at + " shape count");
                 for (int k = 0; k < e.Shapes.Count; k++)
                     ShapesEqual(e.Shapes[k], a.Shapes[k], $"{at} shape {k}");
+                Assert.That(a.Fills.Count, Is.EqualTo(e.Fills.Count), at + " fill count");
+                for (int k = 0; k < e.Fills.Count; k++)
+                {
+                    Same(e.Fills[k].Point, a.Fills[k].Point, $"{at} fill {k} Point");
+                    Assert.That(a.Fills[k].Color, Is.EqualTo(e.Fills[k].Color), $"{at} fill {k} Color");
+                }
                 Assert.That(a.SnapPoints.Count, Is.EqualTo(e.SnapPoints.Count), at + " snap point count");
                 for (int k = 0; k < e.SnapPoints.Count; k++)
                 {
@@ -38,6 +48,9 @@ namespace GeoART.Tests.Save
                 }
             }
         }
+
+        static string Describe(LayerBands b) =>
+            $"on {b.On} {b.Mode} w {b.Width:R} hide {b.HideStructure} inner {b.InnerLines} flip {b.FlipWeave} {b.OutlineColor} {b.OutlineWidth}";
 
         static void ShapesEqual(Shape e, Shape a, string at)
         {
@@ -284,6 +297,106 @@ namespace GeoART.Tests.Save
             session.LoadBoard(b);
             Assert.That(session.Board.Layers.Count, Is.EqualTo(1));
             Assert.That(session.Board.FindLayer(session.Board.ActiveLayerId), Is.Not.Null);
+        }
+
+        static LayerBands FullBands => new LayerBands
+        {
+            On = true, Mode = BandMode.Interlace, Width = 0.0123456789012345, HideStructure = true, InnerLines = true,
+            FlipWeave = true, OutlineColor = new RgbaColor(12, 34, 56, 78), OutlineWidth = LineWidth.Thick,
+        };
+
+        [Test]
+        public void EveryBandFieldRoundTrips()
+        {
+            var b = GoldenBoards.StarOnFullBoard();
+            b.Layers[2].Bands = FullBands;
+            var off = FullBands;
+            off.On = false;   // remembered settings of a layer whose bands are off
+            b.Layers[1].Bands = off;
+            var back = RoundTrip(b);
+            BoardAssert.AreEqual(b, back);
+            Assert.That(back.Layers[2].Bands == FullBands, Is.True, "every field, the width bit-exact");
+            Assert.That(back.Layers[1].Bands == off, Is.True, "an Off layer keeps its settings");
+            Assert.That(back.Layers[0].Bands.On, Is.False, "an untouched layer stays unbanded");
+        }
+
+        [Test]
+        public void TheWeaveIsTheSameAfterASaveRoundTrip()
+        {
+            var b = GoldenBoards.Tiled2x2();
+            b.Layers[0].Bands = FullBands;
+            var before = BandGraph.Build(b.Layers[0].Shapes);
+            var after = BandGraph.Build(RoundTrip(b).Layers[0].Shapes);
+            Assert.That(after.CrossingCount, Is.EqualTo(before.CrossingCount));
+            for (int c = 0; c < before.CrossingCount; c++)
+            {
+                Assert.That(after.Graph.Node(after.CrossingNode(c)), Is.EqualTo(before.Graph.Node(before.CrossingNode(c))));
+                Assert.That(after.OverPass(c), Is.EqualTo(before.OverPass(c)), $"crossing {c}: the weave never flips on reload");
+            }
+        }
+
+        [Test]
+        public void OldFileWithoutBandFieldsLoadsUnbanded()
+        {
+            var b = GoldenBoards.StarOnFullBoard();
+            b.Layers[2].Bands = FullBands;
+            string json = DesignSerializer.ToJson(b, "Old", When);
+            string old = System.Text.RegularExpressions.Regex.Replace(json, "\\s*\"band[A-Za-z]*\": [^,\\n]*,", "");
+            Assert.That(old, Does.Not.Contain("\"band"), "precondition: a version-1 file from before bands");
+            Assert.That(DesignSerializer.TryParse(old, out DesignFile file, out string error), Is.True, error);
+            var loaded = DesignSerializer.ToBoard(file.board);
+            foreach (var layer in loaded.Layers)
+            {
+                Assert.That(layer.Bands.On, Is.False, layer.Name);
+                Assert.That(layer.Bands == LayerBands.Default, Is.True, layer.Name + ": default settings");
+            }
+            Assert.That(loaded.Layers[2].Shapes.Count, Is.EqualTo(b.Layers[2].Shapes.Count), "shapes still load");
+        }
+
+        [Test]
+        public void GarbageBandValuesAreSanitized()
+        {
+            foreach (string width in new[] { "-3", "abc", null, "NaN", "1e300" })
+            {
+                var d = new BoardData { gridN = 2, nextId = 5 };
+                d.layers.Add(new LayerData
+                {
+                    id = 1, name = "A", visible = true, opacity = "1",
+                    bandOn = true, bandMode = 99, bandWidth = width, bandLineWidth = -4, bandA = 0,
+                });
+                LayerBands lb = DesignSerializer.ToBoard(d).Layers[0].Bands;
+                Assert.That(lb.On, Is.True, $"{width}: on kept");
+                Assert.That(lb.Mode, Is.EqualTo(BandMode.Double), $"{width}: mode 99 -> Double");
+                Assert.That(lb.Width, Is.EqualTo(width == "1e300" ? LayerBands.MaxWidth : LayerBands.DefaultWidth), $"{width}: width");
+                Assert.That(lb.OutlineWidth, Is.EqualTo(LineWidth.Thin), $"{width}: outline width");
+                Assert.That(lb.OutlineColor, Is.EqualTo(Palette.Black), $"{width}: transparent colour -> black");
+            }
+        }
+
+        [Test]
+        public void FillsRoundTripAndOldFilesHaveNone()
+        {
+            var b = GoldenBoards.StarOnFullBoard();
+            b.Layers[2].Fills.Add(new FillSeed(new Vec2(0.5, 0.5000000000000001), new RgbaColor(12, 200, 30, 255)));
+            b.Layers[2].Fills.Add(new FillSeed(new Vec2(0.2, 0.3), Palette.Red));
+            var back = RoundTrip(b);
+            BoardAssert.AreEqual(b, back);
+            Assert.That(back.Layers[2].Fills[0].Point, Is.EqualTo(new Vec2(0.5, 0.5000000000000001)), "bit-exact seed");
+
+            string json = DesignSerializer.ToJson(b, "Old", When);
+            string old = System.Text.RegularExpressions.Regex.Replace(json, "\\s*\"fills\": \\[[^\\]]*\\],?", "");
+            Assert.That(old, Does.Not.Contain("\"fills\""), "precondition: a file from before fills");
+            Assert.That(DesignSerializer.TryParse(old, out DesignFile file, out string error), Is.True, error);
+            foreach (var layer in DesignSerializer.ToBoard(file.board).Layers) Assert.That(layer.Fills.Count, Is.EqualTo(0), layer.Name);
+
+            var d = new BoardData { gridN = 2, nextId = 5 };
+            d.layers.Add(new LayerData { id = 1, name = "A", visible = true, opacity = "1" });
+            d.layers[0].fills.Add(new FillData { x = "abc", y = "0.5", r = 1, g = 2, b = 3, a = 255 });
+            d.layers[0].fills.Add(null);
+            d.layers[0].fills.Add(new FillData { x = "0.4", y = "0.6", r = 300, g = -5, b = 3, a = 255 });
+            var layer0 = DesignSerializer.ToBoard(d).Layers[0];
+            Assert.That(layer0.Fills.Count, Is.EqualTo(1), "an unreadable point and a null record are dropped");
+            Assert.That(layer0.Fills[0].Color, Is.EqualTo(new RgbaColor(255, 0, 3, 255)), "colour values are clamped");
         }
 
         [Test]

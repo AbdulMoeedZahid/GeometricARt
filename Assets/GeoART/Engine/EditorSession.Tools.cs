@@ -114,7 +114,8 @@ namespace GeoART.Engine
         {
             if (_gestureOpen) EndGesture(false);   // a lost Up: never commit a stale stroke
             if (!e.OnBoard || !e.BoardPos.IsFinite
-                || (_tool != ToolId.Line && _tool != ToolId.Circle && _tool != ToolId.SelectMove && !IsTransformTool(_tool)))
+                || (_tool != ToolId.Line && _tool != ToolId.Circle && _tool != ToolId.SelectMove && _tool != ToolId.Fill
+                    && !IsTransformTool(_tool)))
             {
                 if (DropPending()) RaisePreviewChanged();   // a tap off the board is a tap off any candidate
                 return;
@@ -141,8 +142,20 @@ namespace GeoART.Engine
             _gestureTool = _tool;
             _gestureLayer = layer.Id;
             _lastRaw = e.BoardPos;
+            ResetSnapFeel();
+            if (_tool == ToolId.Fill)
+            {
+                // Fill: no snapping, no ghost; only a tap counts (FillAt on Up).
+                _downHit = _hoverOn = false;
+                _anchor = _current = e.BoardPos;
+                _cursor = _anchor;
+                StartTapDetection(e.BoardPos);
+                RaisePreviewChanged();
+                return;
+            }
             _downHit = TrySnap(e.BoardPos, out _downCand);
             _hoverOn = _downHit;
+            NoteSnap(_downHit, _downCand);
             _anchor = _current = _downHit ? _downCand.Position : e.BoardPos;
             _cursor = _anchor;
             StartTapDetection(e.BoardPos);
@@ -167,12 +180,14 @@ namespace GeoART.Engine
                 TrackTransform(e);
                 return;
             }
+            if (_gestureTool == ToolId.Fill) return;   // a Fill drag does nothing
             if (!e.OnBoard || !e.BoardPos.IsFinite)
             {
                 if (dropped) RebuildGhost();
                 return;
             }
-            if (e.BoardPos == _lastRaw && !dropped) return;
+            if (e.BoardPos == _lastRaw && !dropped && !_resolveDirty) return;
+            _resolveDirty = false;
             _lastRaw = e.BoardPos;
             Vec2 p = ResolvePoint(e.BoardPos, out bool hit);
             if (p == _current && hit == _hoverOn && !dropped) return;   // nothing visible changed
@@ -184,18 +199,21 @@ namespace GeoART.Engine
 
         /// <summary>
         /// The current point for a raw pointer position: the raw point itself for the Select tool (never snaps), the
-        /// H/V-locked end for the Line tool with the lock on, else the plain snap. <paramref name="hit"/> is true if it
-        /// snapped (hover ring).
+        /// H/V-locked end for the Line tool with the lock on, else the plain snap with the sticky rule (raises
+        /// SnapAcquired on a new candidate). <paramref name="hit"/> is true if it snapped (hover ring).
         /// </summary>
         Vec2 ResolvePoint(Vec2 raw, out bool hit)
         {
             if (_gestureTool == ToolId.SelectMove) { hit = false; return raw; }
             if (_gestureTool == ToolId.Line && _orthoLock)
             {
+                _stickyOn = false;   // the H/V path has no sticky
+                NoteSnap(false, default);
                 hit = TryOrthoEnd(raw, out Vec2 end);
                 return end;
             }
-            hit = TrySnap(raw, out SnapCandidate c);
+            hit = TrySnapTracking(raw, out SnapCandidate c);
+            NoteSnap(hit, c);
             return hit ? c.Position : raw;
         }
 
@@ -255,6 +273,7 @@ namespace GeoART.Engine
             _preview.Clear();
             _cursor = null;
             _hoverOn = false;
+            ResetSnapFeel();
             if (!commit) _hasPending = false;
             if (hadGesture && IsTransformTool(_gestureTool)) FinishTransformGesture(commit, raiseSelectionState);
             else if (hadGesture && _gestureTool == ToolId.SelectMove) FinishSelectGesture(commit, raiseSelectionState);
@@ -295,6 +314,11 @@ namespace GeoART.Engine
         /// <summary>Tap-to-connect step for a finished tap. Never commits a zero-length (or too short) line.</summary>
         void Tap()
         {
+            if (_gestureTool == ToolId.Fill)
+            {
+                FillAt(_anchor);
+                return;
+            }
             if (_gestureTool != ToolId.Line) return;   // Circle: a tap draws nothing
             if (!_downHit)
             {
@@ -409,7 +433,8 @@ namespace GeoART.Engine
         /// </summary>
         public void SetTool(ToolId t)
         {
-            if (t != ToolId.None && t != ToolId.Line && t != ToolId.Circle && t != ToolId.SelectMove && !IsTransformTool(t))
+            if (t != ToolId.None && t != ToolId.Line && t != ToolId.Circle && t != ToolId.SelectMove && t != ToolId.Fill
+                && !IsTransformTool(t))
             {
                 RaiseToast(ComingSoonToast);
                 return;
@@ -422,12 +447,13 @@ namespace GeoART.Engine
             }
             EndGesture(false, false);   // a Select/transform gesture's restore is folded into the single StateChanged below
             if (!KeepsSelection(t)) ClearSelectionNoEvent();
+            _fillErase = false;          // "no fill" belongs to one Fill session (folded into the StateChanged below)
             _tool = t;
             string hint = HintFor(t);
             if (hint != _toolHint) SetToolHint(hint);
             else RaiseStateChanged();
             if (_tool != t) RaiseToast(SelectFirstToast);   // a cancelled Select drag rolled the selection back to empty
-            else if (t == ToolId.SelectMove || IsTransformTool(t)) RaiseToast(hint);
+            else if (t == ToolId.SelectMove || IsTransformTool(t) || t == ToolId.Fill) RaiseToast(hint);
         }
 
         static string HintFor(ToolId t)
@@ -436,6 +462,7 @@ namespace GeoART.Engine
             {
                 case ToolId.Line: return "Line: drag from start to end, or tap two points";
                 case ToolId.Circle: return "Circle: drag from centre outwards";
+                case ToolId.Fill: return FillHintToast;
                 case ToolId.SelectMove: return SelectHintToast;
                 case ToolId.Move: return MoveHintToast;
                 case ToolId.Scale: return ScaleHintToast;

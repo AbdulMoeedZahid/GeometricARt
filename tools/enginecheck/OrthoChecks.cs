@@ -359,11 +359,18 @@ namespace GeoART.EngineCheck
             Drag(alongFallback, 0.1, 0.12, 0.62, 0.3);
             Check.That(LastLine(alongFallback).B == new Vec2(0.62, 0.12), "0.028 along in board units: no snap");
 
-            // ... but 0.04 along (20 px, inside the screen tolerance) is outside the board cap (MaxSnapBoardDistance).
+            // 0.04 along (20 px, inside the screen tolerance) was outside the old fixed 0.03 cap. Looking straight down the
+            // adaptive cap is 1.5 x 24 / 500 = 0.072, so it now aligns; 0.08 along (40 px) is outside the pixels. The
+            // along-axis cap itself is checked on a grazing view in SnapCapChecks.OrthoLockAlongAxisRespectsCap.
             var capped = Locked(new AffineMetric { Scale = 500, Tol = 24 });
+            Check.Near(capped.BoardCap(new Vec2(0.62, 0.12)), 0.072, "top-down cap 1.5 tol / scale", 1e-9);
             AddUserPoint(capped, 0.66, 0.12);
             Drag(capped, 0.1, 0.12, 0.62, 0.3);
-            Check.That(LastLine(capped).B == new Vec2(0.62, 0.12), $"0.04 along: board cap, no snap, got {P(LastLine(capped).B)}");
+            Check.That(LastLine(capped).B == new Vec2(0.66, 0.12), $"0.04 along: inside the adaptive cap, aligns, got {P(LastLine(capped).B)}");
+            var tooFar = Locked(new AffineMetric { Scale = 500, Tol = 24 });
+            AddUserPoint(tooFar, 0.70, 0.12);
+            Drag(tooFar, 0.1, 0.12, 0.62, 0.3);
+            Check.That(LastLine(tooFar).B == new Vec2(0.62, 0.12), $"0.08 along (40 px): no snap, got {P(LastLine(tooFar).B)}");
         }
 
         // ---------- toggling mid-gesture ----------
