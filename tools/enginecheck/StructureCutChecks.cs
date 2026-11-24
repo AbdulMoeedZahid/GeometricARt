@@ -16,7 +16,7 @@ namespace GeoART.EngineCheck
     {
         static BandOutline Woven(BandGraph g, double width, bool flip = false, bool structure = true)
         {
-            var o = Opt(width, interlace: true, flip: flip);
+            var o = Opt(width, interlace: true, flip: flip);   // StructureShown set below (Opt does not use ForBoard)
             o.StructureShown = structure;
             return BandOutline.Build(g, o);
         }
@@ -147,7 +147,10 @@ namespace GeoART.EngineCheck
             var o = BandOutlineOptions.ForBoard(b, 0.40);
             Check.Near(o.InnerInsetFloor, 0.002 / 0.40, "2 mm floor on the 40 cm board", 1e-15);
             Check.Near(o.InnerMinHalf, (0.00085 + 0.001) / 0.40, "Medium core half + 1 mm", 1e-15);
-            Check.That(o.StructureShown && o.InnerLines, "structure shown by default, inner lines as set");
+            Check.That(!o.StructureShown && o.InnerLines, "Double never cuts the structure; inner lines as set");
+            var w = b;
+            w.Mode = BandMode.Interlace;
+            Check.That(BandOutlineOptions.ForBoard(w, 0.40).StructureShown, "Interlace with the structure shown cuts it");
             var big = BandOutlineOptions.ForBoard(b, 1.2);   // a corner-placed 1.2 m board: strokes scale 2x
             Check.Near(big.InnerInsetFloor, 0.002 * 2 / 1.2, "the floor scales like the strokes", 1e-15);
             // 6 mm: no room for inner lines; 10 mm (the bump): room, with 2.15 mm from a Medium core.
@@ -158,6 +161,11 @@ namespace GeoART.EngineCheck
             var wide = BandOutline.Build(g, BandOutlineOptions.ForBoard(b, 0.40));
             Check.That(wide.InnerShown, "10 mm: inner lines shown");
             Check.Near(wide.InnerHalfWidth * 0.40 - 0.00085, 0.00215, "2.15 mm between inner line and core", 1e-12);
+            // A corner-placed 1.2 m board (stroke scale 2): the bump scales too, so inner lines still show.
+            double scale = BandOutlineOptions.StrokeScale(1.2);
+            b.Width = BandOutlineOptions.InnerLinesMinWidthMeters * scale / 1.2;
+            Check.That(b.Width <= LayerBands.MaxWidth, "the scaled bump stays in range");
+            Check.That(BandOutline.Build(g, BandOutlineOptions.ForBoard(b, 1.2)).InnerShown, "1.2 m board: inner lines shown after the bump");
         }
     }
 }
