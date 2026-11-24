@@ -384,19 +384,21 @@ namespace GeoART.Tests.Verifier
         }
 
         [Test]
-        public void HoldMarksAndTheBandsSlot()
+        public void HoldMarksAndTheBandsButton()
         {
             Assert.NotNull(Find("Line").transform.Find("HoldMark"), "Line has a hold menu mark");
             Assert.NotNull(Find("Circle").transform.Find("HoldMark"), "Circle has a hold menu mark");
+            Assert.NotNull(Find("Bands").transform.Find("HoldMark"), "Bands has a hold mark (layer popup)");
             Assert.IsNull(Find("Select").transform.Find("HoldMark"), "Select has no menu");
             var bands = Find("Bands");
-            Assert.AreEqual("Off", bands.GetComponentInChildren<Text>().text, "Bands slot shows Off");
-            Assert.Less(bands.GetComponent<CanvasGroup>().alpha, 1f, "dimmed until bands exist");
-            Assert.IsTrue(bands.GetComponent<Graphic>().raycastTarget, "still blocks board touches");
-            ToolId tool = _session.ActiveTool;
+            Assert.AreEqual("Off", bands.GetComponentInChildren<Text>().text, "Bands starts Off");
+            Assert.IsNull(bands.GetComponent<CanvasGroup>(), "no longer dimmed");
             Click(bands);
-            Assert.AreEqual(tool, _session.ActiveTool, "a tap changes nothing");
-            Assert.AreEqual(LineStyle.Solid, _session.Style.Dash);
+            Assert.IsTrue(_session.ActiveLayer.Bands.On, "a tap turns the active layer's bands on");
+            Assert.AreEqual("Double", bands.GetComponentInChildren<Text>().text);
+            Click(bands);
+            Assert.IsFalse(_session.ActiveLayer.Bands.On, "and off again");
+            Assert.AreEqual("Off", bands.GetComponentInChildren<Text>().text);
         }
     }
 }
