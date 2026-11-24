@@ -12,7 +12,17 @@ divisions...), and tapping two points connects them with a line. An H/V lock kee
 2. **Line** (default tool): touch the board at the start point, drag, lift at the end point. An orange ghost follows the
    finger while dragging.
 3. **Circle**: touch the centre, drag outwards, lift. The ghost shows the circle and a dotted radius line.
-4. **Dotted** toggles dashed strokes for new shapes (orange when on). **Width** cycles Thin / Medium / Thick for new shapes.
+4. **Line mode** (Solid or Dotted, for new lines and circles; shared by Line and Circle). Line and Circle show the mode in
+   their icon (solid or dashed diagonal, solid or dashed ring); a small corner triangle marks the hold menu.
+   - **Tap** Line or Circle: selects the tool and keeps the mode. Tapping the active tool again never opens the menu.
+   - **Hold** Line or Circle for 0.45 s without moving: the button brightens while it "charges", then that tool is selected
+     and a row of chips (**Solid**, **Dotted**) pops out to the left of the button, the current mode in orange.
+     Moving more than 8 reference px before 0.45 s cancels the hold (the release can still be a tap).
+   - **Slide** onto a chip (it lights up) and release to pick it; the row closes. Release anywhere else and the row stays
+     open: tap a chip to pick, or tap anywhere outside the chips to close without a change.
+   - After the first placement a one-time toast says "Hold Line or Circle for line styles".
+   **Bands** (under Select) will turn the active layer's band treatment on and off; until bands exist it is dimmed, shows
+   "Off" and a tap only toasts "Bands are coming soon". **Width** cycles Thin / Medium / Thick for new shapes.
    **Snap** (orange = on, the default) and **H/V** (orange = on) are at the bottom of the tool bar; see `docs/SNAPPING.md`.
 5. Shapes go into the active layer (the one selected in the left sidebar). If that layer is hidden, nothing is drawn and a
    toast says "Layer is hidden: double-tap it in the sidebar to show it".
@@ -132,7 +142,7 @@ layer opacity popup is open its full-screen blocker covers the button. One tap =
 | Grid Square/Hex / Tiles | Grid type / Tiles |
 | ClearBoard (API only, no button) | Clear board |
 
-Never a step: selecting a layer, switching tools, selecting (marquee, tap, Deselect), Snap, H/V, Dotted, Width, the first
+Never a step: selecting a layer, switching tools, selecting (marquee, tap, Deselect), Snap, H/V, the line mode, Width, the first
 tap of tap-to-connect, refused actions (hidden layer, too short, 12 layers, only layer, unchanged values), identity
 transforms, cancelled gestures and re-placing the board.
 
@@ -231,6 +241,9 @@ Notes for developers:
 - `Assets/GeoART/Engine/OneEuroFilter2D.cs` (new): the smoothing filter.
 - `Assets/GeoART/App/BoardInputRouter.cs`: touch/mouse to `IEditorSession.Pointer`.
 - `Assets/GeoART/App/ToolBar.cs`: right-edge tool column (procedural icons).
+- `Assets/GeoART/App/ToolHoldMenu.cs`: the reusable hold-to-pick menu (hold timer, slide-to-pick, blocker);
+  `Assets/GeoART/App/ToolBar.HoldMenus.cs`: the Line and Circle mode menus, mode icons, the Bands slot.
+  EditMode `ToolHoldMenuViewTests`: tap, hold, slide, release-then-tap, blocker, slop cancel, icons.
 - `Assets/GeoART/BoardRender/BoardView.cs`, `BoardMeshBuilder.cs`, `Shaders/BoardUnlit.shader`: widths, AA, joins, circles.
 - `Assets/Settings/Mobile_RPAsset.asset`: MSAA 4x, render scale 1.
 - `Assets/Editor/Build/ToolsRenderCheck.cs` (new): shader compile + render check.
