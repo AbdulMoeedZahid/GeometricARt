@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using GeoART.Contracts;
+using GeoART.Engine;
 using UnityEngine;
 
 namespace GeoART.BoardRender
@@ -17,6 +18,9 @@ namespace GeoART.BoardRender
     ///             the shape's own stroke again on top, so it reads above its neighbours  (BoardChanged/StateChanged)
     ///   Candidates - snap candidate dots, tinted and sized by SnapKind tier               (BoardChanged/StateChanged)
     ///   Overlay - tool preview ghosts (incl. the engine's snap hover ring), cursor         (PreviewChanged/StateChanged)
+    ///             The snapped dot is a filled orange disc under the hover ring, and on every new acquisition
+    ///             (EditorSession.SnapAcquired) the ring "pops" from 1.6x to 1x over <see cref="RingPopSeconds"/>; the
+    ///             overlay is rebuilt each frame only while that runs.
     ///   SelectionFrame - while something is selected: a dashed cyan box around the selection's union bounds and the
     ///             pivot marker (ring and "+") at its centre, the point Move/Scale work about. Bounds come from the
     ///             engine's <see cref="GeoART.Engine.SelectionGeometry"/>, so the drawn pivot is the engine's pivot.
@@ -94,7 +98,17 @@ namespace GeoART.BoardRender
         const float SelectionHaloMeters = 0.0018f;  // halo reaches this far beyond each side of the stroke (times StrokeScale)
 
         IEditorSession _session;
+        EditorSession _engine;   // the concrete session, when it is one (SnapAcquired, HoverRing)
         bool _subscribed;
+
+        /// <summary>Duration of the hover ring pop on a new snap acquisition.</summary>
+        public const float RingPopSeconds = 0.12f;
+        /// <summary>Starting scale of the popping hover ring.</summary>
+        public const float RingPopScale = 1.6f;
+        /// <summary>Seconds, monotonic; EditMode tests swap in a fake clock.</summary>
+        public System.Func<float> Clock = () => Time.unscaledTime;
+        float _popStart;
+        bool _popping;
         Part _base, _shapes, _selection, _candidates, _overlay, _selectionFrame;
         bool _baseDirty = true, _shapesDirty = true, _selectionDirty = true, _candidatesDirty = true, _overlayDirty = true;
         int _lastGridN = -1;
@@ -198,6 +212,8 @@ namespace GeoART.BoardRender
             _session.BoardChanged += OnBoardChanged;
             _session.PreviewChanged += OnPreviewChanged;
             _session.StateChanged += OnStateChanged;
+            _engine = _session as EditorSession;
+            if (_engine != null) _engine.SnapAcquired += OnSnapAcquired;
             _subscribed = true;
         }
 
@@ -207,7 +223,26 @@ namespace GeoART.BoardRender
             _session.BoardChanged -= OnBoardChanged;
             _session.PreviewChanged -= OnPreviewChanged;
             _session.StateChanged -= OnStateChanged;
+            if (_engine != null) _engine.SnapAcquired -= OnSnapAcquired;
+            _engine = null;
+            _popping = false;
             _subscribed = false;
+        }
+
+        void OnSnapAcquired(SnapCandidate _)
+        {
+            _popStart = Clock();
+            _popping = true;
+            _overlayDirty = true;
+        }
+
+        /// <summary>Hover ring scale now: 1.6 easing out to 1 over the pop, 1 when idle.</summary>
+        float RingScale()
+        {
+            if (!_popping) return 1f;
+            float t = Mathf.Clamp01((Clock() - _popStart) / RingPopSeconds);
+            float ease = 1f - (1f - t) * (1f - t);
+            return Mathf.Lerp(RingPopScale, 1f, ease);
         }
 
         void OnBoardChanged(BoardChangeKind kind)
@@ -245,6 +280,11 @@ namespace GeoART.BoardRender
             if (_shapesDirty) { RebuildShapes(board); _shapesDirty = false; }
             if (_selectionDirty) { RebuildSelection(board); _selectionDirty = false; }
             if (_candidatesDirty) { RebuildCandidates(); _candidatesDirty = false; }
+            if (_popping)
+            {
+                _overlayDirty = true;   // animate: rebuild every frame while the pop runs, then once more at exactly 1x
+                if (Clock() - _popStart >= RingPopSeconds) _popping = false;
+            }
             if (_overlayDirty) { RebuildOverlay(); _overlayDirty = false; }
         }
 
@@ -484,9 +524,22 @@ namespace GeoART.BoardRender
             if (_session != null)
             {
                 IReadOnlyList<Shape> preview = _session.Preview;   // index loop: no enumerator allocation per frame
+                Shape hoverRing = _engine?.HoverRing;
                 if (preview != null)
                     for (int i = 0; i < preview.Count; i++)
-                        if (preview[i] != null) AddShape(mb, preview[i], previewColor, OverlayLift);
+                    {
+                        Shape shape = preview[i];
+                        if (shape == null) continue;
+                        if (ReferenceEquals(shape, hoverRing) && shape is CircleShape ring && ring.Center.IsFinite)
+                        {
+                            // The snapped dot as a filled orange disc, then the (popping) hover ring around it.
+                            Vector3 c = P(ring.Center, OverlayLift);
+                            mb.AddDisc(c, GuideDotRadius * StrokeScale, cursorColor, 14);
+                            mb.AddCircle(c, (float)(ring.Radius * sideMeters) * RingScale(), WidthOf(ring.Style.Width), previewColor);
+                            continue;
+                        }
+                        AddShape(mb, shape, previewColor, OverlayLift);
+                    }
 
                 if (_session.Cursor is Vec2 cursor && cursor.IsFinite)
                 {
