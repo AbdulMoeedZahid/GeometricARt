@@ -65,9 +65,9 @@ namespace GeoART.App
         enum Glyph
         {
             Line, Circle, Dotted, Width, Square, Hex, Tiles, Snap, HV, Select, Move, Scale, Duplicate, Deselect, Undo,
-            CircleDotted, Bands, HoldMark, Fill, Delete, Redo,
+            CircleDotted, Bands, HoldMark, Fill, Delete, Redo, Extend,
         }
-        const int GlyphCount = 21;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
+        const int GlyphCount = 22;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
 
         IEditorSession _session;
         IBoardSpace _boardSpace;
@@ -558,6 +558,13 @@ namespace GeoART.App
                     d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.33f, 0.16f), new Vector2(0.67f, 0.16f)) - 0.04f);
                     d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.43f, 0.58f), new Vector2(0.45f, 0.26f)) - 0.03f);
                     return Mathf.Min(d, SegmentDistance(p, new Vector2(0.57f, 0.58f), new Vector2(0.55f, 0.26f)) - 0.03f);
+                }
+                case Glyph.Extend:   // an arrow running into a bar: a line pushed out to the next boundary
+                {
+                    float d = SegmentDistance(p, new Vector2(0.12f, 0.5f), new Vector2(0.66f, 0.5f)) - 0.045f;
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.66f, 0.5f), new Vector2(0.5f, 0.66f)) - 0.045f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.66f, 0.5f), new Vector2(0.5f, 0.34f)) - 0.045f);
+                    return Mathf.Min(d, SegmentDistance(p, new Vector2(0.84f, 0.16f), new Vector2(0.84f, 0.84f)) - 0.05f);
                 }
                 case Glyph.Deselect:   // an X
                     return Mathf.Min(SegmentDistance(p, new Vector2(0.26f, 0.26f), new Vector2(0.74f, 0.74f)),
