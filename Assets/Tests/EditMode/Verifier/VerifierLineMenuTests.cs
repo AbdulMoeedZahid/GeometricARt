@@ -236,7 +236,8 @@ namespace GeoART.Tests.Verifier
             return null;
         }
 
-        float Scale => _go.GetComponentInChildren<Canvas>(true).scaleFactor;
+        /// <summary>Reference px -> screen px, as the hold slop measures it (CanvasScaler formula for the screen).</summary>
+        static float Scale => ScreenSnapMetric.ScaleFactor(Screen.width, Screen.height);
 
         /// <summary>Hold the button past the hold time without moving; returns the still-open pointer.</summary>
         PointerEventData Hold(GameObject button)
@@ -470,14 +471,54 @@ namespace GeoART.Tests.Verifier
             // The blocker covers the screen: a second press goes to it, not to Circle. Close, then open Circle's row.
             var blocker = Blocker();
             Assert.NotNull(blocker);
-            ExecuteEvents.Execute(blocker, Ped(Center(Find("Circle"))), ExecuteEvents.pointerClickHandler);
+            var b = Ped(Center(Find("Circle")));
+            ExecuteEvents.Execute(blocker, b, ExecuteEvents.pointerDownHandler);
+            ExecuteEvents.Execute(blocker, b, ExecuteEvents.pointerUpHandler);
+            ExecuteEvents.Execute(blocker, b, ExecuteEvents.pointerClickHandler);
             Advance(0.1f);
+            Assert.IsFalse(MenuOpen, "precondition: the blocker press closed the Line row");
             var e2 = Hold(Find("Circle"));
             int dotted = 0;
             foreach (var t in _go.GetComponentsInChildren<Text>(false))
                 if (t.gameObject.activeInHierarchy && t.text == "Dotted") dotted++;
             Assert.AreEqual(1, dotted, "exactly one chip row is open");
             Up(Find("Circle"), e2);
+        }
+
+        [Test]
+        public void ChipRowFollowsAShrunkColumn()
+        {
+            // Short / landscape screens shrink the column (ApplySafeArea: localScale = fit, MinFit 0.4). The row must
+            // open at the button's on-screen scale, vertically centred on it, RowGap * fit to its left, and still pick.
+            foreach (float fit in new[] { 0.4f, 0.7f })
+            {
+                var column = (RectTransform)Find("Column").transform;
+                column.localScale = new Vector3(fit, fit, 1f);
+                Canvas.ForceUpdateCanvases();
+                var line = Find("Line");
+                var btn = new Vector3[4];
+                ((RectTransform)line.transform).GetWorldCorners(btn);
+                float bh = btn[1].y - btn[0].y, cy = (btn[0].y + btn[1].y) / 2;
+                var e = Hold(line);
+                Assert.IsTrue(MenuOpen, $"fit {fit}: open");
+                float canvasScale = _go.GetComponentInChildren<Canvas>(true).transform.lossyScale.y;
+                float rightmost = float.MinValue;
+                foreach (var label in new[] { "Solid", "Dotted" })
+                {
+                    var c = new Vector3[4];
+                    ((RectTransform)Chip(label).transform).GetWorldCorners(c);
+                    Assert.AreEqual(bh, c[1].y - c[0].y, 0.5f, $"fit {fit}: {label} chip as tall as the shrunk button");
+                    Assert.AreEqual(cy, (c[0].y + c[1].y) / 2, 0.5f, $"fit {fit}: {label} chip centred on the button");
+                    Assert.GreaterOrEqual(c[0].x, 0f, $"fit {fit}: {label} on screen");
+                    rightmost = Mathf.Max(rightmost, c[2].x);
+                }
+                Assert.AreEqual(btn[0].x - 10f * fit * canvasScale, rightmost, 1f, $"fit {fit}: RowGap * fit left of the button");
+                DragTo(line, e, Center(Chip("Dotted")));
+                Up(line, e);
+                Assert.AreEqual(LineStyle.Dotted, _session.Style.Dash, $"fit {fit}: slide-release still picks");
+                _session.Style = _session.Style.WithDash(LineStyle.Solid);
+                Advance(0.1f);
+            }
         }
 
         // ---------- icons ----------
