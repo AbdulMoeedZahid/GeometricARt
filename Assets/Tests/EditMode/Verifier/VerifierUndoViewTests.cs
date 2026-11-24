@@ -233,7 +233,7 @@ namespace GeoART.Tests.Verifier
             Assert.NotNull(tex, "icon texture");
             foreach (var n in ColumnOrder)
                 Assert.AreNotSame(Find(n).transform.Find("Icon").GetComponent<RawImage>().texture, tex, $"Undo glyph differs from {n}'s");
-            foreach (var n in new[] { "Move", "Scale", "Duplicate", "Deselect" })
+            foreach (var n in new[] { "Move", "Scale", "Duplicate", "Delete", "Deselect" })
                 Assert.AreNotSame(Find(n).transform.Find("Icon").GetComponent<RawImage>().texture, tex, $"Undo glyph differs from {n}'s");
             Text label = null;
             foreach (var t in go.GetComponentsInChildren<Text>(true)) label = t;
@@ -251,21 +251,21 @@ namespace GeoART.Tests.Verifier
         }
 
         [Test]
-        public void GlyphTableHasTwentyDistinctSlotsWithTheRoundedSpriteAt19()
+        public void GlyphTableHasTwentyTwoDistinctSlotsWithTheRoundedSpriteAt21()
         {
             MakeToolBar(place: true);
             var f = typeof(ToolBar).GetField("_textures", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(f, "ToolBar._textures");
             var table = (Texture2D[])f.GetValue(_appGo.GetComponent<ToolBar>());
-            Assert.AreEqual(20, table.Length, "GlyphCount 19 + the rounded sprite");
+            Assert.AreEqual(22, table.Length, "GlyphCount 21 + the rounded sprite");
             var distinct = new HashSet<Texture2D>();
             foreach (var t in table)
             {
                 Assert.NotNull(t, "every slot filled (a missing GlyphCount bump overwrites one)");
                 distinct.Add(t);
             }
-            Assert.AreEqual(20, distinct.Count, "all distinct");
-            Assert.AreSame(Find("Line").GetComponent<Image>().sprite.texture, table[19], "rounded sprite at index 19");
+            Assert.AreEqual(22, distinct.Count, "all distinct");
+            Assert.AreSame(Find("Line").GetComponent<Image>().sprite.texture, table[21], "rounded sprite at index 21");
             CollectionAssert.Contains(table, UndoGo.transform.Find("Icon").GetComponent<RawImage>().texture,
                 "the Undo glyph is in the table (freed on destroy)");
         }

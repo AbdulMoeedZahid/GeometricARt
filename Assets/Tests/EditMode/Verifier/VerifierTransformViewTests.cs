@@ -39,11 +39,11 @@ namespace GeoART.Tests.Verifier
             public bool TryBoardToScreen(Vec2 b, out Vec2 px) { px = default; return false; }
         }
 
-        static readonly string[] BarOrder = { "Move", "Scale", "Duplicate", "Deselect" };
+        static readonly string[] BarOrder = { "Move", "Scale", "Duplicate", "Delete", "Deselect" };
         static readonly string[] ColumnOrder = { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Square", "2x2", "Snap" };
 
         // Spec constants (ToolBar / BoardView), restated here so the tests do not read them from the code under test.
-        const float BarButtonW = 64f, BarButtonH = 52f, BarSpacing = 8f, BarWidth = 280f;
+        const float BarButtonW = 56f, BarButtonH = 52f, BarSpacing = 6f, BarWidth = 304f;   // 5 buttons since Delete (P7)
         const float ButtonW = 56f, EdgeMargin = 8f, PlacementRowTop = 0.11f, MinFit = 0.4f;
         const float SelectionHaloMeters = 0.0018f, FrameStroke = 0.0009f, SelectionLift = 0.0010f;
 
@@ -482,19 +482,19 @@ namespace GeoART.Tests.Verifier
                 Assert.AreEqual(BarButtonH, rt.rect.height, 0.01f, $"{n} is {BarButtonH} tall");
             }
 
-            // GlyphCount 19 (15 + CircleDotted, Bands, HoldMark, Fill): the bar glyphs, Undo, plus the rounded sprite at index GlyphCount, all distinct.
+            // GlyphCount 21 (15 + CircleDotted, Bands, HoldMark, Fill, Delete, Redo): the bar glyphs, Undo, plus the rounded sprite at index GlyphCount, all distinct.
             var f = typeof(ToolBar).GetField("_textures", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(f, "ToolBar._textures");
             var table = (Texture2D[])f.GetValue(tb);
-            Assert.AreEqual(20, table.Length, "19 glyphs (incl. Undo, the line-mode glyphs and Fill) + the rounded sprite");
+            Assert.AreEqual(22, table.Length, "21 glyphs (incl. Undo, Redo, the line-mode glyphs, Fill and Delete) + the rounded sprite");
             var distinct = new HashSet<Texture2D>();
             foreach (var t in table)
             {
                 Assert.NotNull(t, "every glyph slot is filled (a missing GlyphCount bump overwrites one)");
                 distinct.Add(t);
             }
-            Assert.AreEqual(20, distinct.Count, "all distinct");
-            Assert.AreSame(rounded.texture, table[19], "the rounded sprite sits at index GlyphCount (19)");
+            Assert.AreEqual(22, distinct.Count, "all distinct");
+            Assert.AreSame(rounded.texture, table[21], "the rounded sprite sits at index GlyphCount (21)");
             foreach (var t in icons) CollectionAssert.Contains(table, t, "every icon is in the table (freed on destroy)");
         }
 
@@ -526,10 +526,10 @@ namespace GeoART.Tests.Verifier
                 Assert.AreEqual(r[0].yMax, r[i].yMax, 0.5f, $"{BarOrder[i]} on the same row (top)");
                 Assert.AreEqual(w, r[i].width, 0.5f, $"{BarOrder[i]} same width");
                 float gap = r[i].xMin - r[i - 1].xMax;
-                Assert.AreEqual(BarSpacing / BarButtonW, gap / w, 0.02f, $"{BarOrder[i - 1]} -> {BarOrder[i]}: spacing 8 of 64, in order");
+                Assert.AreEqual(BarSpacing / BarButtonW, gap / w, 0.02f, $"{BarOrder[i - 1]} -> {BarOrder[i]}: spacing 6 of 56, in order");
             }
-            Assert.AreEqual(BarButtonH / BarButtonW, r[0].height / w, 0.02f, "64 x 52 buttons");
-            Assert.AreEqual(BarWidth / BarButtonW, (r[3].xMax - r[0].xMin) / w, 0.03f, "the bar is 280 wide");
+            Assert.AreEqual(BarButtonH / BarButtonW, r[0].height / w, 0.02f, "56 x 52 buttons");
+            Assert.AreEqual(BarWidth / BarButtonW, (r[4].xMax - r[0].xMin) / w, 0.03f, "the bar is 304 wide");
 
             float columnLeft = float.MaxValue;
             foreach (var n in ColumnOrder) columnLeft = Mathf.Min(columnLeft, WorldRect(n).xMin);
@@ -609,7 +609,7 @@ namespace GeoART.Tests.Verifier
             Rect a = WorldRect("Move"), d = WorldRect("Deselect");
             Debug.Log($"[Verifier] screen {sw}x{sh} safe {Screen.safeArea} column fit {columnFit}: bar want {want} fit {fit}, " +
                       $"got x {a.xMin}..{d.xMax} y {a.yMin}..{a.yMax} scale {Bar.localScale.x}");
-            Assert.AreEqual(fit, Bar.localScale.x, 1e-3f, "bar shrink = clamp(span / 280 scale, MinFit, 1)");
+            Assert.AreEqual(fit, Bar.localScale.x, 1e-3f, "bar shrink = clamp(span / 304 scale, MinFit, 1)");
             Assert.AreEqual(want.yMin, a.yMin, 1.5f, "bottom edge on the column's lowest baseline");
             Assert.AreEqual(want.xMin, a.xMin, 1.5f, "left edge (centred in the span left of the column)");
             Assert.AreEqual(want.xMax, d.xMax, 1.5f, "right edge");
@@ -624,8 +624,8 @@ namespace GeoART.Tests.Verifier
             Rect bar = SpecBarRect(390f, 844f, new Rect(0, 0, 390, 844), 1f, out float fit);
             Assert.AreEqual(1f, fit, "390x844: no shrink");
             Assert.AreEqual(100.84f, bar.yMin, 0.05f, "390x844: bottom at 11% + 8");
-            Assert.AreEqual(23f, bar.xMin, 0.05f, "390x844: x 23..303");
-            Assert.AreEqual(303f, bar.xMax, 0.05f);
+            Assert.AreEqual(11f, bar.xMin, 0.05f, "390x844: x 11..315");
+            Assert.AreEqual(315f, bar.xMax, 0.05f);
             Assert.LessOrEqual(bar.xMax, 390f - EdgeMargin - ButtonW, "left of the column");
             Assert.Less(bar.yMax, 0.27f * 844f, "below the sidebar");
             Assert.Less(bar.yMax, (1f - 0.245f) * 844f, "below the toasts");
@@ -640,8 +640,8 @@ namespace GeoART.Tests.Verifier
             Assert.AreEqual(1f, fit, "14 Pro Max: no shrink");
             Assert.AreEqual(132f, bar.yMin / s, 1.5f, "14 Pro Max: bar 132..184 ref px from the bottom");
             Assert.AreEqual(184f, bar.yMax / s, 1.5f);
-            Assert.AreEqual(24f, bar.xMin / s, 1.5f, "14 Pro Max: x about 24..304 ref px");
-            Assert.AreEqual(304f, bar.xMax / s, 1.5f);
+            Assert.AreEqual(12f, bar.xMin / s, 1.5f, "14 Pro Max: x about 12..316 ref px");
+            Assert.AreEqual(316f, bar.xMax / s, 1.5f);
             float columnLeft = w - (EdgeMargin + ButtonW * columnFit) * s;
             Assert.Less(bar.xMax, columnLeft, "no overlap with the column");
             Assert.Greater(bar.yMin, safe.yMin + PlacementRowTop * h, "above the placement row");
