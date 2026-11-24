@@ -8,24 +8,31 @@ the other under at each crossing, alternating along every band, and an optional 
 Bands are a **per-layer, non-destructive setting** (`LayerBands`, `Contracts/Model/Bands.cs`). A banded layer draws its
 lines and polygon edges as bands and recomputes them after every edit, Undo or Redo. Circles are never banded.
 
-Status: model, geometry, layer field, undo, save, rendering (Double and stripped), the layer popup and the toolbar
-button are done (P2, P4). Interlace, Flip weave and inner lines exist in the geometry and the renderer; their popup
-controls are enabled with the weave work (P5), together with cutting the under band's structure line.
+Status: model, geometry, layer field, undo, save, rendering, the layer popup and the toolbar button are done (P2, P4):
+Double, stripped, Interlace with Flip weave, inner lines, and the under band's structure line cut at woven crossings
+(P5).
 
 ## Using bands
 1. Draw the structure on a layer (lines and stamps; circles are construction and are never banded).
 2. Tap **Bands** in the tool column: the active layer's lines become bands (6 mm on the 40 cm board). Tap again: off.
    The layer remembers its settings while off.
 3. Hold **Bands** (or hold the layer's dash in the sidebar) to open the layer popup:
-   - **Off / Double / Interlace** (Interlace arrives with P5),
+   - **Off / Double / Interlace**: Interlace weaves the bands over and under, alternating along every band (toolbar
+     label "Weave"),
    - **Width** slider, 1.6 to 20 mm, shown in mm for this board (board units x the board's side). One drag is one undo
      step ("Band width"),
    - **Structure line**: on = the book's bold line inside the band; off = the "stripped" view,
    - **Outline**: sets the band outline colour to the current colour (the swatch shows it),
-   - **Inner lines**, **Flip weave** (P5),
+   - **Inner lines**: a second pair of lines inside each band (book p23 bottom). Turning them on raises the band to at
+     least **10 mm** on this board in the same undo step, so the inner lines show and stay 2 mm clear of a Medium
+     structure line,
+   - **Flip weave** (Interlace only; dimmed otherwise, the setting is remembered): swaps every over and under,
    - a note: amber "Bands this wide make the shapes small." above 75% of the largest safe width, red "Too wide: the bands
      overlap. Make them narrower." at or beyond it **or** whenever the outlines cross (`SelfIntersections` > 0, e.g. a
-     pinched U whose ends nearly touch), grey "Circles are not banded." when the layer has circles.
+     pinched U whose ends nearly touch), amber "N crossings can't alternate." in Interlace when the weave has conflicts
+     (T-junctions, free ends or a closed band crossed an odd number of times), grey "Inner lines need a wider band."
+     when inner lines are on but don't fit, grey "Circles are not banded." when the layer has circles. Priority: red,
+     amber width, amber conflicts, grey.
 4. To highlight the structure line, select its lines and tap a colour or Width (restyle selection, `docs/TOOLS.md`).
 
 Every band change is undoable ("Bands"; width drags merge per layer into "Band width"), saved with the design
@@ -127,8 +134,9 @@ direction give a bit-identical graph and outline.
   Double look with open crossing squares, and without the structure line the stripped look.
 - **Interlace**: at each woven crossing the over band's two **bridges** join the corners on each side of it, which breaks
   the under band at the over band's edges. Bridges are separate segments.
-- **Inner lines** at `h_in = h - max(0.2 width, 1.5 mm)`, drawn only when `h_in >= core half width + 1 mm` (turning them
-  on will raise the width to at least 8 mm). Per wedge:
+- **Inner lines** at `h_in = h - max(0.2 width, 2 mm)`, drawn only when `h_in >= Medium core half width + 1 mm` (both mm
+  values scale like the strokes; one formula, `BandOutlineOptions.ForBoard`, is used by BoardView and the popup). At
+  10 mm (the bump when they are turned on) the inner line is 2.15 mm from a Medium core. Per wedge:
   - between two sides of the same band (a thread turns there: a degree-2 corner or a tip resting on a line), at a free
     end, at a near-straight pass-through (the bar of a T) and at a bevel: they **join** like the outer lines, at h_in;
   - at every other wedge (junctions, crossings, the frame) each inner line **ends on the neighbouring band's outer
@@ -149,8 +157,21 @@ Known limits and decisions (v1):
 - Near misses are tracked only below 0.1 board units (twice the widest band).
 - Pathological designs (500 long board-spanning lines, about 10^4 crossings) take about 250 ms for the global crossing
   count on the Mac; it only runs in the popup (open, release, shape edits), never while drawing or dragging.
-- Interlace with "Show structure line" on (decided): the under band's structure line is **cut** at each woven crossing so
-  it goes under with its band (P5); the structure line is not force-hidden.
+- Interlace with "Show structure line" on: the under band's structure line is **cut** at each woven crossing, so it goes
+  under with its band (`BandOutline.StructureCuts`). Per under half-edge the hidden stretch runs from the node to the
+  over band's edge on that side (the under line meets that side's bridge; `h / sin(angle)` when the over thread is
+  straight), so a kinked over or under thread is handled side by side. Every input segment lying along that half-edge
+  (collinear duplicates included, matched within 2e-5 so welded lines still count) is cut in its own parameter; a segment
+  through two crossings gets two cuts. BoardView draws the visible pieces as open polylines whose cut ends run along the
+  over band's edge (skewed ends, so no sliver pokes past the outline), with square caps only at the shape's real ends;
+  polygons are split at the cuts and keep their mitred corners; dotted lines carry their dash phase across the gap.
+  Degree 6/8 nodes, frame nodes and T-junctions are not woven and so never cut. A selected under line is drawn whole in
+  the selection highlight (you see what you picked).
+- AR readability (P5): inner and outer lines of a pair are 2 mm apart at the least (the inset floor) and turning inner
+  lines on gives at least 10 mm bands. At about 90 cm on a tilt the far side's pairs can still merge into one grey band:
+  the shader keeps every stroke at least 1.5 px wide, so no stroke width or colour change can separate them there. A
+  per-frame fade of the inner lines with distance (inner runs on their own mesh with a distance uniform) is the real fix
+  and is deferred; a level of detail chosen only when the mesh is rebuilt would go stale as the user walks.
 - Fill (P6) on a banded layer: in flat Double and in the stripped view the crossing squares are open, so all the band
   strips form one connected region and a tap on any strip fills the whole band lattice (the book's geometry). In
   Interlace each band piece between two crossings is its own region. Stars, octagons and the gaps are separate regions
