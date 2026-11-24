@@ -261,13 +261,16 @@ namespace GeoART.Tests.Verifier
             Assert.NotNull(f, "ToolBar._textures");
             var table = (Texture2D[])f.GetValue(_appGo.GetComponent<ToolBar>());
             Assert.AreEqual(22, table.Length, "GlyphCount 21 + the rounded sprite");
+            // With Fill switched off (ToolBar.FillEnabled) no button draws the Fill glyph (slot 18), so that slot stays empty.
+            const int FillSlot = 18;
             var distinct = new HashSet<Texture2D>();
-            foreach (var t in table)
+            for (int i = 0; i < table.Length; i++)
             {
-                Assert.NotNull(t, "every slot filled (a missing GlyphCount bump overwrites one)");
-                distinct.Add(t);
+                if (i == FillSlot && !ToolBar.FillEnabled) { Assert.IsNull(table[i], "no Fill glyph while Fill is off"); continue; }
+                Assert.NotNull(table[i], "every slot filled (a missing GlyphCount bump overwrites one)");
+                distinct.Add(table[i]);
             }
-            Assert.AreEqual(22, distinct.Count, "all distinct");
+            Assert.AreEqual(ToolBar.FillEnabled ? 22 : 21, distinct.Count, "all distinct");
             Assert.AreSame(Find("Line").GetComponent<Image>().sprite.texture, table[21], "rounded sprite at index 21");
             CollectionAssert.Contains(table, UndoGo.transform.Find("Icon").GetComponent<RawImage>().texture,
                 "the Undo glyph is in the table (freed on destroy)");
@@ -494,13 +497,13 @@ namespace GeoART.Tests.Verifier
             float s = ScreenSnapMetric.ScaleFactor(w, h);
             safe = Rect.MinMaxRect(0f, 31f * s, w, h - 54f * s);
             SpecColumn(w, h, safe, out scale, out fit, out colTop, out float colLeft);
-            Assert.AreEqual(0.975f, fit, 0.01f, "column fit about 0.975");
+            Assert.AreEqual(ColumnHeight > 540f ? 0.975f : 1f, fit, 0.01f, "column fit about 0.975 with 9 buttons, 1 with 8 (Fill off)");
             u = SpecUndo(safe, scale, fit);
-            Assert.AreEqual(8f, u.xMin / s, 0.5f, "14 Pro Max: x about 8..62.6 ref");
-            Assert.AreEqual(62.6f, u.xMax / s, 0.5f);
-            Assert.AreEqual(732.5f, u.yMin / s, 1.0f, "14 Pro Max: y about 732.5..783.2 ref from the bottom");
+            Assert.AreEqual(8f, u.xMin / s, 0.5f, "14 Pro Max: x about 8..62.6 ref (8..64 with Fill off)");
+            Assert.AreEqual(8f + ButtonW * fit, u.xMax / s, 0.5f);
+            Assert.AreEqual(783.2f - ButtonH * fit, u.yMin / s, 1.0f, "14 Pro Max: y about 732.5..783.2 ref from the bottom (731.2 with Fill off)");
             Assert.AreEqual(783.2f, u.yMax / s, 1.0f);
-            Assert.AreEqual(667.8f, colTop / s, 1.0f, "column top about 667.8 ref");
+            Assert.AreEqual(ColumnHeight > 540f ? 667.8f : 655.8f, colTop / s, 1.0f, "column top about 667.8 ref (655.8 with Fill off)");
             Assert.Greater(u.yMin - colTop, 60f * s, "about 65 ref above the column");
             Assert.Less(u.xMax, colLeft, "left of the column");
             Assert.Greater(u.yMin, SidebarTopFraction * h, "above the sidebar band");

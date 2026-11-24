@@ -489,13 +489,16 @@ namespace GeoART.Tests.Verifier
             Assert.NotNull(f, "ToolBar._textures");
             var table = (Texture2D[])f.GetValue(tb);
             Assert.AreEqual(22, table.Length, "21 glyphs (incl. Undo, Redo, the line-mode glyphs, Fill and Delete) + the rounded sprite");
+            // With Fill switched off (ToolBar.FillEnabled) no button draws the Fill glyph (slot 18), so that slot stays empty.
+            const int FillSlot = 18;
             var distinct = new HashSet<Texture2D>();
-            foreach (var t in table)
+            for (int i = 0; i < table.Length; i++)
             {
-                Assert.NotNull(t, "every glyph slot is filled (a missing GlyphCount bump overwrites one)");
-                distinct.Add(t);
+                if (i == FillSlot && !ToolBar.FillEnabled) { Assert.IsNull(table[i], "no Fill glyph while Fill is off"); continue; }
+                Assert.NotNull(table[i], "every glyph slot is filled (a missing GlyphCount bump overwrites one)");
+                distinct.Add(table[i]);
             }
-            Assert.AreEqual(22, distinct.Count, "all distinct");
+            Assert.AreEqual(ToolBar.FillEnabled ? 22 : 21, distinct.Count, "all distinct");
             Assert.AreSame(rounded.texture, table[21], "the rounded sprite sits at index GlyphCount (21)");
             foreach (var t in icons) CollectionAssert.Contains(table, t, "every icon is in the table (freed on destroy)");
         }

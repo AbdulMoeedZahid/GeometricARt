@@ -58,7 +58,7 @@ namespace GeoART.App
 
         const int ButtonCount = FillEnabled ? 9 : 8, GroupCount = 4;
 
-        /// <summary>Column height in reference px: 9 buttons, one spacing between buttons of a group, a gap between groups.</summary>
+        /// <summary>Column height in reference px: ButtonCount buttons (8, or 9 with Fill), one spacing between buttons of a group, a gap between groups.</summary>
         public const float ColumnHeight =
             ButtonCount * ButtonH + (ButtonCount - GroupCount) * Spacing + (GroupCount - 1) * GroupGap;
 
