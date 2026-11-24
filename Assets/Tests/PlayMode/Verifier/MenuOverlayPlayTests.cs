@@ -109,7 +109,7 @@ namespace GeoART.Tests.Verifier.PlayMode
             _routerGo.AddComponent<BoardInputRouter>();
             for (int i = 0; i < 4; i++) yield return Frame();
             Canvas.ForceUpdateCanvases();
-            Assert.IsTrue(Child("DesignsButton").activeInHierarchy, "precondition: the Designs button is shown (board placed)");
+            Assert.IsTrue(DesignsButton.activeInHierarchy, "precondition: the Designs button is shown (board placed)");
         }
 
         GameObject Child(string name)
@@ -118,6 +118,18 @@ namespace GeoART.Tests.Verifier.PlayMode
                 if (t.name == name) return t.gameObject;
             Assert.Fail($"no child named {name}");
             return null;
+        }
+
+        /// <summary>The Designs button itself (its canvas has the same name).</summary>
+        GameObject DesignsButton
+        {
+            get
+            {
+                foreach (var b in _uiGo.GetComponentsInChildren<Button>(true))
+                    if (b.name == "DesignsButton") return b.gameObject;
+                Assert.Fail("no Designs button");
+                return null;
+            }
         }
 
         static Vector2 Center(GameObject go)
@@ -188,12 +200,12 @@ namespace GeoART.Tests.Verifier.PlayMode
             foreach (var button in Menus)
             {
                 yield return Open(button);
-                yield return Tap(Center(Child("DesignsButton")));
+                yield return Tap(Center(DesignsButton));
                 Assert.IsFalse(Child(button).GetComponent<ToolHoldMenu>().IsOpen, $"{button}: the tap closed the menu");
                 Assert.IsFalse(designs.IsOpen, $"{button}: and did not open the Designs panel");
             }
             Assert.AreEqual(0, _session.ActiveLayer.Shapes.Count, "nothing drawn");
-            yield return Tap(Center(Child("DesignsButton")));
+            yield return Tap(Center(DesignsButton));
             Assert.IsTrue(designs.IsOpen, "control: with no menu open the same tap opens the Designs panel");
             designs.Close();
         }
