@@ -187,6 +187,28 @@ namespace GeoART.EngineCheck
             Check.That(Outline(g, 0.01).SelfIntersections == 0, "narrow: clean");
         }
 
+        public static void NearMisses_LimitTheWidthAndShowAsCrossings()
+        {
+            // A stub stopping 0.011 short of a line (separate parts).
+            var stub = Graph(S(0.1, 0.3, 0.6, 0.3), S(0.3, 0.311, 0.3, 0.6));
+            Check.Near(stub.NearMissDistance, 0.011, "near-miss distance", 1e-12);
+            var wide = Outline(stub, 0.015);
+            Check.That(wide.MaxSafeWidth <= 0.011 + 1e-12, $"the width limit is the gap ({wide.MaxSafeWidth})");
+            Check.That(wide.SelfIntersections > 0, "the two bands' outlines cross");
+            Check.That(Outline(stub, 0.01).SelfIntersections == 0, "narrower than the gap: clean");
+
+            // A square with an inner line 0.011 from one side: one face with two boundary loops.
+            var island = Graph(S(0.1, 0.1, 0.6, 0.1), S(0.6, 0.1, 0.6, 0.6), S(0.6, 0.6, 0.1, 0.6), S(0.1, 0.6, 0.1, 0.1),
+                S(0.2, 0.111, 0.5, 0.111));
+            var o = Outline(island, 0.015);
+            Check.That(o.MaxSafeWidth <= 0.011 + 1e-12 && o.SelfIntersections > 0, "island: limited and crossing");
+            Check.That(Outline(island, 0.01).SelfIntersections == 0, "island narrower than the gap: clean");
+
+            // Joints are not near misses: the star keeps its face-based limit.
+            var star = BandGraph.Build(SegmentsOf(StarLayer()));
+            Check.That(star.NearMissDistance > Outline(star, 0.015).MaxSafeWidth, "star: limited by its faces, not by joints");
+        }
+
         public static void Fuzz_SnappedDesignsGiveWellFormedOutlines()
         {
             var cands = new List<Vec2>();

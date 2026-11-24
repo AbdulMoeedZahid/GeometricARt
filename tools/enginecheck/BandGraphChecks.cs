@@ -81,6 +81,20 @@ namespace GeoART.EngineCheck
             }
         }
 
+        public static void ChordsAlongAShallowArc_AreNotFusedIntoOneLine()
+        {
+            // 80 chords of 0.01 along a circle of radius 13: neighbours are collinear within 1e-5, but they only touch end
+            // to end, so they stay a polyline on the drawn points (a transitive merge put it 2.5 mm off).
+            var c = new Vec2(0.5, 0.5 - 13);
+            var segs = new List<PlanarSegment>();
+            double a0 = Math.PI / 2 - 40 * 0.01 / 13;
+            Vec2 Arc(int k) => new Vec2(c.X + 13 * Math.Cos(a0 + k * 0.01 / 13), c.Y + 13 * Math.Sin(a0 + k * 0.01 / 13));
+            for (int k = 0; k < 80; k++) segs.Add(new PlanarSegment(Arc(k), Arc(k + 1), k));
+            var g = BandGraph.Build(segs);
+            Check.That(g.StructureEdgeCount == 80, $"80 edges kept (got {g.StructureEdgeCount})");
+            for (int k = 0; k <= 80; k++) Check.That(DegreeAt(g, Arc(k)) >= 1, $"node {k} on the drawn arc");
+        }
+
         public static void EndpointWeld_MergesNearbyEnds()
         {
             var g = Graph(S(0.2, 0.2, 0.5, 0.5), S(0.5 + 3e-6, 0.5 - 2e-6, 0.8, 0.2));
