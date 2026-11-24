@@ -13,7 +13,10 @@ namespace GeoART.App
     /// they never read as layer dashes. On a dash:
     ///   tap          select the layer (immediately on release)
     ///   double tap   toggle its visibility (second tap within <see cref="DoubleTapSeconds"/> of the first release)
-    ///   hold         select + open the opacity popup next to the dash (<see cref="HoldSeconds"/> without moving)
+    ///   hold         select + open the layer popup next to the dash (<see cref="HoldSeconds"/> without moving):
+    ///                opacity, and the Bands section (Off / Double / Interlace, width in mm with an amber/red warning,
+    ///                structure line, outline colour; inner lines and Flip weave arrive with interlace). The toolbar's
+    ///                Bands button opens the same popup for the active layer (<see cref="OpenSettings"/>).
     ///   slide        moving more than <see cref="Slop"/> picks the dash up; it follows the finger, the others open a
     ///                gap, and release commits MoveLayer.
     /// uGUI built at runtime (like PlacementControls); every interactive part is a raycast target, so board input
@@ -34,9 +37,20 @@ namespace GeoART.App
         // layout (reference units)
         const float PillWidth = 50f, EdgeInset = 6f, ButtonHeight = 42f, Pad = 4f;
         const float RowMax = 34f, RowMin = 22f, MaxHeightFraction = 0.46f;
-        const float PopupWidth = 204f, PopupHeight = 96f, Gap = 8f;
+        const float PopupWidth = 236f, PopupHeight = 318f, Gap = 8f;
+        const float BandRowY = -92f;   // top of the Bands section inside the popup
 
-        const int BlockerTag = -1;
+        const int BlockerTag = -1, WidthSliderTag = -2;
+        const double DefaultBoardSide = 0.40;   // metres, when no ICornerPlacement is registered
+
+        // Warning texts of the Bands section (docs/BANDS.md).
+        public const string BandsTooWideNote = "Too wide: the bands overlap. Make them narrower.";
+        public const string BandsWideNote = "Bands this wide make the shapes small.";
+        public const string CirclesNotBandedNote = "Circles are not banded.";
+        static readonly Color NoteGrey = new Color(1f, 1f, 1f, 0.6f);
+        static readonly Color NoteAmber = new Color(1f, 0.75f, 0.2f, 1f);
+        static readonly Color NoteRed = new Color(1f, 0.35f, 0.3f, 1f);
+        static readonly Color ChipIdle = new Color(1f, 1f, 1f, 0.14f);
 
         static readonly Color PillColor = new Color(0.07f, 0.07f, 0.09f, 0.62f);
         static readonly Color HoleColor = new Color(0.1f, 0.1f, 0.12f, 1f);
@@ -66,6 +80,17 @@ namespace GeoART.App
         CanvasGroup _labelGroup;
         Text _labelText, _popupTitle, _popupPercent;
         Slider _slider;
+
+        // Bands section of the popup.
+        readonly Image[] _modeChips = new Image[3];   // Off, Double, Interlace
+        Image _structureChip, _innerChip, _flipChip, _outlineSwatch;
+        Slider _bandSlider;
+        Text _bandWidthText, _bandNote;
+        bool _bandDragging, _safetyDirty = true;
+        double _safeMax = double.PositiveInfinity;
+        int _safeCrossings;
+        double _safeAtWidth = double.NaN;   // the width SelfIntersections was counted at
+        EntityId _safetyLayer;
         readonly List<Row> _rows = new List<Row>();          // pool; index = relay tag
         Rect _safeArea;
         int _screenW, _screenH;   // ApplySafeArea depends on the screen size too, not just the safe area
@@ -155,7 +180,9 @@ namespace GeoART.App
 
         void OnBoardChanged(BoardChangeKind kind)
         {
+            if ((kind & (BoardChangeKind.Shapes | BoardChangeKind.Reset | BoardChangeKind.History)) != 0) _safetyDirty = true;
             if ((kind & (BoardChangeKind.Layers | BoardChangeKind.Reset)) != 0) Refresh();
+            else if ((kind & BoardChangeKind.Shapes) != 0 && _popup.gameObject.activeSelf) Refresh();   // warning follows edits
         }
 
         void Update()
@@ -338,6 +365,7 @@ namespace GeoART.App
 
         void ILayerPointerTarget.OnRelayDown(int tag, PointerEventData e)
         {
+            if (tag == WidthSliderTag) { _bandDragging = true; return; }
             if (tag == BlockerTag) return;   // closes on release: the blocker must cover the whole touch (BoardInputRouter)
             if (_press != null)
             {
@@ -383,6 +411,14 @@ namespace GeoART.App
 
         void ILayerPointerTarget.OnRelayUp(int tag, PointerEventData e)
         {
+            if (tag == WidthSliderTag)
+            {
+                _bandDragging = false;   // the crossing count is taken once, on release (it is the costly part)
+                _safetyDirty = true;
+                Layer pl = _session?.Board.FindLayer(_popupLayer);
+                if (pl != null) SyncPopup(pl);
+                return;
+            }
             if (tag == BlockerTag) { ClosePopup(); return; }
             if (_press == null || e.pointerId != _pressPointer) return;
             Row row = _press;
@@ -460,9 +496,25 @@ namespace GeoART.App
 
         // ---------- opacity popup ----------
 
+        /// <summary>
+        /// Opens the layer popup (opacity and bands) for <paramref name="id"/>, as a hold on its dash does: selects the
+        /// layer (ending any slider merge) and places the popup next to its dash. Used by the toolbar's Bands button.
+        /// </summary>
+        public void OpenSettings(EntityId id)
+        {
+            if (_session == null) return;
+            Layer layer = _session.Board.FindLayer(id);
+            if (layer == null) return;
+            CancelPress();
+            _session.SelectLayer(id);
+            OpenPopup(FindRow(id), layer);
+        }
+
         void OpenPopup(Row row, Layer layer)
         {
             _popupLayer = layer.Id;
+            _safetyDirty = true;
+            _bandDragging = false;
             _label.gameObject.SetActive(false);
             _labelUntil = 0f;
             SyncPopup(layer);
@@ -477,7 +529,91 @@ namespace GeoART.App
             float v = Mathf.Clamp01((float)layer.Opacity);
             if (!Mathf.Approximately(_slider.value, v)) _slider.SetValueWithoutNotify(v);
             SetPercent(v);
+            SyncBands(layer);
         }
+
+        // ---------- bands section ----------
+
+        void SyncBands(Layer layer)
+        {
+            LayerBands b = layer.Bands.Sanitized();
+            int mode = !b.On ? 0 : b.Mode == BandMode.Interlace ? 2 : 1;
+            for (int i = 0; i < _modeChips.Length; i++) SetChip(_modeChips[i], i == mode);
+            SetChip(_structureChip, !b.HideStructure);
+            SetChip(_innerChip, b.InnerLines);
+            SetChip(_flipChip, b.FlipWeave);
+            Color outline = new Color32(b.OutlineColor.R, b.OutlineColor.G, b.OutlineColor.B, 255);
+            if (_outlineSwatch.color != outline) _outlineSwatch.color = outline;
+            if (!Mathf.Approximately(_bandSlider.value, (float)b.Width)) _bandSlider.SetValueWithoutNotify((float)b.Width);
+            _bandWidthText.text = (b.Width * BoardSideMeters() * 1000.0).ToString("0.0") + " mm";
+
+            if (_safetyDirty || _safetyLayer != layer.Id || (!_bandDragging && _safeAtWidth != b.Width)) ComputeSafety(layer, b);
+            string note = "";
+            Color color = NoteGrey;
+            bool crossings = _safeCrossings > 0 && _safeAtWidth == b.Width;   // stale while dragging: recounted on release
+            if (b.On && (b.Width >= _safeMax || crossings)) { note = BandsTooWideNote; color = NoteRed; }
+            else if (b.On && b.Width > 0.75 * _safeMax) { note = BandsWideNote; color = NoteAmber; }
+            else if (b.On && HasCircles(layer)) note = CirclesNotBandedNote;
+            if (_bandNote.text != note) _bandNote.text = note;
+            if (_bandNote.color != color) _bandNote.color = color;
+        }
+
+        /// <summary>
+        /// MaxSafeWidth (topology only) and the crossing count at the current width for the popup's warning. Done on open,
+        /// on width release and after shape edits, never per slider tick.
+        /// </summary>
+        void ComputeSafety(Layer layer, in LayerBands b)
+        {
+            _safetyDirty = false;
+            _safetyLayer = layer.Id;
+            _safeAtWidth = b.Width;
+            var graph = GeoART.Engine.BandGraph.Build(layer.Shapes);
+            var outline = GeoART.Engine.BandOutline.Build(graph, new GeoART.Engine.BandOutlineOptions { Width = b.Width });
+            _safeMax = outline.MaxSafeWidth;
+            _safeCrossings = outline.SelfIntersections;
+        }
+
+        static bool HasCircles(Layer layer)
+        {
+            foreach (var sh in layer.Shapes)
+                if (sh is CircleShape) return true;
+            return false;
+        }
+
+        double BoardSideMeters() =>
+            ServiceHub.TryResolve(out ICornerPlacement placement) && placement.BoardSideMeters > 0
+                ? placement.BoardSideMeters
+                : DefaultBoardSide;
+
+        static void SetChip(Image chip, bool on)
+        {
+            if (chip == null) return;
+            Color c = on ? Accent : ChipIdle;
+            if (chip.color != c) chip.color = c;
+        }
+
+        void EditBands(System.Func<LayerBands, LayerBands> change)
+        {
+            if (_session == null || _popupLayer.IsNone) return;
+            Layer layer = _session.Board.FindLayer(_popupLayer);
+            if (layer == null) return;
+            _session.SetLayerBands(_popupLayer, change(layer.Bands.Sanitized()));   // BoardChanged(Layers) -> Refresh -> SyncPopup
+        }
+
+        void OnBandMode(int mode) => EditBands(b =>
+        {
+            if (mode == 0) b.On = false;
+            else
+            {
+                b.On = true;
+                b.Mode = mode == 2 ? BandMode.Interlace : BandMode.Double;
+            }
+            return b;
+        });
+
+        void OnBandWidth(float v) => EditBands(b => { b.Width = v; return b; });
+        void OnStructureToggle() => EditBands(b => { b.HideStructure = !b.HideStructure; return b; });
+        void OnOutlineColor() => EditBands(b => { b.OutlineColor = _session.Style.Color; return b; });
 
         void PlacePopup()
         {
@@ -677,23 +813,107 @@ namespace GeoART.App
             Glyph(close.rectTransform, 15f, 2.5f, 45f);
             Glyph(close.rectTransform, 15f, 2.5f, -45f);
 
-            _slider = BuildSlider(_popup);
+            _slider = BuildSlider(_popup, "OpacitySlider", new Vector2(6f, -46f), PopupWidth - 70f, 0f, 1f);
+            _slider.SetValueWithoutNotify(1f);
             _slider.onValueChanged.AddListener(OnSlider);
 
             _popupPercent = LayerUiKit.NewText("Percent", _popup, 15, TextAnchor.MiddleRight, Color.white);
-            LayerUiKit.Place(_popupPercent.rectTransform, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-12f, 10f),
+            LayerUiKit.Place(_popupPercent.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-12f, -46f),
                 new Vector2(46f, 36f));
 
+            BuildBandsSection();
             _popup.gameObject.SetActive(false);
         }
 
-        static Slider BuildSlider(RectTransform parent)
+        void BuildBandsSection()
+        {
+            const float w = PopupWidth - 24f;
+            float y = BandRowY;
+            Caption("BandsCaption", "Bands", y);
+            string[] modes = { "Off", "Double", "Interlace" };
+            for (int i = 0; i < modes.Length; i++)
+            {
+                int mode = i;
+                _modeChips[i] = ChipButton("Bands " + modes[i], modes[i], new Vector2(12f + i * w / 3f, y - 18f),
+                    new Vector2(w / 3f - 4f, 30f), () => OnBandMode(mode));
+            }
+            SetEnabled(_modeChips[2], false);   // Interlace is wired up with the weave work (P5)
+
+            y -= 58f;
+            Caption("WidthCaption", "Width", y);
+            _bandWidthText = LayerUiKit.NewText("WidthValue", _popup, 13, TextAnchor.MiddleRight, Color.white);
+            LayerUiKit.Place(_bandWidthText.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-12f, y),
+                new Vector2(90f, 16f));
+            _bandSlider = BuildSlider(_popup, "BandWidthSlider", new Vector2(6f, y - 16f), PopupWidth - 12f,
+                (float)LayerBands.MinWidth, (float)LayerBands.MaxWidth);
+            _bandSlider.SetValueWithoutNotify((float)LayerBands.DefaultWidth);
+            _bandSlider.onValueChanged.AddListener(OnBandWidth);
+            var relay = _bandSlider.gameObject.AddComponent<LayerPointerRelay>();   // release: count the crossings once
+            relay.Target = this;
+            relay.Tag = WidthSliderTag;
+
+            y -= 58f;
+            _structureChip = ChipButton("Structure line", "Structure line", new Vector2(12f, y), new Vector2(w * 0.6f, 30f),
+                OnStructureToggle);
+            Image outline = ChipButton("Outline colour", "Outline", new Vector2(12f + w * 0.62f, y), new Vector2(w * 0.38f, 30f),
+                OnOutlineColor);
+            outline.color = ChipIdle;
+            _outlineSwatch = LayerUiKit.NewImage("Swatch", outline.rectTransform, Color.black, false, 8f);
+            LayerUiKit.Place(_outlineSwatch.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-8f, 0f),
+                new Vector2(16f, 16f));
+
+            y -= 36f;
+            _innerChip = ChipButton("Inner lines", "Inner lines", new Vector2(12f, y), new Vector2(w * 0.49f, 30f), () => { });
+            _flipChip = ChipButton("Flip weave", "Flip weave", new Vector2(12f + w * 0.51f, y), new Vector2(w * 0.49f, 30f), () => { });
+            SetEnabled(_innerChip, false);   // with interlace (P5)
+            SetEnabled(_flipChip, false);
+
+            y -= 38f;
+            _bandNote = LayerUiKit.NewText("BandNote", _popup, 11, TextAnchor.UpperLeft, NoteGrey);
+            _bandNote.horizontalOverflow = HorizontalWrapMode.Wrap;
+            LayerUiKit.Place(_bandNote.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(12f, y),
+                new Vector2(w, 32f));
+        }
+
+        void Caption(string name, string text, float y)
+        {
+            var caption = LayerUiKit.NewText(name, _popup, 11, TextAnchor.MiddleLeft, new Color(1f, 1f, 1f, 0.6f));
+            caption.text = text;
+            LayerUiKit.Place(caption.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(12f, y),
+                new Vector2(120f, 16f));
+        }
+
+        /// <summary>A rounded chip button (orange when on, see <see cref="SetChip"/>) with a 12 pt label.</summary>
+        Image ChipButton(string name, string label, Vector2 topLeft, Vector2 size, UnityEngine.Events.UnityAction onClick)
+        {
+            Image bg = LayerUiKit.NewImage(name, _popup, ChipIdle, true, 9f);
+            LayerUiKit.Place(bg.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), topLeft, size);
+            var button = bg.gameObject.AddComponent<Button>();
+            button.transition = Selectable.Transition.None;
+            button.navigation = new Navigation { mode = Navigation.Mode.None };
+            button.onClick.AddListener(onClick);
+            Text t = LayerUiKit.NewText("Label", bg.rectTransform, 12, TextAnchor.MiddleCenter, Color.white);
+            t.text = label;
+            t.rectTransform.anchorMin = Vector2.zero;
+            t.rectTransform.anchorMax = Vector2.one;
+            t.rectTransform.offsetMin = t.rectTransform.offsetMax = Vector2.zero;
+            return bg;
+        }
+
+        static void SetEnabled(Image chip, bool on)
+        {
+            chip.GetComponent<Button>().interactable = on;
+            var group = chip.GetComponent<CanvasGroup>();
+            if (group == null) group = chip.gameObject.AddComponent<CanvasGroup>();   // Unity null: no ??
+            group.alpha = on ? 1f : 0.35f;
+        }
+
+        static Slider BuildSlider(RectTransform parent, string name, Vector2 topLeft, float width, float min, float max)
         {
             // The slider's own Image is a transparent, finger-sized hit area around the thin track.
-            Image hit = LayerUiKit.NewImage("OpacitySlider", parent, Clear, true, 1f);
+            Image hit = LayerUiKit.NewImage(name, parent, Clear, true, 1f);
             RectTransform rt = hit.rectTransform;
-            LayerUiKit.Place(rt, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(6f, 10f),
-                new Vector2(PopupWidth - 70f, 36f));
+            LayerUiKit.Place(rt, new Vector2(0f, 1f), new Vector2(0f, 1f), topLeft, new Vector2(width, 36f));
 
             Image track = LayerUiKit.NewImage("Track", rt, new Color(1f, 1f, 1f, 0.25f), false, 3f);
             track.rectTransform.anchorMin = new Vector2(0f, 0.5f);
@@ -722,13 +942,12 @@ namespace GeoART.App
             slider.transition = Selectable.Transition.None;
             slider.navigation = new Navigation { mode = Navigation.Mode.None };
             slider.direction = Slider.Direction.LeftToRight;
-            slider.minValue = 0f;
-            slider.maxValue = 1f;
+            slider.minValue = min;
+            slider.maxValue = max;
             slider.wholeNumbers = false;
             slider.fillRect = fill.rectTransform;
             slider.handleRect = handle.rectTransform;
             slider.targetGraphic = handle;
-            slider.SetValueWithoutNotify(1f);
             return slider;
         }
 
