@@ -254,13 +254,13 @@ namespace GeoART.Tests.Verifier
         // ---------- the column ----------
 
         [Test]
-        public void ColumnHasNineButtonsWithBandsInTheOldDottedSlot()
+        public void ColumnHasEightButtonsWithBandsInTheOldDottedSlot()
         {
-            string[] names = { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Square", "2x2", "Snap" };   // P6: Fill added, H/V moved into Snap's menu
+            string[] names = { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap" };   // H/V in Snap's menu; Fill switched off (FillEnabled = false)
             var column = Find("Column").transform;
             var direct = new List<string>();
             foreach (Transform c in column) if (c.GetComponent<Button>() != null && c.gameObject.activeSelf) direct.Add(c.name);
-            Assert.AreEqual(9, direct.Count, "9 buttons directly under Column: " + string.Join(",", direct));
+            Assert.AreEqual(8, direct.Count, "8 buttons directly under Column: " + string.Join(",", direct));
             var canvas = _go.GetComponentInChildren<Canvas>(true);
             Vector3[] cc = new Vector3[4], bc = new Vector3[4];
             ((RectTransform)canvas.transform).GetWorldCorners(cc);
@@ -275,7 +275,7 @@ namespace GeoART.Tests.Verifier
             }
             foreach (var t in column.GetComponentsInChildren<Transform>(true))
                 Assert.AreNotEqual("Dotted", t.name, "the Dotted button is gone (its slot is Bands)");
-            Assert.AreEqual(ToolBar.ColumnHeight, 9 * 52f + 5 * 8f + 3 * 14f, 0.01f, "ColumnHeight unchanged (550)");
+            Assert.AreEqual(8 * 52f + 4 * 8f + 3 * 14f, ToolBar.ColumnHeight, 0.01f, "8 buttons in 4 groups: 490");
         }
 
         [Test]
@@ -290,7 +290,7 @@ namespace GeoART.Tests.Verifier
         {
             MenuOn(Find("Line"));
             MenuOn(Find("Circle"));
-            foreach (var n in new[] { "Select", "Fill", "Medium", "Square", "2x2" })
+            foreach (var n in new[] { "Select", "Medium", "Square", "2x2" })
                 foreach (var mb in Find(n).GetComponents<MonoBehaviour>())
                     Assert.IsFalse(mb.GetType().Name.Contains("HoldMenu"), $"{n} has no hold menu (Line, Circle, Bands and Snap do)");
             Assert.NotNull(Find("Line").GetComponent<Button>(), "the uGUI Button stays (view tests click through it)");
