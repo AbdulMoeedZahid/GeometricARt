@@ -120,23 +120,23 @@ namespace GeoART.Tests.Verifier
             var snapBg = Find("Snap").GetComponent<Image>();
             var hvBg = Find("HV").GetComponent<Image>();
             Assert.AreEqual("H/V", Find("HV").GetComponentInChildren<Text>().text);
-            Color dottedIdle = Find("Dotted").GetComponent<Image>().color;   // Dotted is off by default
+            Color idle = Find("Medium").GetComponent<Image>().color;   // Width is never highlighted
 
             Assert.IsTrue(_session.SnapEnabled, "snapping on by default");
-            Assert.AreNotEqual(dottedIdle, snapBg.color, "Snap is highlighted while on");
-            Assert.AreEqual(dottedIdle, hvBg.color, "H/V idle while off");
+            Assert.AreNotEqual(idle, snapBg.color, "Snap is highlighted while on");
+            Assert.AreEqual(idle, hvBg.color, "H/V idle while off");
 
             Click(Find("Snap"));
             Assert.IsFalse(_session.SnapEnabled, "Snap button turns snapping off");
-            Assert.AreEqual(dottedIdle, snapBg.color, "Snap idle when off");
+            Assert.AreEqual(idle, snapBg.color, "Snap idle when off");
             Click(Find("Snap"));
             Assert.IsTrue(_session.SnapEnabled, "and back on");
 
             Click(Find("HV"));
             Assert.IsTrue(_session.OrthoLock, "HV button turns the lock on");
-            Assert.AreNotEqual(dottedIdle, hvBg.color, "H/V highlighted while on");
+            Assert.AreNotEqual(idle, hvBg.color, "H/V highlighted while on");
             _session.SetOrthoLock(false);   // changes from elsewhere also refresh
-            Assert.AreEqual(dottedIdle, hvBg.color);
+            Assert.AreEqual(idle, hvBg.color);
         }
 
         [Test]
@@ -148,7 +148,7 @@ namespace GeoART.Tests.Verifier
             var canvas = _go.GetComponentInChildren<Canvas>(true);
             Vector3[] cc = new Vector3[4], bc = new Vector3[4];
             ((RectTransform)canvas.transform).GetWorldCorners(cc);
-            string[] names = { "Line", "Circle", "Select", "Dotted", "Medium", "Square", "2x2", "Snap", "HV" };
+            string[] names = { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap", "HV" };
             float prevTop = float.MaxValue;
             foreach (var n in names)
             {

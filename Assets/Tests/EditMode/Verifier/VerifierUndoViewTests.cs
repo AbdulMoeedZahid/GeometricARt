@@ -57,7 +57,7 @@ namespace GeoART.Tests.Verifier
         const float SidebarTopFraction = 0.73f, ToastCentreFromTop = 0.245f;
         const string NothingToUndo = "Nothing to undo";
 
-        static readonly string[] ColumnOrder = { "Line", "Circle", "Select", "Dotted", "Medium", "Square", "2x2", "Snap", "HV" };
+        static readonly string[] ColumnOrder = { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap", "HV" };
 
         EditorSession _session;
         Space _space;

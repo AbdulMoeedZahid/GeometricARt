@@ -40,7 +40,7 @@ namespace GeoART.Tests.Verifier
         }
 
         static readonly string[] BarOrder = { "Move", "Scale", "Duplicate", "Deselect" };
-        static readonly string[] ColumnOrder = { "Line", "Circle", "Select", "Dotted", "Medium", "Square", "2x2", "Snap", "HV" };
+        static readonly string[] ColumnOrder = { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap", "HV" };
 
         // Spec constants (ToolBar / BoardView), restated here so the tests do not read them from the code under test.
         const float BarButtonW = 64f, BarButtonH = 52f, BarSpacing = 8f, BarWidth = 280f;

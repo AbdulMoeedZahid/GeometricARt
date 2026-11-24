@@ -35,7 +35,7 @@ namespace GeoART.Tests.Verifier
             public bool TryBoardToScreen(Vec2 b, out Vec2 px) { px = default; return false; }
         }
 
-        static readonly string[] ButtonOrder = { "Line", "Circle", "Select", "Dotted", "Medium", "Square", "2x2", "Snap", "HV" };
+        static readonly string[] ButtonOrder = { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap", "HV" };
 
         EditorSession _session;
         Space _space;
@@ -318,7 +318,8 @@ namespace GeoART.Tests.Verifier
             // The column has nine buttons; the contextual action bar (Move, Scale, Duplicate, Deselect) has its own four.
             var buttons = new List<Button>(Find("Column").GetComponentsInChildren<Button>(true));
             Assert.AreEqual(9, buttons.Count, "nine buttons in the column");
-            Assert.AreEqual(14, _appGo.GetComponentsInChildren<Button>(true).Length, "plus the four action bar buttons and Undo");
+            Assert.AreEqual(18, _appGo.GetComponentsInChildren<Button>(true).Length,
+                "plus the four action bar buttons, Undo and the Line and Circle menus' two mode chips each");
 
             float prevBottom = float.MaxValue;
             var tops = new float[ButtonOrder.Length];
@@ -337,7 +338,7 @@ namespace GeoART.Tests.Verifier
                 prevBottom = bc[0].y;
             }
             float inPair = bottoms[1] - tops[2];      // Circle -> Select: same group
-            float betweenGroups = bottoms[2] - tops[3];   // Select -> Dotted: next group
+            float betweenGroups = bottoms[2] - tops[3];   // Select -> Bands: next group
             Assert.Greater(betweenGroups, inPair * 1.3f, $"Line, Circle, Select form one group (gaps {inPair} and {betweenGroups})");
 
             // Unless the column had to shrink to its minimum, it stays between the placement row and the coach text.

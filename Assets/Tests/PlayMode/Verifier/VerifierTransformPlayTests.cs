@@ -351,13 +351,13 @@ namespace GeoART.Tests.Verifier.PlayMode
             }
 
             Rect move = Of("Move"), scale = Of("Scale"), dup = Of("Duplicate"), desel = Of("Deselect");
-            Rect select = Of("Select"), dotted = Of("Dotted");
+            Rect select = Of("Select"), bands = Of("Bands");
             var probes = new[]
             {
                 ("the Move button", move.center),
                 ("the gap Move|Scale", new Vector2((move.xMax + scale.xMin) * 0.5f, move.center.y)),
                 ("the gap Duplicate|Deselect", new Vector2((dup.xMax + desel.xMin) * 0.5f, dup.center.y)),
-                ("the column gap Select|Dotted", new Vector2(select.center.x, (select.yMin + dotted.yMax) * 0.5f)),
+                ("the column gap Select|Bands", new Vector2(select.center.x, (select.yMin + bands.yMax) * 0.5f)),
             };
             Assert.Greater(scale.xMin - move.xMax, 1f, "precondition: there is a real gap between bar buttons");
 
