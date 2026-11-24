@@ -86,6 +86,32 @@ namespace GeoART.Tests.Verifier
         }
 
         [Test]
+        public void FillSeedsRoundTripAndOldFilesHaveNone()
+        {
+            var b = ThreeLayers();
+            b.Layers[2].Fills.Add(new FillSeed(new Vec2(0.123456789012345, 0.987654321098765), new RgbaColor(1, 2, 3, 200)));
+            b.Layers[2].Fills.Add(new FillSeed(new Vec2(0.5, 0.5), Palette.Red));
+            b.Layers[0].Fills.Add(new FillSeed(new Vec2(1.0 / 3.0, 2.0 / 3.0), Palette.Blue));
+            string json = DesignSerializer.ToJson(b, "seed test", DateTime.UtcNow);
+            StringAssert.Contains("\"version\": 1", json, "no version bump");
+            var back = Load(json);
+            for (int li = 0; li < 3; li++)
+            {
+                Assert.AreEqual(b.Layers[li].Fills.Count, back.Layers[li].Fills.Count, $"layer {li}: fill count");
+                for (int i = 0; i < b.Layers[li].Fills.Count; i++)
+                {
+                    Assert.IsTrue(b.Layers[li].Fills[i].Point == back.Layers[li].Fills[i].Point, $"layer {li} seed {i}: exact point");
+                    Assert.AreEqual(b.Layers[li].Fills[i].Color, back.Layers[li].Fills[i].Color, $"layer {li} seed {i}: colour");
+                }
+            }
+            string old = Regex.Replace(json, "\\s*\"fills\": \\[[^\\]]*\\],?", "");
+            StringAssert.DoesNotContain("\"fills\"", old, "precondition: a pre-P6 file");
+            foreach (var l in Load(old).Layers) Assert.AreEqual(0, l.Fills.Count, "old file: no fills");
+            string bad = json.Replace("\"x\": \"0.5\"", "\"x\": \"abc\"");
+            Assert.AreEqual(1, Load(bad).Layers[2].Fills.Count, "a seed with a broken coordinate is dropped, the rest load");
+        }
+
+        [Test]
         public void GarbageBandValuesAreSanitized()
         {
             string json = DesignSerializer.ToJson(ThreeLayers(), "garbage", DateTime.UtcNow);

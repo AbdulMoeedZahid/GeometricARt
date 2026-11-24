@@ -150,7 +150,8 @@ namespace GeoART.Tests.Verifier
                 Assert.AreNotEqual("Pill", t.name, "the bottom-left colour pill is gone (nothing sits under the action bar)");
             var canvases = _go.GetComponentsInChildren<Canvas>(true);
             foreach (var c in canvases)
-                Assert.IsTrue(c.name == "ToolBar" || c.name == "ColorWheel", $"only the ToolBar and the colour wheel canvases ({c.name})");
+                Assert.IsTrue(c.name == "ToolBar" || c.name == "HoldMenus" || c.name == "ColorWheel",
+                    $"only the ToolBar (with its open-menus canvas) and the colour wheel canvases ({c.name})");
         }
 
         [Test]

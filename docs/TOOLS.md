@@ -20,7 +20,8 @@ divisions...), and tapping two points connects them with a line. An H/V lock kee
      Moving more than 8 reference px before 0.45 s cancels the hold (the release can still be a tap).
    - **Slide** onto a chip (it lights up) and release to pick it; the row closes. Release anywhere else and the row stays
      open: tap a chip to pick, or tap anywhere outside the chips to close without a change (that whole touch only
-     closes the row: nothing is drawn and no other button is pressed). Holding the other button opens its row and closes
+     closes the row: nothing is drawn and no other button is pressed, not even on the layer sidebar or the Designs
+     button, because the open rows and their blockers have their own canvas above those, sorting order 112). Holding the other button opens its row and closes
      this one; rotating or resizing the screen closes an open row.
    - After the first placement a one-time toast says "Hold Line or Circle for line styles" (remembered once shown).
    **Bands** (under Select): tap turns the active layer's bands (double lines) on or off, keeping its remembered mode
@@ -259,7 +260,9 @@ under the action bar any more.
   - A touch anywhere outside the chips closes it without a change (on release, so that whole touch never draws and never
     presses another button). A second tap on Colour closes it too. Opening another hold menu (Line, Circle, Snap) closes
     it, and so do rotating or resizing the screen.
-- **Palette:** two rows of 48 x 52 chips (256 ref px wide, so it ends right of the layer sidebar on a 390-wide screen):
+- **Palette:** two rows of 48 x 52 chips (256 ref px wide, so it ends right of the layer sidebar on a 390-wide screen;
+  on narrower screens such as 21:9 Androids it shrinks a little, at most to 0.6, to stay right of the sidebar, and it
+  always draws above the sidebar):
   - row 1: the 5 shape colours, Black, White, Red, Green, Blue (the D-08 `Palette` values);
   - row 2: **Custom**, **Wheel…**, **Board** (and **No fill** while the Fill tool is active, only when
     `ToolBar.FillEnabled`; see `docs/FILL.md`).
