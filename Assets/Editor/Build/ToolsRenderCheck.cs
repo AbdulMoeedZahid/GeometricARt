@@ -26,8 +26,9 @@ namespace GeoART.EditorTools
     ///      dotted circle and the tiny circle, so BoardView redraws from a swapped-in board.
     ///   6. renders banded layers through BoardView (Layer.Bands on the top layer of GoldenBoards.StarOnFullBoard and
     ///      Tiled2x2, thin black outlines): bands-* (Double, structure shown), bands-stripped-*, interlace-* and
-    ///      interlace-inner-* (8 mm), and the tiled bands-tiled-* / interlace-tiled-*, for comparison with the book
-    ///      (p22-23); 45 cm, 90 cm and straight down.
+    ///      interlace-inner-* (8 mm), the tiled bands-tiled-* / interlace-tiled-*, and interlace with the structure line
+    ///      shown (cut under every over band): interlace-structure-*, interlace-inner-structure-* (10 mm), for
+    ///      comparison with the book (p22-23); 45 cm, 90 cm and straight down.
     /// Batch (needs graphics, so no -nographics):
     ///   -executeMethod GeoART.EditorTools.ToolsRenderCheck.RunBatch   (PNGs go to $GEOART_RENDER_OUT or Logs/GeoARtRenderCheck)
     /// </summary>
@@ -105,6 +106,9 @@ namespace GeoART.EditorTools
             RenderBands(outDir, "interlace-inner-", GoldenBoards.StarOnFullBoard, 0.02, true, true, false);
             RenderBands(outDir, "bands-tiled-", GoldenBoards.Tiled2x2, 0.015, false, false, true);
             RenderBands(outDir, "interlace-tiled-", GoldenBoards.Tiled2x2, 0.02, true, true, false);
+            // Interlace with the structure line shown: the under band's structure line is cut at every crossing.
+            RenderBands(outDir, "interlace-structure-", GoldenBoards.StarOnFullBoard, 0.015, true, false, true);
+            RenderBands(outDir, "interlace-inner-structure-", GoldenBoards.StarOnFullBoard, 0.025, true, true, true);
         }
 
         /// <summary>
@@ -122,11 +126,10 @@ namespace GeoART.EditorTools
                 On = true, Mode = interlace ? BandMode.Interlace : BandMode.Double, Width = width, HideStructure = !structure,
                 InnerLines = inner, OutlineColor = Palette.Black, OutlineWidth = LineWidth.Thin,
             };
-            const double mm = 1.0 / 400.0;   // board units per mm on the 40 cm board
-            var outline = BandOutline.Build(BandGraph.Build(layer.Shapes), BandOutlineOptions.From(layer.Bands, 1.5 * mm, 0.85 * mm + 1.0 * mm));
+            var outline = BandOutline.Build(BandGraph.Build(layer.Shapes), BandOutlineOptions.ForBoard(layer.Bands, BoardGeometry.DefaultSideMeters));
             Debug.Log($"[GeoART] Bands {prefix}: {outline.Runs.Count} runs, {outline.InnerRuns.Count} inner, " +
                       $"{outline.Bridges.Count / 2} bridges, max safe {outline.MaxSafeWidth:0.####}, collapsed {outline.Collapsed}, " +
-                      $"self-intersections {outline.SelfIntersections}, conflicts {outline.WeaveConflicts}");
+                      $"self-intersections {outline.SelfIntersections}, conflicts {outline.WeaveConflicts}, structure cuts {outline.StructureCuts.Count}");
             RenderScenario(outDir, prefix, s => s.LoadBoard(shown), showBase: true, dark: false, topView: true);
         }
 
