@@ -81,13 +81,29 @@ Rules:
 Act on the selection. While something is selected, a cyan **dashed box** surrounds the selection and a cyan **pivot
 mark** (a ring with a "+") sits at the centre of that box: the selection's "origin". Move and Scale work about it.
 
-**Action bar.** With a selection, in Select, Move, Scale or Duplicate, a row of four buttons appears at the bottom, left
-of the tool column and just above "Re-place board": **Move | Scale | Duplicate | Delete | Deselect** (56x52 reference px
-each, 304 wide; on narrow screens it shrinks, never below 40%). Move, Scale and Duplicate are modes: the active one is orange
+**Action bar.** With a selection, in Select, Move, Scale or Duplicate, a row of six buttons appears at the bottom, left
+of the tool column and just above "Re-place board": **Move | Scale | Duplicate | Extend | Delete | Deselect** (48x52
+reference px each with 4 px gaps, 308 wide, so it fits the 310 px left of the column on a 390-wide phone such as the 14 Pro
+Max without shrinking; on narrower screens it shrinks, never below 40%). Move, Scale and Duplicate are modes: the active one is orange
 (and so is the column's Select button), tapping it again returns to Select, tapping another switches. **Deselect** empties
 the selection; the bar hides and the tool returns to Select. **Delete** (between Duplicate and Deselect, a trash can)
 removes the selected shapes: one "Delete" undo step, toast "Deleted N shapes", and the tool returns to Select. The bar is hidden with no selection, before placement and
 in Line or Circle. Entering a mode without a selection toasts "Select shapes first".
+
+**Extend** (between Duplicate and Delete, an arrow running into a bar) lengthens the selected lines, the way a ruler line
+is run on until it meets the next line of the construction. Each end of every selected line moves along the line's own
+direction to the first drawn thing in the way: another line, a circle, or a polygon edge, on any visible layer, selected
+or not. The new end is the exact crossing (`Intersect.LineSegment` / `LineCircle`; when the boundary is horizontal or
+vertical its fixed coordinate is copied exactly, so a horizontal line run into a vertical one ends on exactly its x).
+- An end with nothing in the way stays where it is. The board edge, the grid and snap points are not boundaries.
+- Hits at or behind the end (within 1e-9 board units) do not count, so an end that already sits on a line or circle goes
+  on to the next boundary beyond it. Lines and polygon edges collinear with (or parallel to) the line are ignored.
+- Circles and polygons in the selection are not extended (they still act as boundaries). Shapes on hidden layers are
+  neither extended nor boundaries.
+- All new ends are worked out against the board as it was before the tap, then applied together, so the order of the
+  selected lines does not matter. Ids, styles and layers are kept; bands, fills and snap points update as for any edit.
+- One "Extend" undo step, one board change, toast "Extended N ends" ("Extended 1 end"). If no end moves: no step and the
+  toast "Nothing in the way to extend to". The selection, the tool and the bar stay.
 
 Shared rules (all three modes):
 - A drag can start **anywhere on the board**, not only on the shapes (the finger never has to cover small geometry).
@@ -157,6 +173,8 @@ layer opacity popup is open its full-screen blocker covers the button. One tap =
 | Layer opacity (one popup session on one layer) | Layer opacity |
 | Band width (one slider session on one layer) / any other band setting | Band width / Bands |
 | Restyle selection (colour, width or dash) | Style |
+| Extend (action bar) | Extend |
+| Delete (action bar) | Delete |
 | Fill a region / clear a fill | Fill / Clear fill |
 | Grid Square/Hex / Tiles | Grid type / Tiles |
 | ClearBoard (API only, no button) | Clear board |
@@ -261,7 +279,8 @@ Notes for developers:
 - `Assets/GeoART/Engine/EditorSession.Select.cs`, `Engine/Geometry/SelectionGeometry.cs`: the Select tool.
 - `Assets/GeoART/Engine/EditorSession.Transform.cs`, `Engine/Geometry/TransformGeometry.cs`: Move, Scale, Duplicate;
   `Engine/Snap/SnapIndex.cs` `ExcludedShapes` (a transform's own shapes are not snap sources).
-- `Assets/GeoART/App/ToolBar.ActionBar.cs`: the Move | Scale | Duplicate | Delete | Deselect bar.
+- `Assets/GeoART/App/ToolBar.ActionBar.cs`: the Move | Scale | Duplicate | Extend | Delete | Deselect bar.
+- `Assets/GeoART/Engine/EditorSession.Extend.cs`: Extend (`ExtendSelection`); checks in `tools/enginecheck/ExtendChecks.cs`.
 - `Assets/GeoART/Engine/EditorSession.Undo.cs`, `Contracts/Model/Board.cs` (`DeepClone`): undo/redo history.
   `Assets/GeoART/App/ToolBar.Undo.cs`: the Undo button.
 - `Assets/GeoART/Engine/OneEuroFilter2D.cs` (new): the smoothing filter.
