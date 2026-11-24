@@ -268,7 +268,7 @@ namespace GeoART.Tests.Verifier
             OpenPopup();
             Click("Bands Double");
             Assert.IsTrue(Star.Bands.On && Star.Bands.Mode == BandMode.Double, "Double");
-            Assert.IsFalse(Find("Bands Interlace").GetComponent<Button>().interactable, "Interlace arrives with the weave work");
+            Assert.IsFalse(Find("Flip weave").GetComponent<Button>().interactable, "Flip weave is dimmed outside Interlace");
             Click("Structure line");
             Assert.IsTrue(Star.Bands.HideStructure, "structure hidden (stripped)");
             _session.Style = _session.Style.WithColor(Palette.Red);
@@ -328,6 +328,78 @@ namespace GeoART.Tests.Verifier
             OpenPopup();
             _session.SetLayerBands(Star.Id, On(0.02));
             Assert.AreEqual(LayerSidebar.BandsTooWideNote, Note.text, "crossing outlines: red");
+        }
+
+        [Test]
+        public void PopupInterlaceFlipAndInnerLines()
+        {
+            OpenPopup();
+            Click("Bands Interlace");
+            Assert.IsTrue(Star.Bands.On && Star.Bands.Mode == BandMode.Interlace, "Interlace");
+            Assert.IsTrue(Find("Flip weave").GetComponent<Button>().interactable, "Flip weave enabled in Interlace");
+            Click("Flip weave");
+            Assert.IsTrue(Star.Bands.FlipWeave, "flipped");
+            int steps = _session.UndoCount;
+            Click("Inner lines");
+            Assert.IsTrue(Star.Bands.InnerLines, "inner lines on");
+            Assert.GreaterOrEqual(Star.Bands.Width, 0.010 / 0.40 - 1e-12, "turning them on raises the band to 10 mm");
+            Assert.AreEqual(steps + 1, _session.UndoCount, "toggle + width bump = one 'Bands' step");
+            Assert.AreEqual("Bands", _session.NextUndoLabel);
+            Click("Inner lines");
+            Assert.IsFalse(Star.Bands.InnerLines, "off again");
+            Assert.GreaterOrEqual(Star.Bands.Width, 0.010 / 0.40 - 1e-12, "the width stays");
+            Click("Bands Double");
+            Assert.IsFalse(Find("Flip weave").GetComponent<Button>().interactable, "dimmed again in Double");
+            Assert.IsTrue(Star.Bands.FlipWeave, "but remembered");
+            Assert.AreEqual("Double", Find("Bands").GetComponentInChildren<Text>().text);
+        }
+
+        [Test]
+        public void PopupNotesConflictsAndTooNarrowInnerLines()
+        {
+            // A triangle crossed once by a line that starts inside it: one crossing can't alternate.
+            Star.Shapes.Clear();
+            foreach (var (a, b) in new[] { (new Vec2(0.3, 0.3), new Vec2(0.7, 0.3)), (new Vec2(0.7, 0.3), new Vec2(0.5, 0.7)),
+                         (new Vec2(0.5, 0.7), new Vec2(0.3, 0.3)), (new Vec2(0.45, 0.4), new Vec2(0.45, 0.9)) })
+                Star.Shapes.Add(new LineShape(_session.Board.NewId(), a, b, StrokeStyle.Default));
+            OpenPopup();
+            var woven = On(0.008);
+            woven.Mode = BandMode.Interlace;
+            _session.SetLayerBands(Star.Id, woven);
+            Assert.AreEqual(LayerSidebar.ConflictsNote(1), Note.text, "conflicts are reported in Interlace");
+            var flat = On(LayerBands.DefaultWidth);
+            flat.InnerLines = true;   // 6 mm without the popup's bump: too narrow for inner lines
+            _session.SetLayerBands(Star.Id, flat);
+            Assert.AreEqual(LayerSidebar.InnerTooNarrowNote, Note.text);
+        }
+
+        [Test]
+        public void InterlaceCutsTheUnderStructureLinesInTheView()
+        {
+            MakeView();
+            var b = On();
+            b.Mode = BandMode.Interlace;
+            _session.SetLayerBands(Star.Id, b);
+            int cutVertices = ShapeVertices();
+            Assert.IsTrue(_view.Bands.TryGetOutline(Star.Id, out BandOutline o), "outline drawn");
+            Assert.AreEqual(8, o.StructureCuts.Count, "one cut per crossing of the star");
+            Assert.Greater(o.Bridges.Count, 0, "bridges drawn");
+            b.HideStructure = true;
+            _session.SetLayerBands(Star.Id, b);
+            ShapeVertices();
+            Assert.IsTrue(_view.Bands.TryGetOutline(Star.Id, out o) && o.StructureCuts.Count == 0, "stripped: no cuts");
+            Assert.Greater(cutVertices, 0);
+
+            // A polygon stamp crossed by a line, woven: drawn in pieces without errors, mitres kept (one polyline per piece).
+            Star.Shapes.Add(new PolygonShape(_session.Board.NewId(), new Vec2(0.5, 0.15), 6, 0.08, 0.0, StrokeStyle.Default.WithDash(LineStyle.Dotted)));
+            Star.Shapes.Add(new LineShape(_session.Board.NewId(), new Vec2(0.3, 0.15), new Vec2(0.7, 0.15), StrokeStyle.Default));
+            b.HideStructure = false;
+            _session.SetLayerBands(Star.Id, b);
+            _view.Bands.MarkTopologyDirty();   // shapes were added behind the session's back
+            _view.MarkAllDirty();
+            Assert.DoesNotThrow(() => ShapeVertices());
+            Assert.IsTrue(_view.Bands.TryGetOutline(Star.Id, out o));
+            Assert.Greater(o.StructureCuts.Count, 8, "the stamp or the line is cut too");
         }
 
         // ---------- restyle selection ----------
