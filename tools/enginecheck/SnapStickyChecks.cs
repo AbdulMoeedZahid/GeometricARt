@@ -259,6 +259,26 @@ namespace GeoART.EngineCheck
             Check.That(line.B == V(0.35, 0.3), "and it lands exactly");
         }
 
+        public static void SnapAcquired_AlsoForDuplicateReferenceSnaps()
+        {
+            var s = Session();
+            var line = new LineShape(s.Board.NewId(), V(0.6, 0.6), V(0.7, 0.62), StrokeStyle.Default);
+            s.ActiveLayer.Shapes.Add(line);
+            s.SetTool(ToolId.SelectMove);
+            s.SetSelection(new[] { line.Id });
+            s.SetTool(ToolId.Duplicate);
+            int n = 0;
+            s.SnapAcquired += _ => n++;
+            Down(s, V(0.701, 0.62));
+            Move(s, V(0.65, 0.5));
+            Move(s, V(0.351, 0.301));                 // the copy's B end lands on D
+            Move(s, V(0.352, 0.3005));                // still D
+            Check.That(n == 1, $"Duplicate reference snap acquired once (got {n})");
+            s.Pointer(Ev(PointerPhase.Up, V(0.352, 0.3005)));
+            Check.That(s.ActiveLayer.Shapes.Count == 2 && ((LineShape)s.ActiveLayer.Shapes[1]).B == V(0.35, 0.3),
+                "the copy lands exactly on D and the original stays");
+        }
+
         static int s_count;
         static void Count(SnapCandidate c) => s_count++;
 
