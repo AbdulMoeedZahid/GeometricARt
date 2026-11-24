@@ -141,8 +141,10 @@ namespace GeoART.Engine
             _gestureTool = _tool;
             _gestureLayer = layer.Id;
             _lastRaw = e.BoardPos;
+            ResetSnapFeel();
             _downHit = TrySnap(e.BoardPos, out _downCand);
             _hoverOn = _downHit;
+            NoteSnap(_downHit, _downCand);
             _anchor = _current = _downHit ? _downCand.Position : e.BoardPos;
             _cursor = _anchor;
             StartTapDetection(e.BoardPos);
@@ -172,7 +174,8 @@ namespace GeoART.Engine
                 if (dropped) RebuildGhost();
                 return;
             }
-            if (e.BoardPos == _lastRaw && !dropped) return;
+            if (e.BoardPos == _lastRaw && !dropped && !_resolveDirty) return;
+            _resolveDirty = false;
             _lastRaw = e.BoardPos;
             Vec2 p = ResolvePoint(e.BoardPos, out bool hit);
             if (p == _current && hit == _hoverOn && !dropped) return;   // nothing visible changed
@@ -184,18 +187,21 @@ namespace GeoART.Engine
 
         /// <summary>
         /// The current point for a raw pointer position: the raw point itself for the Select tool (never snaps), the
-        /// H/V-locked end for the Line tool with the lock on, else the plain snap. <paramref name="hit"/> is true if it
-        /// snapped (hover ring).
+        /// H/V-locked end for the Line tool with the lock on, else the plain snap with the sticky rule (raises
+        /// SnapAcquired on a new candidate). <paramref name="hit"/> is true if it snapped (hover ring).
         /// </summary>
         Vec2 ResolvePoint(Vec2 raw, out bool hit)
         {
             if (_gestureTool == ToolId.SelectMove) { hit = false; return raw; }
             if (_gestureTool == ToolId.Line && _orthoLock)
             {
+                _stickyOn = false;   // the H/V path has no sticky
+                NoteSnap(false, default);
                 hit = TryOrthoEnd(raw, out Vec2 end);
                 return end;
             }
-            hit = TrySnap(raw, out SnapCandidate c);
+            hit = TrySnapTracking(raw, out SnapCandidate c);
+            NoteSnap(hit, c);
             return hit ? c.Position : raw;
         }
 
@@ -255,6 +261,7 @@ namespace GeoART.Engine
             _preview.Clear();
             _cursor = null;
             _hoverOn = false;
+            ResetSnapFeel();
             if (!commit) _hasPending = false;
             if (hadGesture && IsTransformTool(_gestureTool)) FinishTransformGesture(commit, raiseSelectionState);
             else if (hadGesture && _gestureTool == ToolId.SelectMove) FinishSelectGesture(commit, raiseSelectionState);

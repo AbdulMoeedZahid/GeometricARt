@@ -5,17 +5,25 @@ namespace GeoART.Engine
 {
     // OWNER: snapping (E2). Implements the C0 hooks declared in EditorSession.cs and the snap query the tools use.
     /// <summary>
-    /// Snapping for the Line and Circle tools (plan 3.3).
+    /// Snapping for the Line, Circle and transform tools (plan 3.3, ui-line-plan 4).
     ///   Candidates   <see cref="SnapIndex"/> owns the list; it is synced lazily (<see cref="EnsureCandidates"/>) and
     ///                marked dirty on every model change, so it is never rebuilt per pointer Move.
     ///   Snap rule    project the pointer and every candidate with <see cref="SnapMetric"/> (screen px, radius
-    ///                <see cref="ISnapMetric.TolerancePx"/>); without a metric, or when the pointer is not projectable,
-    ///                compare in board units with <see cref="FallbackSnapTolerance"/>. The nearest candidate within the
-    ///                tolerance wins; equal distance goes to the higher priority (<see cref="SnapIndex.Priority"/>), then
-    ///                to the earlier candidate. The snapped point is the candidate's position itself (== holds).
+    ///                <see cref="ISnapMetric.TolerancePx"/>, 32 reference px on device); without a metric, or when the
+    ///                pointer is not projectable, compare in board units with <see cref="FallbackSnapTolerance"/>. Only
+    ///                candidates within <see cref="BoardCap"/> on the board count. The nearest within the tolerance wins;
+    ///                equal distance goes to the higher priority (<see cref="SnapIndex.Priority"/>), then the earlier
+    ///                candidate. Tie window: a grid filler (cell corner, edge midpoint, cell centre) loses to a shape or
+    ///                construction point no more than <see cref="TieWindowFraction"/> x tol farther. The snapped point is
+    ///                the candidate's position itself (== holds).
+    ///   Sticky       plain Line/Circle drags: after a snap to C the point stays on C while the pointer is within
+    ///                <see cref="StickyFactor"/> x tol and BoardCap of C, unless another candidate in range is nearer by
+    ///                more than <see cref="StickyMarginFraction"/> x tol. The gesture's own start is never sticky. Reset
+    ///                per gesture; dropped when snapping goes off, the H/V lock goes on, or C stops being a candidate.
+    ///   Feedback     <see cref="SnapAcquired"/> on each new acquisition (a snapped Down, or a different candidate).
     ///   Taps         tap slop is <see cref="TapSlopFraction"/> times the tolerance, in the same space.
     ///   H/V lock     (E3) <see cref="TryOrthoEnd"/>: the Line end constrained to the anchor's board X or Y axis, with
-    ///                alignment snap along that axis in the same tolerance space.
+    ///                alignment snap along that axis in the same tolerance space and the same BoardCap (no sticky).
     /// </summary>
     public sealed partial class EditorSession
     {
@@ -23,36 +31,88 @@ namespace GeoART.Engine
         public const double HoverRingRadius = 0.012;
 
         /// <summary>
-        /// Tap slop as a fraction of the snap tolerance (10 reference px of 24). A gesture whose pointer never moves this
+        /// Tap slop as a fraction of the snap tolerance (10 reference px of 32). A gesture whose pointer never moves this
         /// far from its Down position (screen px with a metric, board units without) is a tap.
         /// </summary>
-        public const double TapSlopFraction = 10.0 / 24.0;
+        public const double TapSlopFraction = 10.0 / 32.0;
 
         /// <summary>
-        /// Board-distance cap for snapping, in board units (0.03 = 1.2 cm on the 40 cm board). A candidate snaps only if
-        /// it is within the screen tolerance (<see cref="ISnapMetric.TolerancePx"/>) AND within this distance on the
-        /// board, so a flat viewing angle (where 24 px covers centimetres of board depth) cannot pull a point far away.
-        /// The board-unit fallback (<see cref="FallbackSnapTolerance"/>, 0.02) is already inside the cap. The H/V lock
-        /// applies the same cap to its alignment snap (perpendicular and along the axis).
+        /// Lower bound of <see cref="BoardCap"/> in board units (0.03 = 1.2 cm on the 40 cm board), and the cap whenever
+        /// there is no metric or a projection fails. The board-unit fallback tolerance (0.02) is inside it.
         /// </summary>
-        public const double MaxSnapBoardDistance = 0.03;
+        public const double SnapCapFloor = 0.03;
+        /// <summary>The cap's ceiling is max(this, half a tile), so a far, tiny board never snaps across tiles.</summary>
+        public const double SnapCapCeilingMin = 0.10;
+        /// <summary>BoardCap = this x the board reach of the screen circle along the most-stretched screen direction.</summary>
+        public const double SnapCapStretch = 1.5;
+        /// <summary>Probe step (board units) for the board-to-screen Jacobian.</summary>
+        public const double SnapCapProbe = 1e-3;
+        /// <summary>Grid fillers lose to a shape/construction point at most this x tol farther (6 of 32 px).</summary>
+        public const double TieWindowFraction = 6.0 / 32.0;
+        /// <summary>Sticky release radius, x tol (48 of 32 px).</summary>
+        public const double StickyFactor = 1.5;
+        /// <summary>A sticky snap switches only to a candidate nearer by more than this x tol (4 of 32 px).</summary>
+        public const double StickyMarginFraction = 4.0 / 32.0;
 
-        const double MaxSnapBoardDistance2 = MaxSnapBoardDistance * MaxSnapBoardDistance;
+        /// <summary>
+        /// Raised when a gesture acquires a new snap candidate: a Down that snaps, or a different candidate during a
+        /// Line/Circle drag or a Move/Scale/Duplicate drag (after its clamp). Not for H/V alignment, Select, raw points or
+        /// snapping off. Leaving every candidate and coming back counts as a new acquisition. Concrete (not on
+        /// IEditorSession), like <see cref="SnapMetric"/>; drives the ring pop and the haptic tick.
+        /// </summary>
+        public event Action<SnapCandidate> SnapAcquired;
+
+        /// <summary>The hover ring shape the tools put in Preview while the point is snapped (the renderer pops it).</summary>
+        public Shape HoverRing => _hoverRing;
 
         readonly SnapIndex _snapIndex = new SnapIndex();
+
+        // Sticky snap of the open Line/Circle gesture, and the last acquired candidate (SnapAcquired).
+        bool _stickyOn, _stickyRecheck, _acqOn, _resolveDirty;
+        SnapCandidate _sticky, _acq;
 
         partial void EnsureCandidates()
         {
             if (!_snapIndex.Sync(_board)) return;
             _candidates.Clear();
             _candidates.AddRange(_snapIndex.Candidates);   // only on rebuild
+            _stickyRecheck = true;                          // the sticky candidate may be gone (layer hidden, shape moved)
+        }
+
+        static bool SameCandidate(in SnapCandidate a, in SnapCandidate b) => a.Position == b.Position && a.Kind == b.Kind;
+
+        static bool IsGridFiller(SnapKind k) =>
+            k == SnapKind.CellCorner || k == SnapKind.CellEdgeMid || k == SnapKind.CellCenter;
+
+        /// <summary>Raises <see cref="SnapAcquired"/> when <paramref name="hit"/> is a new candidate; a miss forgets the last one.</summary>
+        void NoteSnap(bool hit, in SnapCandidate c)
+        {
+            if (!hit) { _acqOn = false; return; }
+            if (_acqOn && SameCandidate(_acq, c)) return;
+            _acqOn = true;
+            _acq = c;
+            SnapAcquired?.Invoke(c);
+        }
+
+        /// <summary>Clears the sticky snap and the acquisition memory (every new gesture and every gesture end).</summary>
+        void ResetSnapFeel()
+        {
+            _stickyOn = false;
+            _acqOn = false;
         }
 
         // SnapIndex's signature cannot see edits that keep every count (a moved shape), so every model change dirties it.
-        partial void OnModelChanged(BoardChangeKind kind) => _snapIndex.MarkDirty();
+        // An open gesture re-resolves its point at the next pointer event even if the pointer did not move (a dot it is
+        // held on may have been hidden), so an Up at the last Move position never commits onto a vanished candidate.
+        partial void OnModelChanged(BoardChangeKind kind)
+        {
+            _snapIndex.MarkDirty();
+            _resolveDirty = true;
+        }
 
         partial void OnSnapSettingsChanged()
         {
+            if (!_snapEnabled) _stickyOn = false;   // Snap off: the next point is raw
             if (!_snapEnabled && DropPending()) RaisePreviewChanged();
             if (_orthoLock != _orthoLockSeen)
             {
@@ -61,42 +121,100 @@ namespace GeoART.Engine
             }
         }
 
-        /// <summary>
-        /// Nearest snap candidate to <paramref name="p"/> within the tolerance and within <see cref="MaxSnapBoardDistance"/>
-        /// on the board, or false (snapping off, nothing in range). Nearest is measured in the tolerance space (screen px
-        /// with a metric). Allocation-free once the candidate list is up to date.
-        /// </summary>
-        bool TrySnap(Vec2 p, out SnapCandidate hit)
+        /// <summary>The measuring space of one snap query: the pointer, its projection, tolerance and BoardCap.</summary>
+        struct SnapSpace
         {
-            hit = default;
+            public Vec2 P;              // pointer, board units
+            public ISnapMetric Metric;  // null: board units
+            public Vec2 Origin;         // pointer in the measuring space
+            public double Tol, Cap;
+        }
+
+        /// <summary>
+        /// Adaptive board-distance cap at <paramref name="p"/> (board units): clamp(1.5 tol / sigma_max, 0.03, ceiling),
+        /// where sigma_max is the largest singular value of the board-to-screen Jacobian (px per board unit along the
+        /// most-stretched direction), so tol / sigma_max is the shortest board reach of the screen circle and the cap
+        /// limits the reach into the compressed depth direction of a grazing view to 1.5x that. Looking straight down it
+        /// never binds. The ceiling is max(0.10, half a tile: 1/GridN square, the hex radius hex). Without a metric, or
+        /// when any of the three projections fails, the cap is <see cref="SnapCapFloor"/>.
+        /// </summary>
+        public double BoardCap(Vec2 p)
+        {
+            ISnapMetric metric = SnapMetric;
+            if (metric == null || !p.IsFinite || !metric.TryToScreen(p, out Vec2 ps) || !ps.IsFinite) return SnapCapFloor;
+            return CapFrom(metric, p, ps, metric.TolerancePx);
+        }
+
+        double CapFrom(ISnapMetric metric, Vec2 p, Vec2 ps, double tol)
+        {
+            const double e = SnapCapProbe;
+            if (!metric.TryToScreen(new Vec2(p.X + e, p.Y), out Vec2 px) || !px.IsFinite) return SnapCapFloor;
+            if (!metric.TryToScreen(new Vec2(p.X, p.Y + e), out Vec2 py) || !py.IsFinite) return SnapCapFloor;
+            double j1x = (px.X - ps.X) / e, j1y = (px.Y - ps.Y) / e;
+            double j2x = (py.X - ps.X) / e, j2y = (py.Y - ps.Y) / e;
+            double t = j1x * j1x + j1y * j1y + j2x * j2x + j2y * j2y;
+            double d = j1x * j2y - j1y * j2x;
+            double sigma = Math.Sqrt((t + Math.Sqrt(Math.Max(0, t * t - 4 * d * d))) * 0.5);
+            if (!(sigma > 0) || double.IsInfinity(sigma) || !(tol > 0)) return SnapCapFloor;
+            int n = TileGrid.ClampN(_board.GridN);
+            double tile = _board.GridKind == GridKind.Hex ? TileGrid.HexRadius(n) : 1.0 / n;
+            double ceiling = Math.Max(SnapCapCeilingMin, 0.5 * tile);
+            double cap = SnapCapStretch * tol / sigma;
+            return cap < SnapCapFloor ? SnapCapFloor : cap > ceiling ? ceiling : cap;
+        }
+
+        /// <summary>
+        /// Sets up a query at <paramref name="p"/> (one projection of the pointer and one cap). False when snapping is
+        /// off or the pointer is not finite. Refreshes the candidate list.
+        /// </summary>
+        bool PrepareSnap(Vec2 p, out SnapSpace s)
+        {
+            s = default;
             if (!_snapEnabled || !p.IsFinite) return false;
             EnsureCandidates();
-            var list = _candidates;
-            if (list.Count == 0) return false;
-
+            s.P = p;
+            s.Origin = p;
+            s.Tol = FallbackSnapTolerance;
+            s.Cap = SnapCapFloor;
             ISnapMetric metric = SnapMetric;
-            bool screen = false;
-            Vec2 origin = p;
-            double tol = FallbackSnapTolerance;
             if (metric != null && metric.TryToScreen(p, out Vec2 ps) && ps.IsFinite)
             {
-                screen = true;
-                origin = ps;
-                tol = metric.TolerancePx;
+                s.Metric = metric;
+                s.Origin = ps;
+                s.Tol = metric.TolerancePx;
+                s.Cap = CapFrom(metric, p, ps, s.Tol);
             }
-            double tol2 = tol * tol;
+            return true;
+        }
 
-            int best = -1, bestPriority = 0;
-            double bestD2 = 0;
+        /// <summary>Squared distance from the pointer to <paramref name="q"/> in the query's space, if within BoardCap and projectable.</summary>
+        static bool Distance2(in SnapSpace s, Vec2 q, out double d2)
+        {
+            d2 = 0;
+            double bx = q.X - s.P.X, by = q.Y - s.P.Y;   // board cap first (also skips most projections)
+            if (!(bx * bx + by * by <= s.Cap * s.Cap)) return false;
+            if (s.Metric != null && (!s.Metric.TryToScreen(q, out q) || !q.IsFinite)) return false;
+            double dx = q.X - s.Origin.X, dy = q.Y - s.Origin.Y;
+            d2 = dx * dx + dy * dy;
+            return true;
+        }
+
+        /// <summary>
+        /// Nearest candidate within the tolerance and BoardCap (exact ties by priority, then list order), with the tie
+        /// window: a winning grid filler gives way to the nearest shape/construction point at most
+        /// <see cref="TieWindowFraction"/> x tol farther. <paramref name="dist"/> is the winner's distance.
+        /// </summary>
+        bool Scan(in SnapSpace s, out SnapCandidate hit, out double dist)
+        {
+            hit = default;
+            dist = 0;
+            var list = _candidates;
+            double tol2 = s.Tol * s.Tol;
+            int best = -1, bestPriority = 0, other = -1, otherPriority = 0;
+            double bestD2 = 0, otherD2 = 0;
             for (int i = 0; i < list.Count; i++)
             {
-                Vec2 q = list[i].Position;
-                double bx = q.X - p.X, by = q.Y - p.Y;   // board-distance cap first (also skips most projections)
-                if (!(bx * bx + by * by <= MaxSnapBoardDistance2)) continue;
-                if (screen && (!metric.TryToScreen(q, out q) || !q.IsFinite)) continue;
-                double dx = q.X - origin.X, dy = q.Y - origin.Y;
-                double d2 = dx * dx + dy * dy;
-                if (!(d2 <= tol2)) continue;
+                if (!Distance2(s, list[i].Position, out double d2) || !(d2 <= tol2)) continue;
                 int priority = SnapIndex.Priority(list[i].Kind);
                 if (best < 0 || d2 < bestD2 || (d2 == bestD2 && priority < bestPriority))
                 {
@@ -104,10 +222,85 @@ namespace GeoART.Engine
                     bestD2 = d2;
                     bestPriority = priority;
                 }
+                if (!IsGridFiller(list[i].Kind) && (other < 0 || d2 < otherD2 || (d2 == otherD2 && priority < otherPriority)))
+                {
+                    other = i;
+                    otherD2 = d2;
+                    otherPriority = priority;
+                }
             }
             if (best < 0) return false;
+            if (other >= 0 && other != best && IsGridFiller(list[best].Kind)
+                && Math.Sqrt(otherD2) - Math.Sqrt(bestD2) <= TieWindowFraction * s.Tol)
+            {
+                best = other;
+                bestD2 = otherD2;
+            }
             hit = list[best];
+            dist = Math.Sqrt(bestD2);
             return true;
+        }
+
+        /// <summary>
+        /// Nearest snap candidate to <paramref name="p"/> (see <see cref="Scan"/>), or false (snapping off, nothing in
+        /// range). Allocation-free once the candidate list is up to date. No sticky; callers raise SnapAcquired.
+        /// </summary>
+        bool TrySnap(Vec2 p, out SnapCandidate hit)
+        {
+            hit = default;
+            return PrepareSnap(p, out SnapSpace s) && Scan(s, out hit, out _);
+        }
+
+        /// <summary>
+        /// The plain Line/Circle snap during a drag, with the sticky rule (class summary). One pointer projection and one
+        /// cap per call, shared by the scan and the sticky test. The candidate at the gesture's start (<c>_anchor</c>) never
+        /// becomes sticky, so a short line or a small circle can still be drawn from a snapped start.
+        /// </summary>
+        bool TrySnapTracking(Vec2 raw, out SnapCandidate hit)
+        {
+            hit = default;
+            if (!PrepareSnap(raw, out SnapSpace s))
+            {
+                _stickyOn = false;
+                return false;
+            }
+            bool found = Scan(s, out hit, out double d);
+            if (_stickyOn)
+            {
+                bool valid = true;
+                if (_stickyRecheck)
+                {
+                    valid = IsCandidate(_sticky);   // e.g. its layer was hidden mid-drag
+                    _stickyRecheck = false;
+                }
+                double ds2 = 0;
+                valid = valid && Distance2(s, _sticky.Position, out ds2);
+                double ds = Math.Sqrt(ds2);
+                if (valid && ds <= StickyFactor * s.Tol)
+                {
+                    if (!(found && !SameCandidate(hit, _sticky) && d < ds - StickyMarginFraction * s.Tol))
+                    {
+                        hit = _sticky;
+                        return true;
+                    }
+                }
+                else _stickyOn = false;
+            }
+            if (found && hit.Position != _anchor)
+            {
+                _sticky = hit;
+                _stickyOn = true;
+                _stickyRecheck = false;
+            }
+            return found;
+        }
+
+        bool IsCandidate(in SnapCandidate c)
+        {
+            var list = _candidates;
+            for (int i = 0; i < list.Count; i++)
+                if (SameCandidate(list[i], c)) return true;
+            return false;
         }
 
         // ---------- H/V lock (E3) ----------
@@ -151,6 +344,7 @@ namespace GeoART.Engine
                 }
             }
             f.Tol2 = f.Tol * f.Tol;
+            f.Cap = f.Metric != null ? CapFrom(f.Metric, end, f.S0, f.Tol) : SnapCapFloor;   // BoardCap at the unsnapped end
 
             // (a) Candidates near the axis line contribute their along-axis coordinate.
             var list = _candidates;
@@ -160,7 +354,7 @@ namespace GeoART.Engine
                 double qa = horizontal ? q.X : q.Y;
                 if (!(qa >= 0 && qa <= 1)) continue;
                 double perpBoard = horizontal ? q.Y - a.Y : q.X - a.X;   // board-distance cap, perpendicular part
-                if (!(Math.Abs(perpBoard) <= MaxSnapBoardDistance)) continue;
+                if (!(Math.Abs(perpBoard) <= f.Cap)) continue;
                 if (f.Metric != null && (!f.Metric.TryToScreen(q, out q) || !q.IsFinite)) continue;
                 double perp = Math.Abs(f.AxisDir.X * (q.Y - f.S0.Y) - f.AxisDir.Y * (q.X - f.S0.X));
                 if (!(perp <= f.Tol)) continue;
@@ -240,6 +434,7 @@ namespace GeoART.Engine
             public Vec2 AxisDir;         // unit direction of the axis line, in the measuring space
             public double Tol, Tol2;
             public double RawAlong;      // the unsnapped end's along-axis coordinate (board units), for the board cap
+            public double Cap;           // BoardCap at the unsnapped end
             public bool Found;
             public double BestAlong, BestD2;
             public int BestPriority;
@@ -252,12 +447,12 @@ namespace GeoART.Engine
             }
 
             /// <summary>
-            /// Considers the axis point at <paramref name="along"/>: within <see cref="MaxSnapBoardDistance"/> of the
+            /// Considers the axis point at <paramref name="along"/>: within <see cref="Cap"/> of the
             /// unsnapped end on the board, then nearest to S0 within Tol, then priority, then first.
             /// </summary>
             public void Offer(double along, int priority)
             {
-                if (!(Math.Abs(along - RawAlong) <= MaxSnapBoardDistance)) return;
+                if (!(Math.Abs(along - RawAlong) <= Cap)) return;
                 Vec2 q = OnAxis(Horizontal, Anchor, along);
                 if (Metric != null && (!Metric.TryToScreen(q, out q) || !q.IsFinite)) return;
                 double dx = q.X - S0.X, dy = q.Y - S0.Y;

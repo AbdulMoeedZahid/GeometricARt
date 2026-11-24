@@ -30,7 +30,7 @@ namespace GeoART.Engine
         /// <summary>"1 shape selected" or "N shapes selected".</summary>
         public static string SelectedCountToast(int n) => n == 1 ? "1 shape selected" : n + " shapes selected";
 
-        /// <summary>Board-distance cap for tap-picking a stroke, in board units (as <see cref="MaxSnapBoardDistance"/>).</summary>
+        /// <summary>Board-distance cap for tap-picking a stroke, in board units (as <see cref="SnapCapFloor"/>).</summary>
         public const double MaxPickBoardDistance = 0.03;
 
         const double PickProbe = 0.01;   // board step used to measure px per board unit at the tap point
