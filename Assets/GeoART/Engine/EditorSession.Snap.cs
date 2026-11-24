@@ -292,6 +292,7 @@ namespace GeoART.Engine
                 _stickyOn = true;
                 _stickyRecheck = false;
             }
+            else if (found) _stickyOn = false;   // back on the start dot: an older sticky must not come back
             return found;
         }
 

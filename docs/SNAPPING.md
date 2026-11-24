@@ -66,7 +66,7 @@ Now the cap only limits grazing angles:
 After a drag snaps to a dot it **stays on that dot** while the finger is within **48 px** (1.5 x 32) and within the board
 cap of it, unless another dot within reach is nearer by more than 4 px. This forgives the few millimetres the smoothing
 filter and the lifting finger add. The gesture's own start dot is never sticky (short lines and small circles from a
-snapped start still work). The sticky is reset for every gesture and dropped when Snap is turned off, the H/V lock is
+snapped start still work), and returning to it drops any older sticky dot. The sticky is reset for every gesture and dropped when Snap is turned off, the H/V lock is
 turned on, or the dot stops being a dot (its layer hidden mid-drag; an Up then commits the raw point). The H/V lock and
 Move/Scale/Duplicate have no sticky.
 
