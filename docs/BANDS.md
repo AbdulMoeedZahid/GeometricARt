@@ -175,7 +175,8 @@ Known limits and decisions (v1):
 - Structure cut, wider than an edge: when the band is wider than the under half-edge is long and the line continues in a
   separate input that only touches it end to end, only the first input is cut. This needs a width at or past the safe
   limit, where the popup is already red.
-- Fill (P6) on a banded layer: in flat Double and in the stripped view the crossing squares are open, so all the band
+- Fill (P6, `docs/FILL.md`) on a banded layer uses the outer band outlines and bridges (not the structure or inner
+  lines) as region boundaries: in flat Double and in the stripped view the crossing squares are open, so all the band
   strips form one connected region and a tap on any strip fills the whole band lattice (the book's geometry). In
   Interlace each band piece between two crossings is its own region. Stars, octagons and the gaps are separate regions
   in every mode.

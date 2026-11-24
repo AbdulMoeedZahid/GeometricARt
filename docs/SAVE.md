@@ -87,6 +87,9 @@ To get rid of all saves in the Editor, delete that folder. You can also copy des
   20 mm, a transparent colour black. No version bump: a file from before bands has none of these fields and loads with
   bands off; an older app reading a new file ignores them and shows the design unbanded (nothing is lost on disk unless
   that old app saves over it).
+- **Fills** (`docs/FILL.md`): each layer has a `fills` list of `{ "x", "y" (doubles as text), "r", "g", "b", "a" }`, the
+  seed point and colour of each fill, in order. Older files have no list and load without fills; an unreadable point
+  drops that fill; colour values are clamped.
 - A file that can't be read is skipped in the list with one warning in the console. It is never deleted.
 
 ## How it is wired (notes for teammates)

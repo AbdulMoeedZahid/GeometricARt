@@ -31,7 +31,10 @@ divisions...), and tapping two points connects them with a line. An H/V lock kee
      "Restyled N shapes"), besides setting it for new shapes. Holding Line or Circle with a selection opens the chips
      **without** switching tool or clearing the selection; a plain tap still switches tools. This is how a band's
      structure line is highlighted in colour or weight, as in the book (p22).
-   **Snap** (orange = on, the default) and **H/V** (orange = on) are at the bottom of the tool bar; see `docs/SNAPPING.md`.
+   **Snap** (orange = on, the default) is at the bottom of the tool bar; **hold Snap** for the **H/V** lock chip (the Snap
+   label reads "H/V" while the lock is on); see `docs/SNAPPING.md`. H/V had its own button until the **Fill** tool
+   (paint bucket, fourth button) needed the slot: the column stays at 9 buttons, [Line, Circle, Select, Fill] [Bands,
+   Width] [Square, 2x2] [Snap]. Fill: `docs/FILL.md`.
 5. Shapes go into the active layer (the one selected in the left sidebar). If that layer is hidden, nothing is drawn and a
    toast says "Layer is hidden: double-tap it in the sidebar to show it".
 
@@ -149,6 +152,7 @@ layer opacity popup is open its full-screen blocker covers the button. One tap =
 | Layer opacity (one popup session on one layer) | Layer opacity |
 | Band width (one slider session on one layer) / any other band setting | Band width / Bands |
 | Restyle selection (colour, width or dash) | Style |
+| Fill a region / clear a fill | Fill / Clear fill |
 | Grid Square/Hex / Tiles | Grid type / Tiles |
 | ClearBoard (API only, no button) | Clear board |
 
