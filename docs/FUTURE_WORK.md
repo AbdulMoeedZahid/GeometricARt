@@ -26,8 +26,9 @@ current colour, tap again to replace, "No fill" in the Colour palette to clear.
 - Add a fuzz check in `tools/enginecheck/FillChecks.cs`: random non-overlapping holes in random polygons; the triangles'
   area must equal the region's and no two triangles may overlap. Bring in the tester's `VerifierFillChecks` and
   `VerifierFillViewTests`.
-- Set `ToolBar.FillEnabled = true` (`App/ToolBar.cs`): the Fill button returns after Select (9 buttons) and the colour
-  bar's "No fill" works again; the view tests already follow the switch.
+- Set `ToolBar.FillEnabled = true` (`App/ToolBar.cs`): the Fill button returns after Select (10 buttons, so the column
+  shrinks to about 0.88 on iPhones; merging Grid and Tiles, section 8, wins that back) and the Colour palette gets its
+  "No fill" chip; the view tests already follow the switch.
 
 **Risks.** Other degenerate regions (many holes touching the outer boundary at one vertex). The fuzz check is the
 safety net.
