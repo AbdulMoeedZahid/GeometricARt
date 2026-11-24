@@ -303,6 +303,10 @@ Notes for developers:
 - `SceneBuilder` adds `ColorBar` next to `ToolBar`. Scenes saved earlier (Main.unity) get one at runtime on the `ToolBar`'s GameObject.
 - Tests: `VerifierColorTests`, `ColourPaletteViewTests` (EditMode), `ColourPalettePlayTests` (PlayMode, the real input
   path).
+- Layout check without the phone: `-executeMethod GeoART.EditorTools.UiLayoutShot.RunBatch` (no `-nographics`) lays the
+  real UI out for an iPhone 14 and a 14 Pro Max (`App/UiScreen.cs` overrides the screen size and safe area) and writes
+  `ui-{phone}-closed/palette/wheel.png` (a selection active, over the board) to `$GEOART_UI_SHOT_OUT` or
+  `Logs/GeoARtUiShot/`.
 
 ## Files
 - `Assets/GeoART/Engine/EditorSession.Tools.cs`: tools, gestures, ghosts, cursor, dotted toggle.

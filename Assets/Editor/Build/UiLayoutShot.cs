@@ -3,18 +3,20 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using GeoART.App;
+using GeoART.App.Save;
 using GeoART.BoardRender;
 using GeoART.Contracts;
 using GeoART.Engine;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.UI;
 
 namespace GeoART.EditorTools
 {
     /// <summary>
     /// Screenshot-like PNGs of the app's runtime UI laid out for a phone screen (no device needed): the real ToolBar,
-    /// ColorBar, LayerSidebar and PlacementControls, built for a placed board with a selection (so the action bar shows),
+    /// ColorBar, LayerSidebar, PlacementControls and DesignsPanel, built for a placed board with a selection (so the action bar shows),
     /// over the board drawn by BoardView from a phone-like viewpoint. <see cref="UiScreen.Override"/> makes the UI lay
     /// itself out for the phone's size and safe area; the canvases are switched to Screen Space - Camera so they render
     /// into the phone-sized texture. One PNG per phone and state:
@@ -83,7 +85,7 @@ namespace GeoART.EditorTools
                 var parts = new MonoBehaviour[]
                 {
                     uiGo.AddComponent<ToolBar>(), uiGo.AddComponent<ColorBar>(), uiGo.AddComponent<LayerSidebar>(),
-                    uiGo.AddComponent<PlacementControls>(),
+                    uiGo.AddComponent<PlacementControls>(), uiGo.AddComponent<DesignsPanel>(),
                 };
                 foreach (var p in parts) Invoke(p, "Awake");
                 foreach (var p in parts) Invoke(p, "Start");
@@ -114,12 +116,13 @@ namespace GeoART.EditorTools
                 boardCam.transform.LookAt(new Vector3(0f, 0f, 0.02f));
                 boardCam.targetTexture = rt;
 
+                // The UI camera is an overlay camera in the board camera's URP stack, so the UI draws over the board.
                 var uiCam = uiCamGo.GetComponent<Camera>();
-                uiCam.clearFlags = CameraClearFlags.Depth;
                 uiCam.cullingMask = 1 << UiLayer;
                 uiCam.orthographic = true;
                 uiCam.transform.SetPositionAndRotation(new Vector3(0f, 0f, -10f), Quaternion.identity);   // see ToolHoldMenu.Open
-                uiCam.targetTexture = rt;
+                uiCam.GetUniversalAdditionalCameraData().renderType = CameraRenderType.Overlay;
+                boardCam.GetUniversalAdditionalCameraData().cameraStack.Add(uiCam);
                 foreach (var canvas in uiGo.GetComponentsInChildren<Canvas>(true))
                 {
                     if (!canvas.isRootCanvas) continue;
@@ -143,7 +146,6 @@ namespace GeoART.EditorTools
                 }
 
                 boardCam.Render();
-                uiCam.Render();
                 var prev = RenderTexture.active;
                 RenderTexture.active = rt;
                 var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
@@ -160,7 +162,6 @@ namespace GeoART.EditorTools
             {
                 UiScreen.Override = null;
                 boardCamGo.GetComponent<Camera>().targetTexture = null;
-                uiCamGo.GetComponent<Camera>().targetTexture = null;
                 rt.Release();
                 foreach (var t in textures) UnityEngine.Object.DestroyImmediate(t);
                 UnityEngine.Object.DestroyImmediate(rt);
