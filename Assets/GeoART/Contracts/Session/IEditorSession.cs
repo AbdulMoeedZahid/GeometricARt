@@ -46,6 +46,8 @@ namespace GeoART.Contracts
         void DeleteBottomLayer();
         void SetLayerVisible(EntityId id, bool visible);
         void SetLayerOpacity(EntityId id, double opacity);       // clamped to [0,1]
+        void SetLayerBands(EntityId id, LayerBands bands);       // sanitized; one undo step ("Bands", or "Band width" merged per layer)
+        void RestyleSelection(StyleParts parts, StrokeStyle style);   // selected shapes on visible layers; one "Style" step
         void SetGrid(int n);                                      // tiles per side, clamped to [MinGridN, MaxGridN]
         void SetGridKind(GridKind kind);                          // square or hex tiles; read back from Board.GridKind
 

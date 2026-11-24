@@ -75,16 +75,17 @@ namespace GeoART.Contracts
         public string Name;
         public bool Visible = true;
         public double Opacity = 1.0;                                     // [0,1], multiplies stroke alpha
+        public LayerBands Bands;                                         // band treatment; default = off (Bands.cs)
         public readonly List<Shape> Shapes = new List<Shape>();          // first = back
         public readonly List<SnapPoint> SnapPoints = new List<SnapPoint>();
 
         public Layer() { }
         public Layer(EntityId id, string name) { Id = id; Name = name; }
 
-        /// <summary>Deep copy: same id, name, visibility, opacity; cloned shapes and snap points (null entries kept).</summary>
+        /// <summary>Deep copy: same id, name, visibility, opacity, bands; cloned shapes and snap points (null entries kept).</summary>
         public Layer DeepClone()
         {
-            var c = new Layer(Id, Name) { Visible = Visible, Opacity = Opacity };
+            var c = new Layer(Id, Name) { Visible = Visible, Opacity = Opacity, Bands = Bands };   // Bands: a value type
             c.Shapes.Capacity = Shapes.Count;
             for (int i = 0; i < Shapes.Count; i++) c.Shapes.Add(Shapes[i]?.Clone());
             c.SnapPoints.Capacity = SnapPoints.Count;

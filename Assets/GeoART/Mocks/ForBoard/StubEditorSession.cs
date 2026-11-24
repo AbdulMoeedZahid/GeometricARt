@@ -97,6 +97,31 @@ namespace GeoART.Mocks
             BoardChanged?.Invoke(BoardChangeKind.Layers);
         }
 
+        public void SetLayerBands(EntityId id, LayerBands bands)
+        {
+            var layer = _board.FindLayer(id);
+            if (layer == null) return;
+            layer.Bands = bands.Sanitized();
+            BoardChanged?.Invoke(BoardChangeKind.Layers);
+        }
+
+        public void RestyleSelection(StyleParts parts, StrokeStyle style)
+        {
+            bool any = false;
+            foreach (var layer in _board.Layers)
+                foreach (var s in layer.Shapes)
+                {
+                    if (s == null || !Selection.Ids.Contains(s.Id)) continue;
+                    StrokeStyle st = s.Style;
+                    if ((parts & StyleParts.Color) != 0) st = st.WithColor(style.Color);
+                    if ((parts & StyleParts.Width) != 0) st = st.WithWidth(style.Width);
+                    if ((parts & StyleParts.Dash) != 0) st = st.WithDash(style.Dash);
+                    s.Style = st;
+                    any = true;
+                }
+            if (any) BoardChanged?.Invoke(BoardChangeKind.Shapes);
+        }
+
         public void ClearBoard() => LoadBoard(GoldenBoards.Empty());
 
         public void LoadBoard(Board b)
