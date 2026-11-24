@@ -11,6 +11,7 @@ using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.TestTools;
 using InputTouchPhase = UnityEngine.InputSystem.TouchPhase;
+using EntityId = GeoART.Contracts.EntityId;
 
 namespace GeoART.Tests.Verifier.PlayMode
 {
