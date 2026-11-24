@@ -30,7 +30,7 @@ namespace GeoART.Engine
 
         /// <summary>Raised by Undo/Redo: every content flag (all listeners refresh) plus History.</summary>
         public const BoardChangeKind HistoryChangeKind = BoardChangeKind.Shapes | BoardChangeKind.Layers
-            | BoardChangeKind.SnapPoints | BoardChangeKind.Grid | BoardChangeKind.History;
+            | BoardChangeKind.SnapPoints | BoardChangeKind.Grid | BoardChangeKind.Fills | BoardChangeKind.History;
 
         public static string UndidToast(string label) => "Undid: " + label;
         public static string RedidToast(string label) => "Redid: " + label;
@@ -55,6 +55,8 @@ namespace GeoART.Engine
             public const string Bands = "Bands";
             public const string BandWidth = "Band width";
             public const string Style = "Style";
+            public const string Fill = "Fill";
+            public const string ClearFill = "Clear fill";
         }
 
         /// <summary>A stored board (never live while stored), the selection ids at that time, and the step's label.</summary>
