@@ -38,6 +38,13 @@ namespace GeoART.App.Save
         public string name;
         public bool visible;
         public string opacity;   // double, see DesignSerializer
+        // Band treatment (LayerBands). Missing in older files: off, and every value reads through LayerBands.Sanitized().
+        public bool bandOn;
+        public int bandMode;            // BandMode ordinal
+        public string bandWidth;        // double, see DesignSerializer
+        public bool bandHideStructure, bandInner, bandFlip;
+        public int bandR, bandG, bandB, bandA;
+        public int bandLineWidth;       // LineWidth ordinal
         public List<ShapeData> shapes = new List<ShapeData>();
         public List<SnapPointData> snapPoints = new List<SnapPointData>();
     }
@@ -91,6 +98,16 @@ namespace GeoART.App.Save
             foreach (var layer in b.Layers)
             {
                 var ld = new LayerData { id = layer.Id.Value, name = layer.Name, visible = layer.Visible, opacity = D(layer.Opacity) };
+                LayerBands bands = layer.Bands.Sanitized();
+                ld.bandOn = bands.On;
+                ld.bandMode = (int)bands.Mode;
+                ld.bandWidth = D(bands.Width);
+                ld.bandHideStructure = bands.HideStructure;
+                ld.bandInner = bands.InnerLines;
+                ld.bandFlip = bands.FlipWeave;
+                ld.bandR = bands.OutlineColor.R; ld.bandG = bands.OutlineColor.G;
+                ld.bandB = bands.OutlineColor.B; ld.bandA = bands.OutlineColor.A;
+                ld.bandLineWidth = (int)bands.OutlineWidth;
                 foreach (var shape in layer.Shapes)
                     if (shape != null) ld.shapes.Add(FromShape(shape));
                 foreach (var p in layer.SnapPoints)
@@ -146,6 +163,17 @@ namespace GeoART.App.Save
                     {
                         Visible = ld.visible,
                         Opacity = double.IsNaN(opacity) ? 1.0 : Math.Max(0.0, Math.Min(1.0, opacity)),
+                        Bands = new LayerBands
+                        {
+                            On = ld.bandOn,
+                            Mode = (BandMode)ld.bandMode,
+                            Width = P(ld.bandWidth),   // missing -> NaN -> the default width
+                            HideStructure = ld.bandHideStructure,
+                            InnerLines = ld.bandInner,
+                            FlipWeave = ld.bandFlip,
+                            OutlineColor = new RgbaColor(Byte(ld.bandR), Byte(ld.bandG), Byte(ld.bandB), Byte(ld.bandA)),
+                            OutlineWidth = (LineWidth)ld.bandLineWidth,
+                        }.Sanitized(),
                     };
                     maxId = Math.Max(maxId, ld.id);
                     if (ld.shapes != null)
