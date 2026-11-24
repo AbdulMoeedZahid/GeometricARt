@@ -3,19 +3,20 @@
 Book p23: "the individual forms ... can be elaborately decorated with patterns and colour". The **Fill** tool colours a
 closed region of the active layer.
 
-**Status: switched off for now.** `ToolBar.FillEnabled` is `false`: the tool column has no Fill button (8 buttons) and
-the colour bar never shows "No fill", because of the triangulator issue below. Everything else stays: the engine's Fill
+**Status: switched off for now.** `ToolBar.FillEnabled` is `false`: the tool column has no Fill button (9 buttons) and
+the Colour palette never shows "No fill", because of the triangulator issue below. Everything else stays: the engine's Fill
 tool, `Layer.Fills`, saving and loading, and drawing. Fills saved by an earlier build still load, draw and survive a
-re-save. To turn Fill back on, fix the issue below and set `FillEnabled = true` (the column goes back to 9 buttons;
+re-save. To turn Fill back on, fix the issue below and set `FillEnabled = true` (the column goes to 10 buttons;
 the view tests follow the switch). Next steps: `docs/FUTURE_WORK.md`.
 
 ## Using it
 1. Tap **Fill** (paint bucket, fourth button in the tool column). A toast says "Fill: tap inside a closed shape".
-2. Pick a colour in the colour bar (any swatch, or the colour wheel's colour).
+2. Pick a colour in the Colour palette (tap **Colour** in the tool column: any swatch, Custom, or Wheel… for the colour
+   wheel).
 3. Tap inside a closed region: it fills with that colour. Tap a filled region with another colour: its colour is
    replaced. Tapping it again with the same colour changes nothing.
-4. To clear a fill, tap **No fill** in the colour bar (it takes the Board button's place while Fill is active), then tap
-   the region. Picking any colour, or leaving the Fill tool, switches No fill off again.
+4. To clear a fill, tap **No fill** in the Colour palette (an extra chip after Board, shown only while Fill is active),
+   then tap the region. Picking any colour, or leaving the Fill tool, switches No fill off again.
 5. A tap outside every closed region toasts "Tap inside a closed shape to fill it". With No fill, a tap on an unfilled
    region toasts "Nothing to clear here". A hidden active layer gets the usual "Layer is hidden" toast. A drag does
    nothing, and nothing snaps.

@@ -6,7 +6,8 @@ risks and a rough size (S = a day or less, M = a few days, L = a week or more).
 
 Already done on this branch: the Line hold menu, bands (Double, stripped, interlace, inner lines, structure cut),
 easier snapping (32 px, adaptive cap, sticky release, haptics), restyle selection, the colour wheel, Delete in the action
-bar and the Redo button. Fill is built but switched off (section 1).
+bar and the Redo button, and the Colour button with its palette in the tool column (the bottom colour pill is gone).
+Fill is built but switched off (section 1).
 
 ---
 
@@ -16,7 +17,7 @@ colour"). The tool, regions, seeds, undo, saving and drawing are all built (`doc
 of the triangulator issue described in `docs/FILL.md`, section "Known issue".
 
 **UX.** As documented in `docs/FILL.md`: a paint-bucket tool after Select, tap a closed region to fill it with the
-current colour, tap again to replace, "No fill" in the colour bar to clear.
+current colour, tap again to replace, "No fill" in the Colour palette to clear.
 
 **Approach.**
 - Fix `Triangulator.Bridge` (`Engine/Geometry/Triangulator.cs`): standard Eberly hole bridging (hit point, candidate
@@ -131,9 +132,10 @@ into Snap's hold menu; merging Grid (Square/Hex) and Tiles (1..4) into one butto
 
 **UX.** One grid button: tap cycles the tiles, hold opens chips for Square/Hex x 1..4.
 
-**Approach.** `ToolHoldMenu` needs a **two-row chip menu**: 8 chips x (56 + 8) px = 504 px is wider than the 390 px
-screen. Add rows to `ToolHoldMenu.Configure` and the row builder in `ToolBar.HoldMenus.cs`; update the column (`ToolBar.cs`
-`ButtonCount`, `ButtonH`) and the view tests that list the column. Also fix the colour bar's 21:9 overlap here (section 13).
+**Approach.** 8 chips x (56 + 8) px = 504 px is wider than the 390 px screen, so the chips need two rows. The grid exists
+now (the Colour palette uses it): pass `columns` (and a narrower `chipW`) to `AddHoldMenu` in `ToolBar.HoldMenus.cs`.
+Update the column (`ToolBar.cs` `ButtonCount`, `ButtonH`) and the view tests that list the column; merging the two
+buttons also removes the small 0.97 shrink the ninth (Colour) button brought on 390x844 iPhones.
 
 **Risks.** Layout tests across screen shapes; discoverability of the hold menu.
 **Size.** M.
@@ -190,9 +192,6 @@ user walks.
 **Size.** M.
 
 ## 13. Small follow-ups (open NITs)
-- **Colour bar overlaps the tool column on 21:9 Android screens** (about 4.5 x 25 ref px). The bar grew from 292 to
-  308 px with the custom swatch; iPhone keeps about 11 px clear. Fix with the toolbar rework (section 8): shrink the bar on
-  narrow aspect ratios (`App/ColorBar.cs` `ApplySafeArea`) or move the Board button. Size S.
 - **Band topology rebuilt for every banded layer on any shape change** (`BoardRender/BandCache.cs`), including a stroke
   on another layer and a restyle. Fix: keep a per-layer geometry signature (kind, id and coordinate bits, not style) and
   re-planarize only when it changed; the same idea works for `FillCache` if seeds are included. Size S.

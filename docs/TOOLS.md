@@ -25,8 +25,9 @@ divisions...), and tapping two points connects them with a line. An H/V lock kee
    - After the first placement a one-time toast says "Hold Line or Circle for line styles" (remembered once shown).
    **Bands** (under Select): tap turns the active layer's bands (double lines) on or off, keeping its remembered mode
    and width; hold opens the layer popup with the band settings; the label shows Off / Double / Weave and the button is
-   orange while on (`docs/BANDS.md`). **Width** cycles Thin / Medium / Thick for new shapes.
-   - **Restyle selection**: while something is selected (Select, Move, Scale, Duplicate), a colour swatch, the Width
+   orange while on (`docs/BANDS.md`). **Width** cycles Thin / Medium / Thick for new shapes. **Colour** (under Width)
+   shows the current colour and opens the colour palette (see "Colours" below).
+   - **Restyle selection**: while something is selected (Select, Move, Scale, Duplicate), a palette colour, the Width
      button or a line-mode chip also applies that one attribute to the selected shapes (one "Style" undo step, toast
      "Restyled N shapes"), besides setting it for new shapes. Holding Line or Circle with a selection opens the chips
      **without** switching tool or clearing the selection; a plain tap still switches tools. This is how a band's
@@ -34,8 +35,10 @@ divisions...), and tapping two points connects them with a line. An H/V lock kee
    **Snap** (orange = on, the default) is at the bottom of the tool bar; **hold Snap** for the **H/V** lock chip (the Snap
    label reads "H/V" while the lock is on); see `docs/SNAPPING.md`. H/V had its own button until the **Fill** tool
    (paint bucket) needed the slot. Fill is **switched off for now** (`ToolBar.FillEnabled`, known issue in
-   `docs/FILL.md`), so the column has 8 buttons: [Line, Circle, Select] [Bands, Width] [Square, 2x2] [Snap]; with Fill on
-   it goes after Select. Suggestions for later work: `docs/FUTURE_WORK.md`.
+   `docs/FILL.md`), so the column has 9 buttons: [Line, Circle, Select] [Bands, Width, Colour] [Square, 2x2] [Snap];
+   with Fill on it goes after Select. The column is 550 ref px tall: it fits a 390x844 screen without insets, and on
+   iPhones with a notch or Dynamic Island (390x844 with insets, 14 Pro Max) it shrinks to about 0.97 to stay between the
+   placement row and the coach text. Suggestions for later work: `docs/FUTURE_WORK.md`.
 5. Shapes go into the active layer (the one selected in the left sidebar). If that layer is hidden, nothing is drawn and a
    toast says "Layer is hidden: double-tap it in the sidebar to show it".
 
@@ -242,19 +245,40 @@ finger every frame and filters the board point with a One Euro filter (`Engine/O
 - Visual check without the phone: `-executeMethod GeoART.EditorTools.ToolsRenderCheck.RunBatch` (no `-nographics`)
   compiles the shader for Metal and writes PNGs of a test board at 45 cm and 90 cm to `Logs/GeoARtRenderCheck/`.
 
-## Colours (ColorBar, BoardAppearance)
+## Colours (Colour button, ColorBar, BoardAppearance)
 
-A slim colour bar sits at the bottom-left, just above the placement buttons, once the board is placed. It ends left of the tool column.
+Colour lives in the tool column: the **Colour** button is the third of the style group (Bands, Width, Colour). Its icon
+is a disc in the current colour inside a light ring (a rainbow ring when the current colour is the custom one), and it
+has the small corner mark of a button with a menu. Until this branch a slim colour pill sat at the bottom-left; the Select
+action bar covered it exactly when a colour was needed to restyle the selection, so it was removed and nothing sits
+under the action bar any more.
 
-- **Shape colour:** 5 round swatches, Black, White, Red, Green, Blue (the D-08 `Palette` values). The selected swatch has an orange ring. The colour applies to **new** lines, circles and polygons, exactly like the Width button. Shapes you already drew keep their colour, so one pattern can mix colours; with a selection the swatch also restyles it (above). The preview while dragging stays orange, as before. Default: Black.
-- **Custom colour / colour wheel:** the sixth swatch is a rainbow ring around the last colour picked on the wheel (grey
-  until one is picked). A tap selects that colour; when there is none yet, or it already is the current colour, the tap
-  opens the **colour wheel**: a hue/saturation disc (drag on it), a brightness slider and a preview. **Use colour**
-  makes it the current colour, restyles the selection if there is one, keeps it on the custom swatch (remembered between
-  sessions, PlayerPrefs) and closes. A touch outside closes without a change (on release, so it never draws). Custom
-  colours are saved in designs like any other colour. Swatch slots are 36 ref px (40 before) so the bar still ends left
-  of the tool column.
-- **Board colour:** the Board button switches the board's **guide lines** between **Black** (default, the original look) and **White** (for dark surfaces). Only the dashed grid and outline (and the frame and user snap points) change colour. Nothing is filled: the real surface stays visible under the board.
+- **Opening the palette:** the **press** on Colour opens the palette to the left of the button, vertically centred on it
+  (kept on screen). Opening it never switches tool and never touches the selection, so the action bar stays.
+  - **Tap** Colour, then tap a chip; or **press, slide** onto a chip (it lights up) and **release** to pick it.
+  - A touch anywhere outside the chips closes it without a change (on release, so that whole touch never draws and never
+    presses another button). A second tap on Colour closes it too. Opening another hold menu (Line, Circle, Snap) closes
+    it, and so do rotating or resizing the screen.
+- **Palette:** two rows of 48 x 52 chips (256 ref px wide, so it ends right of the layer sidebar on a 390-wide screen):
+  - row 1: the 5 shape colours, Black, White, Red, Green, Blue (the D-08 `Palette` values);
+  - row 2: **Custom**, **Wheel…**, **Board** (and **No fill** while the Fill tool is active, only when
+    `ToolBar.FillEnabled`; see `docs/FILL.md`).
+  The current colour's chip is orange.
+- **Shape colour:** a colour chip sets the colour for **new** lines, circles and polygons, exactly like the Width button,
+  and closes the palette. Shapes you already drew keep their colour, so one pattern can mix colours; with a selection
+  the chip also restyles it (one "Style" undo step; the selection and the action bar stay). The preview while dragging
+  stays orange, as before. Default: Black.
+- **Custom colour / colour wheel:** **Custom** shows the last colour picked on the wheel in a rainbow ring (grey until
+  one is picked). A tap selects that colour; with none yet it opens the wheel. **Wheel…** closes the palette and opens
+  the **colour wheel**: a hue/saturation disc (drag on it), a brightness slider and a preview, centred in the space left
+  of the tool column (it never covers the column). **Use colour** makes it the current colour, restyles the selection if
+  there is one, keeps it as the custom colour (remembered between sessions, PlayerPrefs `GeoART.CustomColor`) and closes.
+  A touch outside closes without a change (on release, so it never draws). Custom colours are saved in designs like any
+  other colour.
+- **Board colour:** the **Board** chip switches the board's **guide lines** between **Black** (default, the original
+  look) and **White** (for dark surfaces); its icon is the grid in the guide colour. It is a toggle, so the palette stays
+  open. Only the dashed grid and outline (and the frame and user snap points) change colour. Nothing is filled: the real
+  surface stays visible under the board.
 
 Reference colours:
 
@@ -271,8 +295,14 @@ Like lines, a circle can no longer leave the board: its radius is capped at the 
 Notes for developers:
 
 - The guide colour is a display setting (`BoardAppearance.Guides` in Contracts), not part of the `Board` model, so undo, layers, snapping and fixtures do not see it. It is static (reset on SubsystemRegistration with `ServiceHub`), because `BoardView` stays inactive until placement.
+- The Colour button and the palette are in `App/ToolBar.Colour.cs`; the palette is a `ToolHoldMenu` with
+  `OpenOnPress` (the press opens it, no hold) and `KeepOpenOnPick` (Board), its chips laid out as a grid by
+  `AddHoldMenu(..., columns, chipW, spacing)` in `ToolBar.HoldMenus.cs`. `ColorBar` (same GameObject) keeps the colour
+  logic (`SelectColor`, `ApplyColor`, `SelectCustom`, `SelectNoFill`, `ToggleBoardGuides`), the custom colour and the
+  wheel (`ColorBar.Wheel.cs`); it no longer draws anything of its own besides the wheel.
 - `SceneBuilder` adds `ColorBar` next to `ToolBar`. Scenes saved earlier (Main.unity) get one at runtime on the `ToolBar`'s GameObject.
-- Tests: `VerifierColorTests` (EditMode).
+- Tests: `VerifierColorTests`, `ColourPaletteViewTests` (EditMode), `ColourPalettePlayTests` (PlayMode, the real input
+  path).
 
 ## Files
 - `Assets/GeoART/Engine/EditorSession.Tools.cs`: tools, gestures, ghosts, cursor, dotted toggle.
@@ -286,8 +316,10 @@ Notes for developers:
 - `Assets/GeoART/Engine/OneEuroFilter2D.cs` (new): the smoothing filter.
 - `Assets/GeoART/App/BoardInputRouter.cs`: touch/mouse to `IEditorSession.Pointer`.
 - `Assets/GeoART/App/ToolBar.cs`: right-edge tool column (procedural icons).
-- `Assets/GeoART/App/ToolHoldMenu.cs`: the reusable hold-to-pick menu (hold timer, slide-to-pick, blocker);
-  `Assets/GeoART/App/ToolBar.HoldMenus.cs`: the Line and Circle mode menus, mode icons, the Bands slot.
+- `Assets/GeoART/App/ToolHoldMenu.cs`: the reusable hold-to-pick menu (hold timer or open-on-press, slide-to-pick,
+  blocker); `Assets/GeoART/App/ToolBar.HoldMenus.cs`: the Line and Circle mode menus, mode icons, the Bands slot;
+  `Assets/GeoART/App/ToolBar.Colour.cs`: the Colour button and palette; `Assets/GeoART/App/ColorBar.cs`,
+  `ColorBar.Wheel.cs`: colour logic, custom colour, colour wheel.
   EditMode `ToolHoldMenuViewTests`: tap, hold, slide, release-then-tap, blocker, slop cancel, icons.
 - `Assets/GeoART/BoardRender/BoardView.cs`, `BoardMeshBuilder.cs`, `Shaders/BoardUnlit.shader`: widths, AA, joins, circles.
 - `Assets/Settings/Mobile_RPAsset.asset`: MSAA 4x, render scale 1.
