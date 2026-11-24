@@ -21,6 +21,12 @@ namespace GeoART.App
     /// <see cref="SuppressClick"/> (true from the hold until the next press). The press uses its own thresholds, so the
     /// EventSystem drag threshold is turned off (as in LayerPointerRelay) and every move is seen.
     /// A haptic tick (<see cref="Haptics.Tick"/>) plays when the row opens.
+    /// Variants, set by the owner after Configure:
+    ///   <see cref="OpenOnPress"/>   the row opens as soon as the button is pressed (no hold), so press-slide-release and
+    ///                   tap-then-tap both work on one button (the Colour palette); the release is still not a click
+    ///   <see cref="KeepOpenOnPick"/>  chips that apply without closing the row (a toggle such as the Board guides chip)
+    /// The row may be a grid (the owner places the chips); hidden chips are never picked. When it opens it is kept inside
+    /// its parent rect, so a tall grid next to a button near an edge stays on screen.
     /// Time comes from <see cref="Clock"/> (Time.unscaledTime; EditMode tests swap in a fake clock). Update only runs the
     /// hold timer while a press is down.
     /// </summary>
@@ -56,6 +62,15 @@ namespace GeoART.App
         int _pointer, _hover = -1;
         Vector2 _pressPos;
         float _pressTime;
+
+        /// <summary>
+        /// Open the row on the press itself instead of after <see cref="HoldSeconds"/> (the Colour palette). The press
+        /// still swallows the release's click (<see cref="SuppressClick"/>), and slide-release picks as after a hold.
+        /// </summary>
+        public bool OpenOnPress { get; set; }
+
+        /// <summary>Chips for which a pick applies but leaves the row open (null: every pick closes it).</summary>
+        public Func<int, bool> KeepOpenOnPick { get; set; }
 
         /// <summary>True while the chip row is shown.</summary>
         public bool IsOpen => _row != null && _row.gameObject.activeSelf;
@@ -141,6 +156,7 @@ namespace GeoART.App
             _pressTime = Clock();
             _holdFired = _cancelled = _suppressClick = false;
             SetCharge(0.06f);
+            if (OpenOnPress && _row != null) FireHold();   // opens under the finger: slide to a chip, or release and tap one
         }
 
         public void OnInitializePotentialDrag(PointerEventData e) => e.useDragThreshold = false;
@@ -187,6 +203,19 @@ namespace GeoART.App
             Opened?.Invoke();
         }
 
+        /// <summary>
+        /// Opens the row without a press (the button's click, e.g. a tap that reached onClick, or a test): runs onHold,
+        /// shows the row and raises <see cref="Opened"/>. Does nothing when there is no row or it is already open.
+        /// </summary>
+        public void Show()
+        {
+            if (!_configured || _row == null || IsOpen) return;
+            _onHold?.Invoke();
+            Open();
+            Haptics.Tick();
+            Opened?.Invoke();
+        }
+
         // ---------- the row ----------
 
         /// <summary>Shows the row left of the button, vertically centred on it, at the button's on-screen scale.</summary>
@@ -202,7 +231,13 @@ namespace GeoART.App
             float fit = _button.rect.height > 0f ? (c[1].y - c[0].y) / (_button.rect.height * parentScale) : 1f;
             _row.anchorMin = _row.anchorMax = new Vector2(0.5f, 0.5f);
             _row.pivot = new Vector2(1f, 0.5f);
-            _row.anchoredPosition = local - parent.rect.center - new Vector2(RowGap * fit, 0f);   // offset from the centre anchor
+            Vector2 pos = local - parent.rect.center - new Vector2(RowGap * fit, 0f);   // offset from the centre anchor
+            // Keep the (scaled) row inside the parent: pivot (1, 0.5), so x is its right edge and y its middle.
+            Rect area = parent.rect;
+            float w = _row.rect.width * fit, h = _row.rect.height * fit;
+            pos.x = Mathf.Clamp(pos.x, -area.width * 0.5f + w, Mathf.Max(-area.width * 0.5f + w, area.width * 0.5f));
+            pos.y = Mathf.Clamp(pos.y, -area.height * 0.5f + h * 0.5f, Mathf.Max(-area.height * 0.5f + h * 0.5f, area.height * 0.5f - h * 0.5f));
+            _row.anchoredPosition = pos;
             _row.localScale = new Vector3(fit, fit, 1f);
             _hover = -1;
             RefreshChips();
@@ -222,6 +257,14 @@ namespace GeoART.App
 
         void Pick(int index)
         {
+            if (KeepOpenOnPick != null && KeepOpenOnPick(index))
+            {
+                _pressing = _holdFired = false;
+                _onPick?.Invoke(index);
+                _hover = -1;
+                if (IsOpen) RefreshChips();
+                return;
+            }
             Close();
             _onPick?.Invoke(index);
         }
@@ -230,7 +273,8 @@ namespace GeoART.App
         {
             if (!IsOpen) return -1;
             for (int i = 0; i < _chips.Length; i++)
-                if (RectTransformUtility.RectangleContainsScreenPoint(_chips[i].rectTransform, screen, null)) return i;
+                if (_chips[i].gameObject.activeSelf
+                    && RectTransformUtility.RectangleContainsScreenPoint(_chips[i].rectTransform, screen, null)) return i;
             return -1;
         }
 
