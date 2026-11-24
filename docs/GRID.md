@@ -4,7 +4,7 @@ The user can lay a square or hexagonal tile grid over the board. Every tile fits
 (quick place or corner-registered). The grid is a drawing guide: it does not change shapes, and snapping to it comes later.
 
 ## How to use
-1. Place the board. The tool bar on the right now has a third group under Line / Circle / Dotted / Width (Dotted is now the Line hold menu, see `docs/TOOLS.md`):
+1. Place the board. The tool bar on the right now has a third group under Line / Circle / Select / Bands / Width (Dotted is now in the Line hold menu, see `docs/TOOLS.md`):
    - **Grid** (label `Square` or `Hex`): switches the tile shape. The icon shows the current kind.
    - **Tiles** (label `1x1` .. `4x4`): cycles tiles per side 1 -> 2 -> 3 -> 4 -> 1.
 2. The dashed tile edges update immediately, in the Editor sandbox and on the phone in AR.

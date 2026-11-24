@@ -19,8 +19,10 @@ divisions...), and tapping two points connects them with a line. An H/V lock kee
      and a row of chips (**Solid**, **Dotted**) pops out to the left of the button, the current mode in orange.
      Moving more than 8 reference px before 0.45 s cancels the hold (the release can still be a tap).
    - **Slide** onto a chip (it lights up) and release to pick it; the row closes. Release anywhere else and the row stays
-     open: tap a chip to pick, or tap anywhere outside the chips to close without a change.
-   - After the first placement a one-time toast says "Hold Line or Circle for line styles".
+     open: tap a chip to pick, or tap anywhere outside the chips to close without a change (that whole touch only
+     closes the row: nothing is drawn and no other button is pressed). Holding the other button opens its row and closes
+     this one; rotating or resizing the screen closes an open row.
+   - After the first placement a one-time toast says "Hold Line or Circle for line styles" (remembered once shown).
    **Bands** (under Select) will turn the active layer's band treatment on and off; until bands exist it is dimmed, shows
    "Off" and a tap only toasts "Bands are coming soon". **Width** cycles Thin / Medium / Thick for new shapes.
    **Snap** (orange = on, the default) and **H/V** (orange = on) are at the bottom of the tool bar; see `docs/SNAPPING.md`.
