@@ -20,8 +20,9 @@ namespace GeoART.Tests.Verifier.PlayMode
     /// Touchscreen, an EventSystem with InputSystemUIInputModule, the real ToolBar, ColorBar and BoardInputRouter, real
     /// frames. A tap on Colour opens the palette (the press opens it, the release leaves it open) and a tap on a chip picks;
     /// press-slide-release picks; with a selection a pick restyles it and keeps the tool, the selection and the action bar;
-    /// and the first touch on the board with the palette open only closes it: nothing is drawn (the P1 fix of the hold
-    /// menus' blocker, reused). The board covers the whole screen.
+    /// the first touch on the board with the palette open only closes it: nothing is drawn (the P1 fix of the hold menus'
+    /// blocker, reused); and the custom colour is kept in PlayerPrefs (the test restores the key). The board covers the
+    /// whole screen.
     /// </summary>
     public sealed class ColourPalettePlayTests
     {
@@ -263,6 +264,37 @@ namespace GeoART.Tests.Verifier.PlayMode
             Assert.AreEqual(Palette.Black, _session.Style.Color, "and picked nothing");
             yield return Drag(a, b);
             Assert.AreEqual(1, ShapeCount, "control: with the palette closed the same drag draws a line");
+        }
+
+        [UnityTest]
+        public IEnumerator TheCustomColourIsKeptInPlayerPrefs()
+        {
+            const string Key = "GeoART.CustomColor";
+            bool had = PlayerPrefs.HasKey(Key);
+            int old = PlayerPrefs.GetInt(Key, 0);
+            GameObject second = null;
+            try
+            {
+                yield return MakeUi();
+                var bar = _uiGo.GetComponent<ColorBar>();
+                bar.OpenWheel();
+                bar.PickOnWheel(new Vector2(0.5f, -0.5f));
+                RgbaColor c = bar.WheelColor;
+                bar.UseWheelColor();
+                Assert.AreEqual((c.R << 24) | (c.G << 16) | (c.B << 8) | 255, PlayerPrefs.GetInt(Key), "saved as before (RGB packed)");
+                second = new GameObject("SecondSession");
+                second.AddComponent<ToolBar>();
+                var bar2 = second.AddComponent<ColorBar>();   // Awake runs now (Play Mode): it loads the saved colour
+                Assert.AreEqual(c, bar2.CustomColor, "the next session's palette has it as its Custom colour");
+                yield return Frame();
+            }
+            finally
+            {
+                if (second != null) UnityEngine.Object.DestroyImmediate(second);
+                if (had) PlayerPrefs.SetInt(Key, old);
+                else PlayerPrefs.DeleteKey(Key);
+                PlayerPrefs.Save();
+            }
         }
 
         [UnityTest]
