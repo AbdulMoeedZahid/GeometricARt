@@ -50,9 +50,11 @@ namespace GeoART.Engine
     /// Width safety: the offset of half-edge g has length L - t_tail - s_head = L - h (k_tail + k_head). It collapses at
     /// or below 0 (counted in <see cref="Collapsed"/>; a drawn one is replaced by the meeting point of its neighbours'
     /// offset lines, so the run stays continuous). <see cref="MaxSafeWidth"/> = 2 min L / (k_tail + k_head) over every
-    /// half-edge with a positive sum, frame pieces included (two lines closer than the width both reaching the frame).
-    /// <see cref="SelfIntersections"/> counts proper crossings inside each face's inset polygon, which also catches
-    /// split events (a reflex corner running into a non-adjacent side).
+    /// half-edge with a positive sum, frame pieces included (two lines closer than the width both reaching the frame), and
+    /// never more than <see cref="BandGraph.NearMissDistance"/> (parts that come close without touching).
+    /// <see cref="SelfIntersections"/> counts proper crossings between all faces' inset polygons, which also catches
+    /// split events (a reflex corner running into a non-adjacent side) and bands of separate parts running into each
+    /// other.
     ///
     /// Runs: walking each face cycle, consecutive drawn (side &gt; 0) offsets join into one polyline; a zero-side
     /// half-edge (the frame) ends it, so bands end flush with the frame; a cycle with no zero side is a closed run. This
@@ -245,7 +247,7 @@ namespace GeoART.Engine
                 _wIn[g] = _wOut[g] = x;
                 _wIn[next] = _wOut[next] = x;
             }
-            MaxSafeWidth = minSafe;
+            MaxSafeWidth = Math.Min(minSafe, _bg.NearMissDistance);   // also: parts that come close without touching
             Collapsed = collapsed;
             // Nothing outside the board: a corner on a frame line stays on it, a tip spike or cap near the frame is cut.
             for (int g = 0; g < nh; g++)
@@ -336,50 +338,71 @@ namespace GeoART.Engine
             }
         }
 
+        /// <summary>
+        /// Proper crossings between the inset polygons of all face cycles together (the polygon of each cycle: every
+        /// wedge's points, frame pieces included). Comparing across cycles catches a face with two boundary loops (an
+        /// island inside it) and separate components; neighbours within one polygon share an end and are skipped. A sweep
+        /// over x-sorted segments keeps it near-linear.
+        /// </summary>
         void CountSelfIntersections()
         {
-            var poly = new List<Vec2>();
-            var order = new int[64];
-            var minX = new double[64];
-            int count = 0;
+            var a = new List<Vec2>();
+            var b = new List<Vec2>();
+            var poly = new List<int>();
+            var index = new List<int>();
+            var size = new List<int>();
+            var pts = new List<Vec2>();
             for (int f = 0; f < _g.FaceCount; f++)
             {
                 int n = _g.FaceSize(f);
                 bool any = false;
-                poly.Clear();
+                pts.Clear();
                 for (int k = 0; k < n; k++)
                 {
                     int g = _g.FaceHalfEdge(f, k);
                     if (Drawn(g)) any = true;
-                    AddDistinct(poly, _wIn[g]);
-                    AddDistinct(poly, _wOut[g]);
+                    AddDistinct(pts, _wIn[g]);
+                    AddDistinct(pts, _wOut[g]);
                 }
                 if (!any) continue;
-                if (poly.Count > 1 && poly[poly.Count - 1] == poly[0]) poly.RemoveAt(poly.Count - 1);
-                int m = poly.Count;
-                if (m < 4) continue;
-                // Sweep over segments sorted by min x; test only pairs whose x and y ranges overlap.
-                if (order.Length < m) { order = new int[m * 2]; minX = new double[m * 2]; }
+                if (pts.Count > 1 && pts[pts.Count - 1] == pts[0]) pts.RemoveAt(pts.Count - 1);
+                int m = pts.Count;
+                if (m < 2) continue;
                 for (int i = 0; i < m; i++)
                 {
-                    order[i] = i;
-                    minX[i] = Math.Min(poly[i].X, poly[(i + 1) % m].X);
+                    a.Add(pts[i]);
+                    b.Add(pts[(i + 1) % m]);
+                    poly.Add(f);
+                    index.Add(i);
+                    size.Add(m);
                 }
-                Array.Sort(minX, order, 0, m);
-                for (int a = 0; a < m; a++)
+            }
+            int total = a.Count;
+            var order = new int[total];
+            var minX = new double[total];
+            for (int i = 0; i < total; i++)
+            {
+                order[i] = i;
+                minX[i] = Math.Min(a[i].X, b[i].X);
+            }
+            Array.Sort(minX, order);
+            int count = 0;
+            for (int u = 0; u < total; u++)
+            {
+                int i = order[u];
+                Vec2 p0 = a[i], p1 = b[i];
+                double maxX = Math.Max(p0.X, p1.X), y0 = Math.Min(p0.Y, p1.Y), y1 = Math.Max(p0.Y, p1.Y);
+                for (int v = u + 1; v < total && minX[v] <= maxX; v++)
                 {
-                    int i = order[a];
-                    Vec2 p0 = poly[i], p1 = poly[(i + 1) % m];
-                    double maxX = Math.Max(p0.X, p1.X), y0 = Math.Min(p0.Y, p1.Y), y1 = Math.Max(p0.Y, p1.Y);
-                    for (int b = a + 1; b < m && minX[b] <= maxX; b++)
+                    int j = order[v];
+                    if (poly[i] == poly[j])
                     {
-                        int j = order[b];
-                        int d = Math.Abs(i - j);
-                        if (d <= 1 || d == m - 1) continue;   // neighbours share an end
-                        Vec2 q0 = poly[j], q1 = poly[(j + 1) % m];
-                        if (Math.Max(q0.Y, q1.Y) < y0 || Math.Min(q0.Y, q1.Y) > y1) continue;
-                        if (ProperCross(p0, p1, q0, q1)) count++;
+                        int d = Math.Abs(index[i] - index[j]);
+                        if (d <= 1 || d == size[i] - 1) continue;   // neighbours share an end
                     }
+                    Vec2 q0 = a[j], q1 = b[j];
+                    if (Math.Max(q0.Y, q1.Y) < y0 || Math.Min(q0.Y, q1.Y) > y1) continue;
+                    if (ProperCross(p0, p1, q0, q1)) count++;
                 }
             }
             SelfIntersections = count;

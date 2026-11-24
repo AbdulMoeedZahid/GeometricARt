@@ -43,6 +43,17 @@ namespace GeoART.Engine
         /// <summary>Number of structure edges (0 means nothing to band).</summary>
         public int StructureEdgeCount { get; private set; }
 
+        /// <summary>Near-miss distances are only tracked below this (twice the widest band).</summary>
+        public const double NearMissLimit = 2 * LayerBands.MaxWidth;
+
+        /// <summary>
+        /// Smallest distance between two structure edges that are topologically far apart (no shared node and no edge
+        /// joining their ends), or +infinity when none is under <see cref="NearMissLimit"/>. Their bands touch at a width
+        /// of exactly this distance (a stub stopping short of a line, an inner line close to a side). Edges one or two
+        /// hops apart meet at joints, where the face-based width limit in BandOutline already applies.
+        /// </summary>
+        public double NearMissDistance { get; private set; } = double.PositiveInfinity;
+
         public int StructureDegree(int node) => _structureDegree[node];
         /// <summary>The k-th structure half-edge out of node n, CCW.</summary>
         public int StructureOut(int node, int k) => _sRing[_sRingStart[node] + k];
@@ -143,6 +154,63 @@ namespace GeoART.Engine
                 }
             }
             TraceThreadsAndWeave();
+            NearMissDistance = ComputeNearMiss();
+        }
+
+        bool Neighbours(int a, int b)
+        {
+            for (int k = 0; k < _structureDegree[a]; k++)
+                if (Graph.Dest(_sRing[_sRingStart[a] + k]) == b) return true;
+            return false;
+        }
+
+        double ComputeNearMiss()
+        {
+            var g = Graph;
+            var edges = new List<int>(StructureEdgeCount);
+            for (int e = 0; e < g.EdgeCount; e++)
+                if (!g.IsFrame(2 * e)) edges.Add(e);
+            int n = edges.Count;
+            var minX = new double[n];
+            var order = new int[n];
+            for (int i = 0; i < n; i++)
+            {
+                order[i] = edges[i];
+                minX[i] = Math.Min(g.Node(g.Origin(2 * edges[i])).X, g.Node(g.Dest(2 * edges[i])).X);
+            }
+            Array.Sort(minX, order);
+            double best = double.PositiveInfinity;
+            for (int i = 0; i < n; i++)
+            {
+                int e = order[i];
+                int a = g.Origin(2 * e), b = g.Dest(2 * e);
+                Vec2 pa = g.Node(a), pb = g.Node(b);
+                double reach = Math.Max(pa.X, pb.X) + Math.Min(best, NearMissLimit);
+                double y0 = Math.Min(pa.Y, pb.Y), y1 = Math.Max(pa.Y, pb.Y);
+                for (int j = i + 1; j < n && minX[j] <= reach; j++)
+                {
+                    int f = order[j];
+                    int c = g.Origin(2 * f), d = g.Dest(2 * f);
+                    if (a == c || a == d || b == c || b == d) continue;
+                    if (Neighbours(a, c) || Neighbours(a, d) || Neighbours(b, c) || Neighbours(b, d)) continue;
+                    Vec2 pc = g.Node(c), pd = g.Node(d);
+                    double lim = Math.Min(best, NearMissLimit);
+                    if (Math.Min(pc.Y, pd.Y) > y1 + lim || Math.Max(pc.Y, pd.Y) < y0 - lim) continue;
+                    double dist = Math.Min(Math.Min(SegDist(pa, pc, pd), SegDist(pb, pc, pd)),
+                                           Math.Min(SegDist(pc, pa, pb), SegDist(pd, pa, pb)));
+                    if (dist < best && dist < NearMissLimit) best = dist;
+                }
+            }
+            return best;
+        }
+
+        static double SegDist(Vec2 p, Vec2 a, Vec2 b)
+        {
+            double dx = b.X - a.X, dy = b.Y - a.Y;
+            double t = ((p.X - a.X) * dx + (p.Y - a.Y) * dy) / (dx * dx + dy * dy);
+            t = t < 0 ? 0 : t > 1 ? 1 : t;
+            double x = a.X + dx * t - p.X, y = a.Y + dy * t - p.Y;
+            return Math.Sqrt(x * x + y * y);
         }
 
         /// <summary>True when h is a structure half-edge on a frame side whose left side points out of the board.</summary>

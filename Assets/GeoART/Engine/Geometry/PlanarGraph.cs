@@ -25,9 +25,10 @@ namespace GeoART.Engine
     ///  2. Endpoint weld: endpoints within <see cref="WeldEps"/> become one point (a point on more frame sides wins, then the
     ///     lexicographically smallest). Near-junction weld: an endpoint within <see cref="WeldEps"/> of another segment's
     ///     interior moves onto it (repeated until nothing moves, at most 4 passes).
-    ///  3. Collinear merge: collinear segments (within <see cref="CollinearEps"/>) that overlap or touch become one
-    ///     segment between the extreme original endpoints (bit-exact); it keeps the largest source index. Then one more
-    ///     near-junction pass re-attaches ends to the merged segments.
+    ///  3. Collinear merge: collinear segments (within <see cref="CollinearEps"/>) that overlap become one segment between
+    ///     the extreme original endpoints (bit-exact), provided every member lies on that segment's line; it keeps the
+    ///     largest source index. Segments that only touch end to end are left alone (their shared end is a node). Then one
+    ///     more near-junction pass re-attaches ends to the merged segments.
     ///  4. Crossings: every pair (uniform-grid prefilter) through <see cref="Intersect.SegmentSegment"/>, which returns
     ///     segment ends bit-exactly. Points within <see cref="NodeEps"/> become one node (a point on more frame sides wins, then the
     ///     lexicographically smallest). Segments are split at their nodes into edges.
@@ -350,7 +351,10 @@ namespace GeoART.Engine
                 double len = u.Length;
                 double pa = ((t.A.X - s.A.X) * u.X + (t.A.Y - s.A.Y) * u.Y) / len;
                 double pb = ((t.B.X - s.A.X) * u.X + (t.B.Y - s.A.Y) * u.Y) / len;
-                if (Math.Max(pa, pb) < -CollinearEps || Math.Min(pa, pb) > len + CollinearEps) return;   // apart
+                // Only a real overlap merges. Segments that merely touch end to end stay separate (their shared end is a
+                // node anyway), so a chain of short chords along an arc can never fuse into one straight line.
+                double overlap = Math.Min(len, Math.Max(pa, pb)) - Math.Max(0, Math.Min(pa, pb));
+                if (!(overlap > CollinearEps)) return;
                 Union(parent, i, j);
                 any = true;
             });
@@ -385,6 +389,15 @@ namespace GeoART.Engine
                         if (t < tLo || (t == tLo && Lex(p, lo) < 0)) { tLo = t; lo = p; }
                         if (t > tHi || (t == tHi && Lex(p, hi) < 0)) { tHi = t; hi = p; }
                     }
+                }
+                // Every member must lie on the merged segment's own line; otherwise keep the group as drawn.
+                bool onAxis = true;
+                foreach (int k in list)
+                    if (DistToLine(segs[k].A, lo, hi) > CollinearEps || DistToLine(segs[k].B, lo, hi) > CollinearEps) onAxis = false;
+                if (!onAxis)
+                {
+                    foreach (int k in list) merged.Add(segs[k]);
+                    continue;
                 }
                 merged.Add(new Seg { A = lo, B = hi, Src = src });
             }
