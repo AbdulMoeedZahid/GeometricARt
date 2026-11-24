@@ -53,11 +53,14 @@ namespace GeoART.Tests.Verifier
 
         // Spec constants (ToolBar, B1.11, A4), restated so the tests do not read them from the code under test.
         const float ButtonW = 56f, ButtonH = 52f, EdgeMargin = 8f, DisabledAlpha = 0.4f;
-        const float PlacementRowTop = 0.11f, CoachTextBottom = 0.80f, MinFit = 0.4f, ColumnHeight = 550f;
+        const float PlacementRowTop = 0.11f, CoachTextBottom = 0.80f, MinFit = 0.4f;
+        const float ColumnHeight = ToolBar.ColumnHeight;   // 550 with Fill, 490 while it is switched off
         const float SidebarTopFraction = 0.73f, ToastCentreFromTop = 0.245f;
         const string NothingToUndo = "Nothing to undo";
 
-        static readonly string[] ColumnOrder = { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Square", "2x2", "Snap" };
+        static readonly string[] ColumnOrder = ToolBar.FillEnabled
+            ? new[] { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Square", "2x2", "Snap" }
+            : new[] { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap" };   // Fill switched off (docs/FILL.md)
 
         EditorSession _session;
         Space _space;

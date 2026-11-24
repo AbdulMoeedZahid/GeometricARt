@@ -40,7 +40,9 @@ namespace GeoART.Tests.Verifier
         }
 
         static readonly string[] BarOrder = { "Move", "Scale", "Duplicate", "Delete", "Deselect" };
-        static readonly string[] ColumnOrder = { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Square", "2x2", "Snap" };
+        static readonly string[] ColumnOrder = ToolBar.FillEnabled
+            ? new[] { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Square", "2x2", "Snap" }
+            : new[] { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap" };   // Fill switched off (docs/FILL.md)
 
         // Spec constants (ToolBar / BoardView), restated here so the tests do not read them from the code under test.
         const float BarButtonW = 56f, BarButtonH = 52f, BarSpacing = 6f, BarWidth = 304f;   // 5 buttons since Delete (P7)
@@ -634,8 +636,9 @@ namespace GeoART.Tests.Verifier
             float w = 1290f, h = 2796f, s = ScreenSnapMetric.ScaleFactor(w, h);
             var safe = Rect.MinMaxRect(0f, 31f * s, w, h - 54f * s);
             float band = (Mathf.Min(safe.yMax, 0.8f * h) - EdgeMargin * s) - (safe.yMin + PlacementRowTop * h + EdgeMargin * s);
-            float columnFit = Mathf.Clamp(band / (550f * s), MinFit, 1f);
-            Assert.AreEqual(0.975f, columnFit, 0.01f, "the column fit the brief quotes");
+            float columnFit = Mathf.Clamp(band / (ToolBar.ColumnHeight * s), MinFit, 1f);
+            Assert.AreEqual(ToolBar.ColumnHeight > 540f ? 0.975f : 1f, columnFit, 0.01f,
+                "the column fit the brief quotes (no shrink with the 8-button column while Fill is off)");
             bar = SpecBarRect(w, h, safe, columnFit, out fit);
             Assert.AreEqual(1f, fit, "14 Pro Max: no shrink");
             Assert.AreEqual(132f, bar.yMin / s, 1.5f, "14 Pro Max: bar 132..184 ref px from the bottom");

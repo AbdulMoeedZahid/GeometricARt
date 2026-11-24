@@ -128,6 +128,17 @@ namespace GeoART.Tests.Verifier
         public void FillButtonAndNoFillInTheColourBar()
         {
             MakeApp();
+            if (!ToolBar.FillEnabled)
+            {
+                // Switched off (docs/FILL.md, known issue): no Fill button, and "No fill" never shows, even if the engine's
+                // Fill tool is selected from code.
+                foreach (var t in _appGo.GetComponentsInChildren<Transform>(true))
+                    Assert.AreNotEqual("Fill", t.name, "no Fill button while Fill is switched off");
+                _session.SetTool(ToolId.Fill);
+                Assert.IsFalse(Find("No fill").activeSelf, "No fill stays hidden");
+                Assert.IsTrue(Find("Board").activeSelf, "the Board button stays");
+                return;
+            }
             Assert.IsTrue(Find("Board").activeSelf && !Find("No fill").activeSelf, "Board button outside Fill");
             Click("Fill");
             Assert.AreEqual(ToolId.Fill, _session.ActiveTool, "Fill button selects the Fill tool");
