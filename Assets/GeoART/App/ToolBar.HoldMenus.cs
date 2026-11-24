@@ -30,7 +30,7 @@ namespace GeoART.App
         static readonly string[] s_ModeNames = { "Solid", "Dotted" };   // index = (int)LineStyle
 
         RectTransform _holdMenus;
-        ToolHoldMenu _lineMenu, _circleMenu, _bandsMenu;
+        ToolHoldMenu _lineMenu, _circleMenu, _bandsMenu, _snapMenu;
         Image _bandsBg;
         RawImage _lineIcon, _circleIcon;
         Texture _lineSolidGlyph, _lineDottedGlyph, _circleSolidGlyph, _circleDottedGlyph;
@@ -52,20 +52,30 @@ namespace GeoART.App
             _circleSolidGlyph = MakeGlyph(Glyph.Circle);
             _circleDottedGlyph = MakeGlyph(Glyph.CircleDotted);
 
-            _lineMenu = AddHoldMenu(_lineBg, "Line", new[] { Glyph.Line, Glyph.Dotted }, font, () => HoldTool(ToolId.Line));
-            _circleMenu = AddHoldMenu(_circleBg, "Circle", new[] { Glyph.Circle, Glyph.CircleDotted }, font,
-                () => HoldTool(ToolId.Circle));
+            System.Func<int> dash = () => _session != null ? (int)_session.Style.Dash : -1;
+            _lineMenu = AddHoldMenu(_lineBg, "Line", new[] { Glyph.Line, Glyph.Dotted }, s_ModeNames, font, dash, PickLineMode,
+                () => HoldTool(ToolId.Line));
+            _circleMenu = AddHoldMenu(_circleBg, "Circle", new[] { Glyph.Circle, Glyph.CircleDotted }, s_ModeNames, font, dash,
+                PickLineMode, () => HoldTool(ToolId.Circle));
+            // Snap: tap toggles snapping; hold opens the H/V lock chip (later the angle-lock steps join it).
+            _snapMenu = AddHoldMenu(_snapBg, "Snap", new[] { Glyph.HV }, new[] { "H/V" }, font,
+                () => _session != null && _session.OrthoLock ? 0 : -1, _ => ToggleOrthoLock(), null);
             // One menu at a time (two fingers can hold two buttons).
-            _lineMenu.Opened += () => { _circleMenu.Close(); _bandsMenu.Close(); };
-            _circleMenu.Opened += () => { _lineMenu.Close(); _bandsMenu.Close(); };
-            _bandsMenu.Opened += () => { _lineMenu.Close(); _circleMenu.Close(); };
+            var menus = new[] { _lineMenu, _circleMenu, _bandsMenu, _snapMenu };
+            foreach (var m in menus)
+            {
+                ToolHoldMenu self = m;
+                m.Opened += () => { foreach (var other in menus) if (other != self) other.Close(); };
+            }
         }
 
         /// <summary>
-        /// A <see cref="ToolHoldMenu"/> on <paramref name="button"/> with one chip per line mode (named
-        /// "<paramref name="name"/> menu: Solid" etc.), a charging overlay and the corner mark.
+        /// A <see cref="ToolHoldMenu"/> on <paramref name="button"/> with one chip per option (named
+        /// "<paramref name="name"/> menu: label"), a charging overlay and the corner mark. <paramref name="getCurrent"/>
+        /// gives the highlighted chip, <paramref name="onPick"/> applies a chip.
         /// </summary>
-        ToolHoldMenu AddHoldMenu(Image button, string name, Glyph[] glyphs, Font font, System.Action onHold)
+        ToolHoldMenu AddHoldMenu(Image button, string name, Glyph[] glyphs, string[] labels, Font font,
+            System.Func<int> getCurrent, System.Action<int> onPick, System.Action onHold)
         {
             var blocker = new GameObject(name + " menu blocker", typeof(RectTransform), typeof(Image));
             var brt = (RectTransform)blocker.transform;
@@ -86,8 +96,8 @@ namespace GeoART.App
             var chips = new Image[glyphs.Length];
             for (int i = 0; i < glyphs.Length; i++)
             {
-                chips[i] = MakeButton(s_ModeNames[i], glyphs[i], font, row, () => { }, out _);
-                chips[i].gameObject.name = name + " menu: " + s_ModeNames[i];
+                chips[i] = MakeButton(labels[i], glyphs[i], font, row, () => { }, out _);
+                chips[i].gameObject.name = name + " menu: " + labels[i];
                 var rt = chips[i].rectTransform;
                 rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0.5f);
                 rt.sizeDelta = new Vector2(ChipW, ChipH);
@@ -97,8 +107,7 @@ namespace GeoART.App
             var charge = AddOverlay(button.transform, "Charge");
             AddHoldMark(button.transform);
             var menu = button.gameObject.AddComponent<ToolHoldMenu>();
-            menu.Configure(charge, row, chips, blocker, () => _session != null ? (int)_session.Style.Dash : -1,
-                PickLineMode, onHold, Accent, Idle);
+            menu.Configure(charge, row, chips, blocker, getCurrent, onPick, onHold, Accent, Idle);
             return menu;
         }
 
@@ -171,6 +180,7 @@ namespace GeoART.App
             if (_lineMenu != null) _lineMenu.Close();
             if (_circleMenu != null) _circleMenu.Close();
             if (_bandsMenu != null) _bandsMenu.Close();
+            if (_snapMenu != null) _snapMenu.Close();
         }
 
         void MaybeShowLineMenuHint()

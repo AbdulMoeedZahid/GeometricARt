@@ -19,7 +19,10 @@ namespace GeoART.App
     ///   Grid            switches the tile grid Square <-> Hex (icon and label show the current kind)
     ///   Tiles           cycles tiles per side 1 -> 2 -> 3 -> 4 -> 1 (label "2x2" etc.)
     ///   Snap            toggles IEditorSession.SetSnapEnabled (orange when on; on by default)
-    ///   HV              toggles IEditorSession.SetOrthoLock: Line tool draws horizontal/vertical lines (orange when on)
+    ///                   Hold Snap: a chip toggles the H/V lock (IEditorSession.SetOrthoLock: the Line tool draws
+    ///                   horizontal/vertical lines); the Snap label reads "H/V" while the lock is on. H/V had its own
+    ///                   button until the Fill tool needed the slot (decisions: fewer, bigger buttons, pulled forward)
+    ///   Fill            selects ToolId.Fill (paint bucket): tap inside a closed region to fill it (docs/FILL.md)
     /// Nine buttons in four groups (3, 2, 2, 2), 550 reference px tall: fits a 390x844 portrait screen with room for
     /// the placement row and the coach text. Shorter screens (landscape: Android 16 ignores the portrait lock on large
     /// screens) shrink the column to stay between the two, see <see cref="ApplySafeArea"/>.
@@ -54,9 +57,9 @@ namespace GeoART.App
         enum Glyph
         {
             Line, Circle, Dotted, Width, Square, Hex, Tiles, Snap, HV, Select, Move, Scale, Duplicate, Deselect, Undo,
-            CircleDotted, Bands, HoldMark,
+            CircleDotted, Bands, HoldMark, Fill,
         }
-        const int GlyphCount = 18;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
+        const int GlyphCount = 19;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
 
         IEditorSession _session;
         IBoardSpace _boardSpace;
@@ -64,8 +67,8 @@ namespace GeoART.App
         RectTransform _column;
         Rect _safeArea;
         int _screenW, _screenH;   // ApplySafeArea depends on the screen size too, not just the safe area
-        Image _lineBg, _circleBg, _selectBg, _snapBg, _hvBg;
-        Text _widthLabel, _gridLabel, _tilesLabel;
+        Image _lineBg, _circleBg, _selectBg, _fillBg, _snapBg;
+        Text _widthLabel, _gridLabel, _tilesLabel, _snapLabel;
         RawImage _gridIcon;
         Texture _squareGlyph, _hexGlyph;
         readonly Texture2D[] _textures = new Texture2D[GlyphCount + 1];   // glyphs, then the rounded sprite
@@ -98,6 +101,7 @@ namespace GeoART.App
             _lineBg = CreateButton("Line", Glyph.Line, font, ref y, () => TapTool(_lineMenu, ToolId.Line), out _);
             _circleBg = CreateButton("Circle", Glyph.Circle, font, ref y, () => TapTool(_circleMenu, ToolId.Circle), out _);
             _selectBg = CreateButton("Select", Glyph.Select, font, ref y, () => _session?.SetTool(ToolId.SelectMove), out _);
+            _fillBg = CreateButton("Fill", Glyph.Fill, font, ref y, () => _session?.SetTool(ToolId.Fill), out _);
             y += GroupGap - Spacing;
             BuildBandsButton(font, ref y);
             CreateButton("Medium", Glyph.Width, font, ref y, CycleWidth, out _widthLabel);
@@ -108,9 +112,7 @@ namespace GeoART.App
             _squareGlyph = _gridIcon.texture;
             CreateButton("2x2", Glyph.Tiles, font, ref y, CycleGridN, out _tilesLabel);
             y += GroupGap - Spacing;
-            _snapBg = CreateButton("Snap", Glyph.Snap, font, ref y, ToggleSnap, out _);
-            _hvBg = CreateButton("HV", Glyph.HV, font, ref y, ToggleOrthoLock, out var hvLabel);
-            hvLabel.text = "H/V";
+            _snapBg = CreateButton("Snap", Glyph.Snap, font, ref y, ToggleSnap, out _snapLabel);
             BuildActionBar(font);
             BuildUndoButton(font);
             BuildHoldMenus(font);   // last: the open menus and their blockers draw over everything else
@@ -166,8 +168,10 @@ namespace GeoART.App
             SetColor(_lineBg, tool == ToolId.Line ? Accent : Idle);
             SetColor(_circleBg, tool == ToolId.Circle ? Accent : Idle);
             SetColor(_selectBg, IsSelectionTool(tool) ? Accent : Idle);
+            SetColor(_fillBg, tool == ToolId.Fill ? Accent : Idle);
             SetColor(_snapBg, _session.SnapEnabled ? Accent : Idle);
-            SetColor(_hvBg, _session.OrthoLock ? Accent : Idle);
+            string snap = _session.OrthoLock ? "H/V" : "Snap";
+            if (!ReferenceEquals(_snapLabel.text, snap) && _snapLabel.text != snap) _snapLabel.text = snap;
             string width = WidthLabel(_session.Style.Width);
             if (!ReferenceEquals(_widthLabel.text, width)) _widthLabel.text = width;
             RefreshGrid();
@@ -218,7 +222,7 @@ namespace GeoART.App
 
         void ToggleSnap()
         {
-            if (_session == null) return;
+            if (_session == null || (_snapMenu != null && _snapMenu.SuppressClick)) return;
             _session.SetSnapEnabled(!_session.SnapEnabled);   // raises StateChanged -> Refresh
         }
 
@@ -454,6 +458,18 @@ namespace GeoART.App
                     float d = SegmentDistance(p, new Vector2(0.16f, 0.16f), dot) - 0.04f;
                     d = Mathf.Min(d, Mathf.Abs(Vector2.Distance(p, dot) - 0.17f) - 0.035f);
                     return Mathf.Min(d, Vector2.Distance(p, dot) - 0.07f);
+                }
+                case Glyph.Fill:   // paint bucket: a tilted bucket with a handle, and a drop falling from its lip
+                {
+                    var c = new Vector2(0.42f, 0.5f);
+                    float ang = -0.6f, cs = Mathf.Cos(ang), sn = Mathf.Sin(ang);
+                    Vector2 q = p - c;
+                    q = new Vector2(cs * q.x - sn * q.y, sn * q.x + cs * q.y);
+                    float body = Mathf.Abs(BoxDistance(q + c, c, 0.2f)) - 0.04f;
+                    float handle = Mathf.Abs(Vector2.Distance(q, new Vector2(0f, 0.2f)) - 0.17f) - 0.03f;
+                    if (q.y < 0.2f) handle = 1f;
+                    float drop = Vector2.Distance(p, new Vector2(0.78f, 0.26f)) - 0.08f;
+                    return Mathf.Min(body, Mathf.Min(handle, drop));
                 }
                 case Glyph.HV:   // a plus with end ticks: horizontal and vertical only
                 {
