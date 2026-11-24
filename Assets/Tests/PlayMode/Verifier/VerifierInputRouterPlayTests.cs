@@ -414,6 +414,7 @@ namespace GeoART.Tests.Verifier.PlayMode
             public void SetOrthoLock(bool on) => _s.SetOrthoLock(on);
             public void ClearSelection() => _s.ClearSelection();
             public void DeleteSelection() => _s.DeleteSelection();
+            public void ExtendSelection() => _s.ExtendSelection();
             public EntityId AddLayer() => _s.AddLayer();
             public void SelectLayer(EntityId id) => _s.SelectLayer(id);
             public void MoveLayer(EntityId id, int i) => _s.MoveLayer(id, i);

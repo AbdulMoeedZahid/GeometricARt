@@ -40,6 +40,7 @@ namespace GeoART.Contracts
         void SetOrthoLock(bool on);                               // raises StateChanged when it changes
         void ClearSelection();                                    // empties the selection (StateChanged if it was not empty)
         void DeleteSelection();                                   // removes the selected shapes (visible layers); one "Delete" step
+        void ExtendSelection();                                   // pushes the selected lines' ends to the next drawn shape; one "Extend" step (none if nothing moved)
 
         // layers + grid
         EntityId AddLayer();

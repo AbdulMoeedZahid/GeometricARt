@@ -159,6 +159,7 @@ namespace GeoART.Mocks
             if (any) BoardChanged?.Invoke(BoardChangeKind.Shapes);
             StateChanged?.Invoke();
         }
+        public void ExtendSelection() { }
         public EntityId AddLayer() => EntityId.None;
         public void SelectLayer(EntityId id) { }
         public void MoveLayer(EntityId id, int newIndex) { }
