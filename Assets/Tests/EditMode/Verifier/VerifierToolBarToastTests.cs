@@ -113,30 +113,43 @@ namespace GeoART.Tests.Verifier
         }
 
         [Test]
-        public void ToolBarSnapAndHVButtonsToggleSession()
+        public void ToolBarSnapTogglesAndItsHoldMenuTogglesHV()
         {
             Add<ToolBar>();
             _space.PlaceAtReticle();
-            var snapBg = Find("Snap").GetComponent<Image>();
-            var hvBg = Find("HV").GetComponent<Image>();
-            Assert.AreEqual("H/V", Find("HV").GetComponentInChildren<Text>().text);
+            var snap = Find("Snap");
+            var snapBg = snap.GetComponent<Image>();
+            var snapLabel = snap.GetComponentInChildren<Text>();
             Color idle = Find("Medium").GetComponent<Image>().color;   // Width is never highlighted
 
             Assert.IsTrue(_session.SnapEnabled, "snapping on by default");
             Assert.AreNotEqual(idle, snapBg.color, "Snap is highlighted while on");
-            Assert.AreEqual(idle, hvBg.color, "H/V idle while off");
+            Assert.AreEqual("Snap", snapLabel.text);
 
-            Click(Find("Snap"));
+            Click(snap);
             Assert.IsFalse(_session.SnapEnabled, "Snap button turns snapping off");
             Assert.AreEqual(idle, snapBg.color, "Snap idle when off");
-            Click(Find("Snap"));
+            Click(snap);
             Assert.IsTrue(_session.SnapEnabled, "and back on");
 
-            Click(Find("HV"));
-            Assert.IsTrue(_session.OrthoLock, "HV button turns the lock on");
-            Assert.AreNotEqual(idle, hvBg.color, "H/V highlighted while on");
+            // H/V lives in Snap's hold menu since the Fill tool took its slot.
+            float now = 10f;
+            var menu = snap.GetComponent<ToolHoldMenu>();
+            menu.Clock = () => now;
+            var e = new PointerEventData(_es) { position = Vector2.zero, pointerId = 0, button = PointerEventData.InputButton.Left };
+            ExecuteEvents.Execute(snap, e, ExecuteEvents.pointerDownHandler);
+            now += ToolHoldMenu.HoldSeconds + 0.05f;
+            var update = typeof(ToolHoldMenu).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic);
+            update.Invoke(menu, null);
+            Assert.IsTrue(menu.IsOpen, "hold Snap: the H/V chip opens");
+            ExecuteEvents.Execute(snap, e, ExecuteEvents.pointerUpHandler);
+            Click(snap);
+            Assert.IsTrue(_session.SnapEnabled, "the release of the hold does not toggle snapping");
+            Click(Find("Snap menu: H/V"));
+            Assert.IsTrue(_session.OrthoLock, "the chip turns the lock on");
+            Assert.AreEqual("H/V", snapLabel.text, "Snap's label shows the lock");
             _session.SetOrthoLock(false);   // changes from elsewhere also refresh
-            Assert.AreEqual(idle, hvBg.color);
+            Assert.AreEqual("Snap", snapLabel.text);
         }
 
         [Test]
@@ -148,7 +161,7 @@ namespace GeoART.Tests.Verifier
             var canvas = _go.GetComponentInChildren<Canvas>(true);
             Vector3[] cc = new Vector3[4], bc = new Vector3[4];
             ((RectTransform)canvas.transform).GetWorldCorners(cc);
-            string[] names = { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap", "HV" };
+            string[] names = { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Square", "2x2", "Snap" };
             float prevTop = float.MaxValue;
             foreach (var n in names)
             {

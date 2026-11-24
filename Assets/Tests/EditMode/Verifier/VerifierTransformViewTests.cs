@@ -40,7 +40,7 @@ namespace GeoART.Tests.Verifier
         }
 
         static readonly string[] BarOrder = { "Move", "Scale", "Duplicate", "Deselect" };
-        static readonly string[] ColumnOrder = { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap", "HV" };
+        static readonly string[] ColumnOrder = { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Square", "2x2", "Snap" };
 
         // Spec constants (ToolBar / BoardView), restated here so the tests do not read them from the code under test.
         const float BarButtonW = 64f, BarButtonH = 52f, BarSpacing = 8f, BarWidth = 280f;
@@ -482,19 +482,19 @@ namespace GeoART.Tests.Verifier
                 Assert.AreEqual(BarButtonH, rt.rect.height, 0.01f, $"{n} is {BarButtonH} tall");
             }
 
-            // GlyphCount 18 (15 + CircleDotted, Bands, HoldMark): the bar glyphs, Undo, plus the rounded sprite at index GlyphCount, all distinct.
+            // GlyphCount 19 (15 + CircleDotted, Bands, HoldMark, Fill): the bar glyphs, Undo, plus the rounded sprite at index GlyphCount, all distinct.
             var f = typeof(ToolBar).GetField("_textures", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(f, "ToolBar._textures");
             var table = (Texture2D[])f.GetValue(tb);
-            Assert.AreEqual(19, table.Length, "18 glyphs (incl. Undo and the line-mode glyphs) + the rounded sprite");
+            Assert.AreEqual(20, table.Length, "19 glyphs (incl. Undo, the line-mode glyphs and Fill) + the rounded sprite");
             var distinct = new HashSet<Texture2D>();
             foreach (var t in table)
             {
                 Assert.NotNull(t, "every glyph slot is filled (a missing GlyphCount bump overwrites one)");
                 distinct.Add(t);
             }
-            Assert.AreEqual(19, distinct.Count, "all distinct");
-            Assert.AreSame(rounded.texture, table[18], "the rounded sprite sits at index GlyphCount (18)");
+            Assert.AreEqual(20, distinct.Count, "all distinct");
+            Assert.AreSame(rounded.texture, table[19], "the rounded sprite sits at index GlyphCount (19)");
             foreach (var t in icons) CollectionAssert.Contains(table, t, "every icon is in the table (freed on destroy)");
         }
 
