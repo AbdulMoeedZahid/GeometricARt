@@ -14,6 +14,7 @@ namespace GeoART.BoardRender
     ///             dark colours, default) or White (light, for dark surfaces). Nothing is filled in AR
     ///             from <see cref="TileGrid"/> (D-07; drawn whenever showGrid is on, so also in AR)
     ///   Shapes  - committed lines/circles/polygons on visible layers + user snap points  (BoardChanged)
+    ///             A layer's fills (FillCache, docs/FILL.md) are drawn first, under its bands and strokes.
     ///             A layer with bands on (Layer.Bands, docs/BANDS.md) draws its band outlines first (BandCache: the
     ///             topology is rebuilt only on shape changes, the outline only when the band settings change), then its
     ///             lines and polygons unless the structure is hidden, then circles and snap points as usual. Like every
@@ -121,6 +122,10 @@ namespace GeoART.BoardRender
         float _surfaceW = float.NaN, _surfaceH = float.NaN;
         readonly List<Vector3> _poly = new List<Vector3>(16);
         readonly BandCache _bandCache = new BandCache();
+        readonly FillCache _fillCache = new FillCache();
+
+        /// <summary>The fill cache (tests).</summary>
+        public FillCache Fills => _fillCache;
 
         /// <summary>The band geometry cache (counters for tests and the width-slider cost estimate).</summary>
         public BandCache Bands => _bandCache;
@@ -186,6 +191,7 @@ namespace GeoART.BoardRender
             Unsubscribe();
             _session = session;
             _bandCache.Clear();
+            _fillCache.Clear();
             if (isActiveAndEnabled) Subscribe();
             MarkAllDirty();
         }
@@ -262,6 +268,9 @@ namespace GeoART.BoardRender
             _overlayDirty = true;
             if ((kind & (BoardChangeKind.Grid | BoardChangeKind.Reset)) != 0) _baseDirty = true;
             if ((kind & (BoardChangeKind.Shapes | BoardChangeKind.Reset | BoardChangeKind.History)) != 0) _bandCache.MarkTopologyDirty();
+            const BoardChangeKind fillKinds = BoardChangeKind.Shapes | BoardChangeKind.Layers | BoardChangeKind.Fills
+                                            | BoardChangeKind.Reset | BoardChangeKind.History;
+            if ((kind & fillKinds) != 0) _fillCache.MarkDirty();
         }
 
         void OnPreviewChanged() => _overlayDirty = true;
@@ -382,6 +391,7 @@ namespace GeoART.BoardRender
             var mb = _shapes.Builder;
             mb.Clear();
             _bandCache.BeginFrame();
+            _fillCache.BeginFrame();
             if (board != null)
             {
                 foreach (var layer in board.Layers)
@@ -389,6 +399,14 @@ namespace GeoART.BoardRender
                     if (layer == null || !layer.Visible) continue;
                     float opacity = Mathf.Clamp01((float)layer.Opacity);
                     if (opacity <= 0f) continue;
+                    // Fills first: under the layer's bands and strokes (one mesh, so layer order is kept).
+                    if (layer.Fills.Count > 0)
+                        foreach (var piece in _fillCache.Get(layer))
+                        {
+                            _poly.Clear();
+                            foreach (var p in piece.Triangles) _poly.Add(P(p, ShapesLift));
+                            mb.AddTriangles(_poly, WithOpacity(ToColor32(piece.Color), opacity));
+                        }
                     LayerBands bands = layer.Bands.Sanitized();
                     bool hideStructure = false;
                     BandOutline outline = null;
@@ -418,6 +436,7 @@ namespace GeoART.BoardRender
                 }
             }
             _bandCache.EndFrame();
+            _fillCache.EndFrame();
             _shapes.Apply();
         }
 

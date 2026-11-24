@@ -158,6 +158,19 @@ namespace GeoART.BoardRender
             }
         }
 
+        /// <summary>Solid triangles (3 points each), e.g. a fill region. Not anti-aliased: the strokes drawn on top hide the edge.</summary>
+        public void AddTriangles(IReadOnlyList<Vector3> points, Color32 color)
+        {
+            for (int i = 0; i + 2 < points.Count; i += 3)
+            {
+                int v = _vertices.Count;
+                AddVertex(points[i], color, Vector4.zero);
+                AddVertex(points[i + 1], color, Vector4.zero);
+                AddVertex(points[i + 2], color, Vector4.zero);
+                _indices.Add(v); _indices.Add(v + 1); _indices.Add(v + 2);
+            }
+        }
+
         /// <summary>Solid quad from four corners in order (either winding; the shader does not cull). Not anti-aliased.</summary>
         public void AddQuad(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, Color32 color)
         {
