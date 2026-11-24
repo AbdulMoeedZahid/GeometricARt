@@ -29,6 +29,8 @@ namespace GeoART.EditorTools
     ///      interlace-inner-* (8 mm), the tiled bands-tiled-* / interlace-tiled-*, and interlace with the structure line
     ///      shown (cut under every over band): interlace-structure-*, interlace-inner-structure-* (10 mm), for
     ///      comparison with the book (p22-23); 45 cm, 90 cm and straight down.
+    ///   7. renders fills (fill-*, fill-interlace-*): filled star faces, and a woven tiled pattern with a gap, a star
+    ///      centre and a band piece filled.
     /// Batch (needs graphics, so no -nographics):
     ///   -executeMethod GeoART.EditorTools.ToolsRenderCheck.RunBatch   (PNGs go to $GEOART_RENDER_OUT or Logs/GeoARtRenderCheck)
     /// </summary>
@@ -109,6 +111,10 @@ namespace GeoART.EditorTools
             // Interlace with the structure line shown: the under band's structure line is cut at every crossing.
             RenderBands(outDir, "interlace-structure-", GoldenBoards.StarOnFullBoard, 0.015, true, false, true);
             RenderBands(outDir, "interlace-inner-structure-", GoldenBoards.StarOnFullBoard, 0.025, true, true, true);
+            // 7. Fills (docs/FILL.md): a plain star with its octagon and two tips filled; the tiled pattern woven, with a gap
+            //    and band pieces filled.
+            RenderScenario(outDir, "fill-", s => DrawFills(s, false), showBase: true, dark: false, topView: true);
+            RenderScenario(outDir, "fill-interlace-", s => DrawFills(s, true), showBase: true, dark: false, topView: true);
         }
 
         /// <summary>
@@ -133,6 +139,36 @@ namespace GeoART.EditorTools
             // Snapping off: no candidate dots on top of the crossings, like the book's drawings.
             RenderScenario(outDir, prefix, s => { s.LoadBoard(shown); s.SetSnapEnabled(false); }, showBase: true, dark: false,
                 topView: true);
+        }
+
+        static void DrawFills(EditorSession s, bool tiled)
+        {
+            Board b = tiled ? GoldenBoards.Tiled2x2() : GoldenBoards.StarOnFullBoard();
+            Layer layer = b.Layers[b.Layers.Count - 1];
+            for (int i = 0; i < b.Layers.Count - 1; i++) b.Layers[i].Visible = false;
+            if (tiled)
+                layer.Bands = new LayerBands { On = true, Mode = BandMode.Interlace, Width = 0.02, OutlineColor = Palette.Black };
+            s.LoadBoard(b);
+            s.SetSnapEnabled(false);
+            s.SetTool(ToolId.Fill);
+            void Fill(RgbaColor c, double x, double y)
+            {
+                s.Style = s.Style.WithColor(c);
+                s.Pointer(new PointerEvent(PointerPhase.Down, new Vec2(x, y), true, 0));
+                s.Pointer(new PointerEvent(PointerPhase.Up, new Vec2(x, y), true, 0));
+            }
+            if (tiled)
+            {
+                Fill(Palette.Blue, 0.5, 0.5);                       // the gap between four stars
+                Fill(Palette.Orange, 0.25, 0.25);                   // a star's centre
+                Fill(Palette.Red, 0.25 + 0.25 * 0.707, 0.25);       // on a band near a tip
+            }
+            else
+            {
+                Fill(Palette.Blue, 0.5, 0.5);                       // the octagon
+                Fill(Palette.Red, 0.5, 0.82);                       // the top tip
+                Fill(Palette.Green, 0.82, 0.5);                     // the right tip
+            }
         }
 
         static void RenderScenario(string outDir, string prefix, Action<EditorSession> draw, bool showBase, bool dark,
