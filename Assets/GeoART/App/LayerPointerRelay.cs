@@ -12,7 +12,8 @@ namespace GeoART.App
     }
 
     /// <summary>
-    /// Forwards EventSystem pointer events from a raycast-target Image to its owner (the layer sidebar). Turns off the
+    /// Forwards EventSystem pointer events from a raycast-target Image to its owner (the layer sidebar, or a
+    /// <see cref="ToolHoldMenu"/>'s blocker). Turns off the
     /// EventSystem drag threshold so the owner sees every move and applies its own (reference-unit) thresholds.
     /// </summary>
     [DisallowMultipleComponent]
