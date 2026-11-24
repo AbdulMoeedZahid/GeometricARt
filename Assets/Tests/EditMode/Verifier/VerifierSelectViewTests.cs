@@ -317,12 +317,12 @@ namespace GeoART.Tests.Verifier
             var canvas = _appGo.GetComponentInChildren<Canvas>(true);
             Vector3[] cc = new Vector3[4], bc = new Vector3[4];
             ((RectTransform)canvas.transform).GetWorldCorners(cc);
-            // The column has nine buttons; the contextual action bar (Move, Scale, Duplicate, Deselect) has its own four.
+            // The column's buttons; the contextual action bar (Move, Scale, Duplicate, Extend, Delete, Deselect) has its own six.
             var buttons = new List<Button>(Find("Column").GetComponentsInChildren<Button>(true));
             int column = ToolBar.FillEnabled ? 9 : 8;   // Fill switched off for now (docs/FILL.md)
             Assert.AreEqual(column, buttons.Count, "the column's buttons");
-            Assert.AreEqual(column + 12, _appGo.GetComponentsInChildren<Button>(true).Length,
-                "plus the five action bar buttons, Undo, Redo, the Line and Circle menus' two mode chips each and Snap's H/V chip");
+            Assert.AreEqual(column + 13, _appGo.GetComponentsInChildren<Button>(true).Length,
+                "plus the six action bar buttons, Undo, Redo, the Line and Circle menus' two mode chips each and Snap's H/V chip");
 
             float prevBottom = float.MaxValue;
             var tops = new float[ButtonOrder.Length];

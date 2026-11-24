@@ -12,7 +12,8 @@ using Object = UnityEngine.Object;
 namespace GeoART.Tests.Verifier
 {
     /// <summary>
-    /// Optional extras P7 and P8: the action bar's Delete button and the Redo button next to Undo. Edit Mode does not
+    /// Optional extras P7 and P8: the action bar's Delete button and the Redo button next to Undo; and the Extend button.
+    /// Edit Mode does not
     /// tick MonoBehaviours, so Awake/Start are invoked by reflection.
     /// </summary>
     public sealed class ActionsViewTests
@@ -103,6 +104,59 @@ namespace GeoART.Tests.Verifier
             Assert.AreEqual(0, _session.ActiveLayer.Shapes.Count, "deleted");
             Assert.AreEqual("Delete", _session.NextUndoLabel);
             Assert.IsFalse(Find("Move").transform.parent.gameObject.activeSelf, "the bar hides with the selection");
+        }
+
+        [Test]
+        public void ExtendButtonExtendsAndKeepsTheSelectionAndTheBar()
+        {
+            _space.PlaceAtReticle();
+            var line = AddLine();   // (0.2, 0.2)-(0.4, 0.4)
+            var wall = new LineShape(_session.Board.NewId(), new Vec2(0.7, 0.1), new Vec2(0.7, 0.9), StrokeStyle.Default);
+            _session.ActiveLayer.Shapes.Add(wall);
+            _session.SetTool(ToolId.SelectMove);
+            _session.SetSelection(new[] { line.Id });
+            var toasts = new System.Collections.Generic.List<string>();
+            _session.Toast += t => toasts.Add(t);
+            var bar = Find("Move").transform.parent.gameObject;
+            Assert.IsTrue(Find("Extend").activeInHierarchy, "Extend is in the action bar");
+            Assert.AreEqual("Extend", Find("Extend").GetComponentInChildren<Text>(true).text, "labelled Extend");
+
+            Click("Extend");
+            Assert.AreEqual(0.7, line.B.X, "B runs onto the vertical line exactly (x)");
+            Assert.AreEqual(0.7, line.B.Y, 1e-12, "along the line's own direction");
+            Assert.AreEqual(new Vec2(0.2, 0.2), line.A, "nothing behind A (the board edge is not a boundary)");
+            Assert.AreEqual("Extend", _session.NextUndoLabel, "one Extend step");
+            Assert.AreEqual("Extended 1 end", toasts[toasts.Count - 1]);
+            Call(_appGo.GetComponent<ToolBar>(), "LateUpdate");
+            Assert.AreEqual(1, _session.SelectionCount, "the selection stays");
+            Assert.IsTrue(bar.activeSelf, "the bar stays");
+
+            int steps = _session.UndoCount;
+            Click("Extend");   // B now sits on the line, nothing beyond it
+            Assert.AreEqual("Nothing in the way to extend to", toasts[toasts.Count - 1]);
+            Assert.AreEqual(steps, _session.UndoCount, "no step when nothing moved");
+            Assert.IsTrue(bar.activeSelf, "the bar still stays");
+        }
+
+        [Test]
+        public void ExtendSitsBetweenDuplicateAndDeleteInOneRowLeftOfTheColumn()
+        {
+            _space.PlaceAtReticle();
+            var line = AddLine();
+            _session.SetTool(ToolId.SelectMove);
+            _session.SetSelection(new[] { line.Id });
+            Call(_appGo.GetComponent<ToolBar>(), "LateUpdate");
+            Canvas.ForceUpdateCanvases();
+            Rect dup = WorldRect(Find("Duplicate")), ext = WorldRect(Find("Extend")), del = WorldRect(Find("Delete"));
+            Assert.Greater(ext.xMin, dup.xMax, "right of Duplicate");
+            Assert.Greater(del.xMin, ext.xMax, "left of Delete");
+            Assert.AreEqual(dup.yMin, ext.yMin, 0.5f, "same row");
+            Assert.AreEqual(dup.width, ext.width, 0.5f, "same size");
+            float columnLeft = float.MaxValue;
+            foreach (var n in new[] { "Line", "Circle", "Select", "Bands", "Square", "Snap" }) columnLeft = Mathf.Min(columnLeft, WorldRect(Find(n)).xMin);
+            Assert.Less(WorldRect(Find("Deselect")).xMax, columnLeft, "the whole bar is left of the tool column");
+            Assert.AreNotSame(Find("Duplicate").transform.Find("Icon").GetComponent<RawImage>().texture,
+                Find("Extend").transform.Find("Icon").GetComponent<RawImage>().texture, "its own glyph");
         }
 
         [Test]

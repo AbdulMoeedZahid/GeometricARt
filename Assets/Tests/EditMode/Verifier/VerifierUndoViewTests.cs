@@ -236,7 +236,7 @@ namespace GeoART.Tests.Verifier
             Assert.NotNull(tex, "icon texture");
             foreach (var n in ColumnOrder)
                 Assert.AreNotSame(Find(n).transform.Find("Icon").GetComponent<RawImage>().texture, tex, $"Undo glyph differs from {n}'s");
-            foreach (var n in new[] { "Move", "Scale", "Duplicate", "Delete", "Deselect" })
+            foreach (var n in new[] { "Move", "Scale", "Duplicate", "Extend", "Delete", "Deselect" })
                 Assert.AreNotSame(Find(n).transform.Find("Icon").GetComponent<RawImage>().texture, tex, $"Undo glyph differs from {n}'s");
             Text label = null;
             foreach (var t in go.GetComponentsInChildren<Text>(true)) label = t;
@@ -254,13 +254,13 @@ namespace GeoART.Tests.Verifier
         }
 
         [Test]
-        public void GlyphTableHasTwentyTwoDistinctSlotsWithTheRoundedSpriteAt21()
+        public void GlyphTableHasTwentyThreeSlotsWithTheRoundedSpriteAt22()
         {
             MakeToolBar(place: true);
             var f = typeof(ToolBar).GetField("_textures", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(f, "ToolBar._textures");
             var table = (Texture2D[])f.GetValue(_appGo.GetComponent<ToolBar>());
-            Assert.AreEqual(22, table.Length, "GlyphCount 21 + the rounded sprite");
+            Assert.AreEqual(23, table.Length, "GlyphCount 22 + the rounded sprite");
             // With Fill switched off (ToolBar.FillEnabled) no button draws the Fill glyph (slot 18), so that slot stays empty.
             const int FillSlot = 18;
             var distinct = new HashSet<Texture2D>();
@@ -270,8 +270,8 @@ namespace GeoART.Tests.Verifier
                 Assert.NotNull(table[i], "every slot filled (a missing GlyphCount bump overwrites one)");
                 distinct.Add(table[i]);
             }
-            Assert.AreEqual(ToolBar.FillEnabled ? 22 : 21, distinct.Count, "all distinct");
-            Assert.AreSame(Find("Line").GetComponent<Image>().sprite.texture, table[21], "rounded sprite at index 21");
+            Assert.AreEqual(ToolBar.FillEnabled ? 23 : 22, distinct.Count, "all distinct");
+            Assert.AreSame(Find("Line").GetComponent<Image>().sprite.texture, table[22], "rounded sprite at index 22");
             CollectionAssert.Contains(table, UndoGo.transform.Find("Icon").GetComponent<RawImage>().texture,
                 "the Undo glyph is in the table (freed on destroy)");
         }
