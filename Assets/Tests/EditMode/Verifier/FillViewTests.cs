@@ -174,18 +174,29 @@ namespace GeoART.Tests.Verifier
             Tap(0.5, 0.5);
             Tap(0.5, 0.17);
             MakeView();
+            float now = 5f;
+            _view.Clock = () => now;
             ShapeVertices();
+            int builds = _view.Fills.BuildCount;
             double worst = 0;
             for (int i = 1; i <= 5; i++)
             {
                 bands.Width = 0.015 + 0.001 * i;
                 _session.SetLayerBands(layer.Id, bands);
+                now += 0.016f;   // one frame per slider tick
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 ShapeVertices();
                 worst = Math.Max(worst, sw.Elapsed.TotalMilliseconds);
             }
-            Debug.Log($"[Fill] banded star + 2 circles with {layer.Fills.Count} fills: width-slider frame worst {worst:0.0} ms");
+            Debug.Log($"[Fill] banded star + 2 circles with {layer.Fills.Count} fills: width-slider frame worst {worst:0.0} ms, fill rebuilds during the drag {_view.Fills.BuildCount - builds}");
+            Assert.LessOrEqual(_view.Fills.BuildCount - builds, 1, "the fill is not rebuilt every frame of the drag");
             Assert.Less(worst, 80.0, "a width-slider frame with fills stays usable in the editor");
+            now += FillCache.StaleSeconds + 0.01f;
+            int before = _view.Fills.BuildCount;
+            ShapeVertices();
+            Assert.AreEqual(before + 1, _view.Fills.BuildCount, "after the drag the fill catches up");
+            ShapeVertices();
+            Assert.AreEqual(before + 1, _view.Fills.BuildCount, "and then stays put");
         }
     }
 }
