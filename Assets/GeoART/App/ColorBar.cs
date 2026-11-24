@@ -105,10 +105,16 @@ namespace GeoART.App
             if (!visible) CloseWheel();
 
             RgbaColor current = _session != null ? _session.Style.Color : Palette.Black;
+            bool fillTool = _session != null && _session.ActiveTool == ToolId.Fill;
+            bool erase = fillTool && _session.FillErase;
             RgbaColor[] colors = BoardAppearance.ShapeColors;
             for (int i = 0; i < colors.Length && i < _rings.Length; i++)
-                SetColor(_rings[i], colors[i].Equals(current) ? Accent : Clear);
-            RefreshCustom(current);
+                SetColor(_rings[i], !erase && colors[i].Equals(current) ? Accent : Clear);
+            RefreshCustom(erase ? new RgbaColor(0, 0, 0, 0) : current);
+            // While Fill is active the Board button's place holds "No fill" (the pill has no room for another slot).
+            if (_boardButton.activeSelf == fillTool) _boardButton.SetActive(!fillTool);
+            if (_noFill.gameObject.activeSelf != fillTool) _noFill.gameObject.SetActive(fillTool);
+            SetColor(_noFillRing, erase ? Accent : new Color(1f, 1f, 1f, 0.12f));
 
             bool white = BoardAppearance.Guides == BoardGuideColor.White;
             SetColor(_boardIcon, white ? ToColor(Palette.White) : ToColor(Palette.Black));
@@ -130,8 +136,17 @@ namespace GeoART.App
         public void SelectColor(RgbaColor color)
         {
             if (_session == null) return;
+            if (_session.ActiveTool == ToolId.Fill) _session.SetFillErase(false);   // a colour ends "no fill"
             _session.Style = _session.Style.WithColor(color);   // raises StateChanged -> Refresh
-            if (_session.Selection.Ids.Count > 0) _session.RestyleSelection(StyleParts.Color, _session.Style);
+            if (_session.ActiveTool != ToolId.Fill && _session.Selection.Ids.Count > 0)
+                _session.RestyleSelection(StyleParts.Color, _session.Style);
+        }
+
+        /// <summary>The Fill tool's "no fill": taps clear fills until a colour is picked or the tool changes.</summary>
+        public void SelectNoFill()
+        {
+            if (_session == null || _session.ActiveTool != ToolId.Fill) return;
+            _session.SetFillErase(true);
         }
 
         /// <summary>Board guide lines Black &lt;-&gt; White.</summary>
@@ -159,10 +174,38 @@ namespace GeoART.App
             return ring;
         }
 
+        GameObject _boardButton;
+        Image _noFill, _noFillRing;
+
+        /// <summary>"No fill" (Fill tool only), in the Board button's place: a white chip with a red slash.</summary>
+        void CreateNoFillButton(float x)
+        {
+            const float h = 40f;
+            _noFillRing = LayerUiKit.NewImage("No fill", _pill, new Color(1f, 1f, 1f, 0.12f), true, 10f);
+            _noFill = _noFillRing;
+            LayerUiKit.Place(_noFill.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(x, 0f),
+                new Vector2(BoardButtonW, h));
+            var button = _noFill.gameObject.AddComponent<Button>();
+            button.transition = Selectable.Transition.None;
+            button.onClick.AddListener(SelectNoFill);
+            Image swatch = LayerUiKit.NewImage("Swatch", _noFill.transform, Color.white, false, 4f);
+            LayerUiKit.Place(swatch.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(8f, 0f), new Vector2(20f, 20f));
+            Image slash = LayerUiKit.NewImage("Slash", swatch.transform, new Color(0.84f, 0.19f, 0.19f, 1f), false, 1f);
+            LayerUiKit.Place(slash.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(26f, 3f));
+            slash.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);
+            var label = LayerUiKit.NewText("Label", _noFill.transform, 12, TextAnchor.MiddleLeft, Color.white);
+            LayerUiKit.Place(label.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(32f, 0f), new Vector2(40f, 30f));
+            label.text = "No fill";
+            label.horizontalOverflow = HorizontalWrapMode.Wrap;
+            _noFill.gameObject.SetActive(false);
+        }
+
         void CreateBoardButton(float x)
         {
             const float h = 40f;
             Image bg = LayerUiKit.NewImage("Board", _pill, new Color(1f, 1f, 1f, 0.12f), true, 10f);
+            _boardButton = bg.gameObject;
+            CreateNoFillButton(x);
             LayerUiKit.Place(bg.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(x, 0f),
                 new Vector2(BoardButtonW, h));
             var button = bg.gameObject.AddComponent<Button>();
