@@ -16,7 +16,12 @@ namespace GeoART.App
     /// tap one (tap outside to close). The Line icon is a solid or dashed diagonal and the Circle icon a solid or dashed
     /// ring, refreshed on StateChanged, so a mode set elsewhere shows too. A small corner triangle marks buttons that have
     /// a hold menu. The menus (rows and their full-screen blockers) sit under one "HoldMenus" rect, the last child of the
-    /// canvas, so an open row and its blocker draw over the column, the action bar and Undo. Opening one menu closes the
+    /// canvas and a nested canvas of its own with sorting order <see cref="HoldMenusSortingOrder"/> (112): above the
+    /// column, the action bar and Undo (105), the Designs button (106) and the layer sidebar (110), below the colour wheel
+    /// and the Designs panel (115) and the toasts (120). So an open row draws over the sidebar, and its blocker takes the
+    /// closing touch even on the sidebar or the Designs button: that touch only closes the menu (until P1's fix it pressed
+    /// them). A row is also kept right of the layer sidebar's pill (shrunk if it must be, see ToolHoldMenu.LeftLimit),
+    /// so the palette's left chips never slide under it on narrow (21:9) screens. Opening one menu closes the
     /// others (the Colour palette, ToolBar.Colour.cs, is one of them), and a re-layout (safe area, rotation) closes them
     /// all, since a row is placed only when it opens.
     /// After the first placement a one-time toast says "Hold Line or Circle for line styles" (PlayerPrefs flag; only in
@@ -24,7 +29,10 @@ namespace GeoART.App
     /// </summary>
     public sealed partial class ToolBar
     {
-        const float ChipW = 56f, ChipH = 52f, ChipSpacing = 8f, HoldMarkSize = 8f;
+        const float ChipW = 56f, ChipH = 52f, ChipSpacing = 8f, HoldMarkSize = 8f, SidebarGap = 4f;
+
+        /// <summary>Sorting order of the open menus' canvas: over the layer sidebar (110), under the wheel (115).</summary>
+        public const int HoldMenusSortingOrder = 112;
         const string LineMenuHintKey = "GeoART.Hint.LineMenu";
         const string LineMenuHint = "Hold Line or Circle for line styles";
 
@@ -39,8 +47,13 @@ namespace GeoART.App
 
         void BuildHoldMenus(Font font)
         {
-            var go = new GameObject("HoldMenus", typeof(RectTransform));
+            // A nested canvas with its own sorting order (and raycaster, which ranks its hits by that order), so the rows
+            // and blockers sit above the other UI canvases, not only above this one's column.
+            var go = new GameObject("HoldMenus", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
             go.transform.SetParent(_canvas.transform, false);
+            var menusCanvas = go.GetComponent<Canvas>();
+            menusCanvas.overrideSorting = true;
+            menusCanvas.sortingOrder = HoldMenusSortingOrder;
             _holdMenus = (RectTransform)go.transform;
             _holdMenus.anchorMin = Vector2.zero;
             _holdMenus.anchorMax = Vector2.one;
@@ -66,6 +79,7 @@ namespace GeoART.App
             var menus = new[] { _lineMenu, _circleMenu, _bandsMenu, _snapMenu, _colourMenu };
             foreach (var m in menus)
             {
+                m.LeftLimit = SidebarRightEdge;
                 ToolHoldMenu self = m;
                 m.Opened += () => { foreach (var other in menus) if (other != self) other.Close(); };
             }
@@ -119,6 +133,17 @@ namespace GeoART.App
             var menu = button.gameObject.AddComponent<ToolHoldMenu>();
             menu.Configure(charge, row, chips, blocker, getCurrent, onPick, onHold, Accent, Idle);
             return menu;
+        }
+
+        /// <summary>
+        /// World x a menu row must stay right of: the layer sidebar's pill plus <see cref="SidebarGap"/> (NaN when there
+        /// is no sidebar). On the overlay canvases world x is screen x.
+        /// </summary>
+        float SidebarRightEdge()
+        {
+            var sidebar = GetComponent<LayerSidebar>();
+            if (sidebar == null || !sidebar.TryGetPillWorldRect(out Rect pill)) return float.NaN;
+            return pill.xMax + SidebarGap * _canvas.transform.lossyScale.x;
         }
 
         /// <summary>A non-raycast rounded overlay filling the button (the hold's "charging" tint), starts clear.</summary>

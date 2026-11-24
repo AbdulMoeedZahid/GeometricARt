@@ -983,6 +983,20 @@ namespace GeoART.App
             return slider;
         }
 
+        /// <summary>
+        /// The pill's rect in world space (screen px on its overlay canvas), e.g. for the ToolBar's menus that must stay
+        /// right of it. False before it exists or while the sidebar is hidden.
+        /// </summary>
+        public bool TryGetPillWorldRect(out Rect rect)
+        {
+            rect = default;
+            if (_pill == null || _canvas == null || !_canvas.enabled || !_pill.gameObject.activeInHierarchy) return false;
+            var c = new Vector3[4];
+            _pill.GetWorldCorners(c);
+            rect = Rect.MinMaxRect(c[0].x, c[0].y, c[2].x, c[2].y);
+            return true;
+        }
+
         /// <summary>Area = UiScreen.SafeArea; the pill hugs its left edge, vertically centred.</summary>
         void ApplySafeArea()
         {

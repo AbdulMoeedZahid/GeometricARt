@@ -25,6 +25,8 @@ namespace GeoART.App
     ///   <see cref="OpenOnPress"/>   the row opens as soon as the button is pressed (no hold), so press-slide-release and
     ///                   tap-then-tap both work on one button (the Colour palette); the release is still not a click
     ///   <see cref="KeepOpenOnPick"/>  chips that apply without closing the row (a toggle such as the Board guides chip)
+    ///   <see cref="LeftLimit"/>  a world x the row must stay right of (the layer sidebar): a row that would cross it is
+    ///                   shrunk to fit (not below <see cref="MinLimitScale"/> of its size)
     /// The row may be a grid (the owner places the chips); hidden chips are never picked. When it opens it is kept inside
     /// its parent rect, so a tall grid next to a button near an edge stays on screen.
     /// Time comes from <see cref="Clock"/> (Time.unscaledTime; EditMode tests swap in a fake clock). Update only runs the
@@ -71,6 +73,15 @@ namespace GeoART.App
 
         /// <summary>Chips for which a pick applies but leaves the row open (null: every pick closes it).</summary>
         public Func<int, bool> KeepOpenOnPick { get; set; }
+
+        /// <summary>
+        /// World x (screen x on an overlay canvas) the open row must stay right of, or NaN; null: no limit. Read when the
+        /// row opens.
+        /// </summary>
+        public Func<float> LeftLimit { get; set; }
+
+        /// <summary>The smallest a <see cref="LeftLimit"/> may shrink the row, relative to the button's scale.</summary>
+        public const float MinLimitScale = 0.6f;
 
         /// <summary>True while the chip row is shown.</summary>
         public bool IsOpen => _row != null && _row.gameObject.activeSelf;
@@ -232,13 +243,22 @@ namespace GeoART.App
             _row.anchorMin = _row.anchorMax = new Vector2(0.5f, 0.5f);
             _row.pivot = new Vector2(1f, 0.5f);
             Vector2 pos = local - parent.rect.center - new Vector2(RowGap * fit, 0f);   // offset from the centre anchor
+            float scale = fit;
+            float limit = LeftLimit != null ? LeftLimit() : float.NaN;
+            if (!float.IsNaN(limit) && _row.rect.width > 0f)
+            {
+                // The limit in the same frame as pos; shrink the row so its left edge stays right of it.
+                float limitX = parent.InverseTransformPoint(new Vector3(limit, c[0].y, c[0].z)).x - parent.rect.center.x;
+                float room = pos.x - limitX;
+                if (room < _row.rect.width * fit) scale = Mathf.Max(fit * MinLimitScale, room / _row.rect.width);
+            }
             // Keep the (scaled) row inside the parent: pivot (1, 0.5), so x is its right edge and y its middle.
             Rect area = parent.rect;
-            float w = _row.rect.width * fit, h = _row.rect.height * fit;
+            float w = _row.rect.width * scale, h = _row.rect.height * scale;
             pos.x = Mathf.Clamp(pos.x, -area.width * 0.5f + w, Mathf.Max(-area.width * 0.5f + w, area.width * 0.5f));
             pos.y = Mathf.Clamp(pos.y, -area.height * 0.5f + h * 0.5f, Mathf.Max(-area.height * 0.5f + h * 0.5f, area.height * 0.5f - h * 0.5f));
             _row.anchoredPosition = pos;
-            _row.localScale = new Vector3(fit, fit, 1f);
+            _row.localScale = new Vector3(scale, scale, 1f);
             _hover = -1;
             RefreshChips();
             _blocker.SetActive(true);
