@@ -36,9 +36,11 @@ Three classes, built only when the shapes or the width change (never on the poin
    side point, then the lexicographically smallest). **Near-junction weld**: an endpoint within 1e-5 of another
    segment's interior (under- or overshoot) moves onto it; the ends are re-welded and the pass repeats against the moved
    geometry until nothing moves (at most 4 passes).
-3. **Collinear merge**: segments collinear within 1e-5 that overlap or touch become one segment between the extreme
-   original endpoints (bit-exact). Tap-to-connect chains (A-B + B-C) and lines drawn over lines collapse to one edge. One
-   more near-junction pass then re-attaches ends to the merged segments.
+3. **Collinear merge**: segments collinear within 1e-5 that **overlap** become one segment between the extreme original
+   endpoints (bit-exact), provided every member lies on that segment's own line (lines drawn over lines collapse to one
+   edge). Segments that only touch end to end (a tap-to-connect chain A-B + B-C) stay separate edges meeting at a straight
+   node, so a chain of short chords along a shallow arc never fuses into one straight line. One more near-junction pass
+   then re-attaches ends to the merged segments.
 4. **Crossings**: every pair (uniform-grid prefilter) through `Intersect.SegmentSegment`, which returns segment ends
    bit-exactly (T-junctions). Points within 1e-7 are one node. Segments are split at their nodes into edges.
 5. **Frame**: the four board sides become edges (source `FrameSource`), cut at every node on them.
@@ -81,8 +83,11 @@ direction give a bit-identical graph and outline.
   a band, 0 at a bevel, -1 at a cap). It **collapses** at or below 0 (`Collapsed`; a drawn one is replaced by the meeting
   point of its neighbours' offset lines so the run stays continuous). `MaxSafeWidth = 2 min L / (k_tail + k_head)` over
   every half-edge with a positive sum, frame pieces included (two lines closer than the width that both reach the frame
-  are flagged). `SelfIntersections` counts proper crossings inside each face's inset polygon, which also catches a reflex
-  corner running into a non-adjacent side (split events). The layer popup will show amber near `MaxSafeWidth` and red
+  are flagged), and never more than the **near-miss distance**: the smallest gap between two structure edges that are
+  topologically far apart (no shared node, no edge joining their ends), such as a stub that stops short of a line or an
+  inner line close to a side; their bands touch at exactly that width. `SelfIntersections` counts proper crossings between
+  the inset polygons of all faces together (one face's loops, separate parts), which also catches a reflex corner
+  running into a non-adjacent side (split events). The layer popup will show amber near `MaxSafeWidth` and red
   when either count is above 0.
 - **Runs**: walking each face cycle, consecutive drawn offsets join into one polyline with mitred joins; the frame ends a
   run, so bands end flush with the board edge; a face that touches no frame is one closed run. This alone is the flat
@@ -99,18 +104,22 @@ direction give a bit-identical graph and outline.
   - at a woven crossing the over band's inner lines are bridged straight through (`InnerBridges`), and the under band's
     inner lines end on the over band's outer edge (book p23 bottom).
 
-Budget: 500 tile-like segments planarize and outline in about 10-15 ms on the desktop (check limit 50 ms); the book
-fixtures (8 and 32 lines) take under 0.5 ms.
-
 - **Inside the board**: after the safety counts every corner is clamped to [0,1]^2. A corner on a frame line stays on
   it; a tip spike or cap near the frame is cut at the board edge.
 
-Known limits (v1):
+Budget: 500 tile-like segments planarize and outline in about 10-15 ms on the desktop (check limit 50 ms); the book
+fixtures (8 and 32 lines) take under 0.5 ms.
+
+Known limits and decisions (v1):
 - A kinked "crossing" (two bent bands meeting at one point, pairing i with i+2) gets bridges between the corners next to
   the over band, a chord rather than the band's own mitre.
-- `SelfIntersections` is per face cycle (a sweep over x-sorted segments); a floating component's band running into another component is not counted.
-- With "Show structure line" on, the under band's structure line would cross the over band at a woven crossing; how
-  P5 handles it (Interlace hides the structure line, or the structure is cut there) is decided in P5.
+- Near misses are tracked only below 0.1 board units (twice the widest band).
+- Interlace with "Show structure line" on (decided): the under band's structure line is **cut** at each woven crossing so
+  it goes under with its band (P5); the structure line is not force-hidden.
+- Fill (P6) on a banded layer: in flat Double and in the stripped view the crossing squares are open, so all the band
+  strips form one connected region and a tap on any strip fills the whole band lattice (the book's geometry). In
+  Interlace each band piece between two crossings is its own region. Stars, octagons and the gaps are separate regions
+  in every mode.
 
 ## Checks
 `tools/enginecheck`: `BandGraphChecks` (model value, merge, welds, degrees, caps, frame, clipping, polygons, determinism,
