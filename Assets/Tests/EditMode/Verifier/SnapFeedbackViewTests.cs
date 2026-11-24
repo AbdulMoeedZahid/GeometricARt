@@ -26,6 +26,8 @@ namespace GeoART.Tests.Verifier
         public void SetUp()
         {
             ServiceHub.Clear();
+            _ticks = 0;    // NUnit reuses the fixture instance between tests
+            _now = 10f;
             _session = new EditorSession();
             _session.SetSnapEnabled(true);
             _session.ActiveLayer.SnapPoints.Add(new SnapPoint(_session.Board.NewId(), new Vec2(0.3, 0.3)));
