@@ -402,6 +402,76 @@ namespace GeoART.EngineCheck
             Check.That(r.Toasts.Count == 1 && r.Toasts[0] == NothingToast, "nothing-in-the-way toast");
         }
 
+        public static void V_SecondTapGoesBeyondButNeverBackOntoTheSameBoundary()
+        {
+            // Decision: a second tap may go on to the next boundary beyond (accepted), but an end is never re-extended onto
+            // the boundary it already sits on, and a tap that moves nothing records no step.
+            LineShape line = null;
+            var r = Make((b, l) =>
+            {
+                line = Ln(l, 0.4, 0.5, 0.45, 0.5);
+                Ln(l, 0.6, 0.1, 0.6, 0.9);
+                Ln(l, 0.75, 0.1, 0.75, 0.9);
+                l.Shapes.Add(new CircleShape(new EntityId(++s_id), V(0.2, 0.5), 0.1, StrokeStyle.Default));
+            }, l => new Shape[] { line });
+            r.Extend();
+            Near(line.B, V(0.6, 0.5), "tap 1: first wall");
+            Near(line.A, V(0.3, 0.5), "tap 1: circle's near side");
+            r.Extend();
+            Near(line.B, V(0.75, 0.5), "tap 2: on to the next wall, never 0.6 again");
+            Near(line.A, V(0.1, 0.5), "tap 2: the circle's far side");
+            r.Extend();
+            Check.That(r.S.UndoCount == 2 && r.Toasts[0] == NothingToast, "tap 3: nothing beyond either end: no step");
+        }
+
+        public static void V_ResultDoesNotDependOnOrder()
+        {
+            // L2 extended downwards would cross L1's path; ends are worked out against the board before the action, so
+            // L1 reaches the far wall whatever the shape or selection order.
+            foreach (bool reversed in new[] { false, true })
+            {
+                LineShape l1 = null, l2 = null;
+                var r = Make((b, l) =>
+                {
+                    var made = new List<Action>
+                    {
+                        () => l1 = Ln(l, 0.2, 0.5, 0.3, 0.5),
+                        () => l2 = Ln(l, 0.6, 0.6, 0.6, 0.7),
+                        () => Ln(l, 0.1, 0.1, 0.9, 0.1),
+                        () => Ln(l, 0.9, 0.2, 0.9, 0.8),
+                    };
+                    if (reversed) made.Reverse();
+                    foreach (var m in made) m();
+                }, l => reversed ? new Shape[] { l2, l1 } : new Shape[] { l1, l2 });
+                r.Extend();
+                Near(l1.B, V(0.9, 0.5), $"reversed {reversed}: L1 passes where L2 will be (original board)");
+                Near(l2.A, V(0.6, 0.1), $"reversed {reversed}: L2 down to the floor");
+                Check.That(l2.B == V(0.6, 0.7), $"reversed {reversed}: nothing above L2");
+            }
+        }
+
+        public static void V_TangentAndNearTangentCirclesStayFinite()
+        {
+            // A ray tangent to a circle: whatever the rule (touch = in the way, or not), the end is finite, on the line,
+            // and if it stopped at the circle it is the tangent point.
+            foreach (double off in new[] { 0.0, 1e-13, -1e-13, 1e-9, -1e-9 })
+            {
+                LineShape line = null;
+                var r = Make((b, l) =>
+                {
+                    line = Ln(l, 0.1, 0.6 + off, 0.2, 0.6 + off);
+                    l.Shapes.Add(new CircleShape(new EntityId(++s_id), V(0.5, 0.5), 0.1, StrokeStyle.Default));
+                    Ln(l, 0.85, 0.1, 0.85, 0.9);
+                }, l => new Shape[] { line });
+                r.Extend();
+                Check.That(line.B.IsFinite && line.B.Y == 0.6 + off, $"off {off}: finite and on its own line, got {P(line.B)}");
+                bool atCircle = Math.Abs(Vec2.Distance(line.B, V(0.5, 0.5)) - 0.1) < 1e-6;
+                bool atWall = Math.Abs(line.B.X - 0.85) < 1e-12;
+                Check.That(atCircle || atWall, $"off {off}: stops at the circle (touch) or the wall beyond, got {P(line.B)}");
+                if (atCircle) Check.That(Math.Abs(line.B.X - 0.5) < 2e-5, $"off {off}: at the tangent point, got {P(line.B)}");
+            }
+        }
+
         public static void V_ExtendDuringAnOpenMoveDragDoesNotCorrupt()
         {
             // Not stated: the action bar is UI, so on device a drag is cancelled first. Engine-only: extending during an

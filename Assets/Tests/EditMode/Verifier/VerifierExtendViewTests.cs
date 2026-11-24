@@ -151,6 +151,23 @@ namespace GeoART.Tests.Verifier
         }
 
         [Test]
+        public void BarLabelsFitTheirButtons()
+        {
+            Canvas.ForceUpdateCanvases();
+            var bar = Find("Extend").transform.parent;
+            foreach (Transform t in bar)
+            {
+                if (t.GetComponent<Button>() == null) continue;
+                var label = t.GetComponentInChildren<Text>();
+                if (label == null) continue;
+                float w = ((RectTransform)label.transform).rect.width;
+                var settings = label.GetGenerationSettings(new Vector2(float.MaxValue, float.MaxValue));
+                float needed = label.cachedTextGeneratorForLayout.GetPreferredWidth(label.text, settings) / label.pixelsPerUnit;
+                Assert.LessOrEqual(needed, w + 0.5f, $"'{label.text}' needs {needed:F1} ref px in a {w:F1} px label (clipped or wrapped)");
+            }
+        }
+
+        [Test]
         public void BarButtonsStayAtLeast44RefPxWideOnPhones()
         {
             // ToolBar.PlaceActionBar: span = safe width - EdgeMargin - (EdgeMargin + 56 x columnFit + EdgeMargin), the
