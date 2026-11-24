@@ -157,9 +157,10 @@ namespace GeoART.Tests.Verifier.PlayMode
             EntityId active = _session.Board.ActiveLayerId;
             yield return OpenPalette();
             yield return Tap(Center(Child("Add layer (+)")));
-            Assert.IsFalse(Palette.IsOpen, "a touch on the layer sidebar closes the palette");
-            Assert.AreEqual(layers, _session.Board.Layers.Count, "and does NOT also press the sidebar's + (no layer added)");
-            Assert.AreEqual(active, _session.Board.ActiveLayerId);
+            bool open = Palette.IsOpen;
+            int now = _session.Board.Layers.Count;
+            Assert.IsTrue(!open && now == layers && _session.Board.ActiveLayerId == active,
+                $"a touch on the layer sidebar's + must only close the palette: palette open {open}, layers {layers} -> {now}");
         }
 
         [UnityTest]
