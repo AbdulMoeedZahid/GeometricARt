@@ -130,7 +130,9 @@ namespace GeoART.EditorTools
             Debug.Log($"[GeoART] Bands {prefix}: {outline.Runs.Count} runs, {outline.InnerRuns.Count} inner, " +
                       $"{outline.Bridges.Count / 2} bridges, max safe {outline.MaxSafeWidth:0.####}, collapsed {outline.Collapsed}, " +
                       $"self-intersections {outline.SelfIntersections}, conflicts {outline.WeaveConflicts}, structure cuts {outline.StructureCuts.Count}");
-            RenderScenario(outDir, prefix, s => s.LoadBoard(shown), showBase: true, dark: false, topView: true);
+            // Snapping off: no candidate dots on top of the crossings, like the book's drawings.
+            RenderScenario(outDir, prefix, s => { s.LoadBoard(shown); s.SetSnapEnabled(false); }, showBase: true, dark: false,
+                topView: true);
         }
 
         static void RenderScenario(string outDir, string prefix, Action<EditorSession> draw, bool showBase, bool dark,
@@ -163,7 +165,11 @@ namespace GeoART.EditorTools
 
                 Shoot(cam, new Vector3(0f, 0.36f, -0.3f), outDir, prefix + "near45cm");
                 Shoot(cam, new Vector3(0f, 0.6f, -0.7f), outDir, prefix + "far90cm");
-                if (topView) Shoot(cam, new Vector3(0f, 0.8f, -0.0001f), outDir, prefix + "top80cm");   // straight down
+                if (topView)
+                {
+                    Shoot(cam, new Vector3(0f, 0.8f, -0.0001f), outDir, prefix + "top80cm");   // straight down
+                    Shoot(cam, new Vector3(0f, 0.3f, -0.0001f), outDir, prefix + "top30cm");   // close-up of the centre
+                }
                 Invoke(view, "OnDestroy");
             }
             finally
