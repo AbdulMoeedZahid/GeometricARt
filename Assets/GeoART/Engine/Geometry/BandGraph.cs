@@ -79,24 +79,86 @@ namespace GeoART.Engine
         public static BandGraph Build(IReadOnlyList<Shape> shapes)
         {
             var segs = new List<PlanarSegment>();
+            var edges = new List<int>();
             if (shapes != null)
-                for (int i = 0; i < shapes.Count; i++) AddShape(segs, shapes[i], i);
-            return new BandGraph(PlanarGraph.Build(segs, true));
+                for (int i = 0; i < shapes.Count; i++) AddShape(segs, edges, shapes[i], i);
+            return new BandGraph(PlanarGraph.Build(segs, true), segs, edges);
         }
 
-        /// <summary>Bands of raw segments (Source = caller index); used by checks.</summary>
-        public static BandGraph Build(IReadOnlyList<PlanarSegment> segments) =>
-            new BandGraph(PlanarGraph.Build(segments, true));
+        /// <summary>Bands of raw segments (Source = caller index, edge index 0); used by checks.</summary>
+        public static BandGraph Build(IReadOnlyList<PlanarSegment> segments)
+        {
+            var segs = new List<PlanarSegment>(segments);
+            var edges = new List<int>(segs.Count);
+            for (int i = 0; i < segs.Count; i++) edges.Add(0);
+            return new BandGraph(PlanarGraph.Build(segments, true), segs, edges);
+        }
 
-        static void AddShape(List<PlanarSegment> segs, Shape shape, int index)
+        static void AddShape(List<PlanarSegment> segs, List<int> edges, Shape shape, int index)
         {
             if (shape is LineShape line)
+            {
                 segs.Add(new PlanarSegment(line.A, line.B, index));
+                edges.Add(0);
+            }
             else if (shape is PolygonShape poly && poly.Sides >= 3 && poly.Sides <= 4096 && poly.Radius > 0)
             {
                 for (int k = 0; k < poly.Sides; k++)
-                    segs.Add(new PlanarSegment(Vertex(poly, k), Vertex(poly, (k + 1) % poly.Sides), index));
+                {
+                    segs.Add(new PlanarSegment(PolygonVertex(poly, k), PolygonVertex(poly, (k + 1) % poly.Sides), index));
+                    edges.Add(k);
+                }
             }
+        }
+
+        /// <summary>Vertex k of a polygon stamp, exactly as the bands and BoardView compute it.</summary>
+        public static Vec2 PolygonVertex(PolygonShape p, int k) => Vertex(p, k);
+
+        // ---------- input segments (for the interlace structure cut) ----------
+
+        readonly List<PlanarSegment> _inputs;
+        readonly List<int> _inputEdge;
+        readonly Dictionary<int, int[]> _edgeInputs = new Dictionary<int, int[]>();
+
+        /// <summary>Collinearity tolerance for matching input segments to planar edges (welds move ends by up to 1e-5).</summary>
+        public const double InputMatchEps = 2e-5;
+
+        public int InputCount => _inputs.Count;
+        /// <summary>Input segment i as drawn: the shape's own A-B (unclipped), its shape index and polygon edge index.</summary>
+        public PlanarSegment Input(int i) => _inputs[i];
+        public int InputEdge(int i) => _inputEdge[i];
+
+        /// <summary>
+        /// The input segments that lie along planar edge <paramref name="edge"/>: both their ends within
+        /// <see cref="InputMatchEps"/> of the edge's line and overlapping the edge. Collinear duplicates all match
+        /// (the planarizer kept only one of them). Built once per edge on first use (topology data).
+        /// </summary>
+        public int[] InputsOnEdge(int edge)
+        {
+            if (_edgeInputs.TryGetValue(edge, out int[] found)) return found;
+            Vec2 a = Graph.Node(Graph.Origin(2 * edge)), b = Graph.Node(Graph.Dest(2 * edge));
+            var list = new List<int>();
+            for (int i = 0; i < _inputs.Count; i++)
+            {
+                Vec2 p = _inputs[i].A, q = _inputs[i].B;
+                if (LineDist(p, a, b) > InputMatchEps || LineDist(q, a, b) > InputMatchEps) continue;
+                Vec2 d = q - p;
+                double len = d.Length;
+                if (!(len > 0)) continue;
+                double ta = ((a.X - p.X) * d.X + (a.Y - p.Y) * d.Y) / len, tb = ((b.X - p.X) * d.X + (b.Y - p.Y) * d.Y) / len;
+                if (Math.Min(len, Math.Max(ta, tb)) - Math.Max(0, Math.Min(ta, tb)) <= InputMatchEps) continue;   // no overlap
+                list.Add(i);
+            }
+            found = list.ToArray();
+            _edgeInputs[edge] = found;
+            return found;
+        }
+
+        static double LineDist(Vec2 p, Vec2 a, Vec2 b)
+        {
+            Vec2 d = b - a;
+            double len = d.Length;
+            return Math.Abs(d.X * (p.Y - a.Y) - d.Y * (p.X - a.X)) / len;
         }
 
         static Vec2 Vertex(PolygonShape p, int k)
@@ -105,9 +167,11 @@ namespace GeoART.Engine
             return new Vec2(p.Center.X + p.Radius * Math.Cos(a), p.Center.Y + p.Radius * Math.Sin(a));
         }
 
-        BandGraph(PlanarGraph g)
+        BandGraph(PlanarGraph g, List<PlanarSegment> inputs, List<int> inputEdge)
         {
             Graph = g;
+            _inputs = inputs;
+            _inputEdge = inputEdge;
             int nn = g.NodeCount, nh = g.HalfEdgeCount;
 
             // Structure-only rings (CCW, a filtered copy of the full ring) and degrees.

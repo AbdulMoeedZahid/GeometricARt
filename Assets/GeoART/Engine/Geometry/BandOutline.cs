@@ -11,9 +11,32 @@ namespace GeoART.Engine
         public bool Closed;
     }
 
+    /// <summary>
+    /// A stretch of a structure shape hidden because its band passes UNDER another at a woven crossing (Interlace with the
+    /// structure line shown). <see cref="Shape"/> is the index in the layer's shape list, <see cref="Edge"/> the polygon
+    /// edge (0 for a line); T0..T1 is the hidden part in that segment's own parameter (A = 0, B = 1). Dir0 / Dir1 are the
+    /// over band's edge directions at the two ends (the visible pieces end along them); zero at an end that is not on
+    /// an over band's edge.
+    /// </summary>
+    public struct StructureCut
+    {
+        public int Shape, Edge;
+        public double T0, T1;
+        public Vec2 Dir0, Dir1;
+    }
+
     /// <summary>Options for <see cref="BandOutline.Build"/> (board units).</summary>
     public struct BandOutlineOptions
     {
+        /// <summary>Inner lines sit at least this far in from the outer edge (metres on the board, times the stroke scale).</summary>
+        public const double InnerInsetFloorMeters = 0.002;
+        /// <summary>Inner lines are drawn only when they clear a Medium core line by this much (metres, times the stroke scale).</summary>
+        public const double InnerCoreClearanceMeters = 0.001;
+        /// <summary>Medium stroke width in metres at the 40 cm board (BoardView's WidthOf(Medium)).</summary>
+        public const double MediumStrokeMeters = 0.0017;
+        /// <summary>Turning inner lines on raises the band to at least this width (metres on the board).</summary>
+        public const double InnerLinesMinWidthMeters = 0.010;
+
         public double Width;              // band width, outer edge to outer edge
         public bool Interlace;            // add the over band's bridges at every woven crossing
         public bool FlipWeave;            // swap every over/under
@@ -21,6 +44,26 @@ namespace GeoART.Engine
         public double InnerInsetFloor;    // inner lines sit at least this far in from the outer edge (1.5 mm on the board)
         public double InnerMinHalf;       // inner lines only when their half-width is at least this (core half + 1 mm)
         public bool SkipSelfIntersections;   // drawing only: skip the global crossing count (the width popup needs it)
+        public bool StructureShown;          // Interlace: cut the under bands' structure lines (StructureCuts)
+
+        /// <summary>
+        /// Options for a layer on a board of side <paramref name="sideMeters"/>: the inner-line inset floor (2 mm) and the
+        /// inner lines' minimum half width (a Medium core's half plus 1 mm) scale like the strokes (BoardView's
+        /// StrokeScaleFor: side / 0.40 clamped to [0.4, 2]) and are converted to board units. Shared by BoardView and the
+        /// layer popup, so the popup's "inner lines need a wider band" note matches what is drawn.
+        /// </summary>
+        public static BandOutlineOptions ForBoard(in LayerBands bands, double sideMeters)
+        {
+            double side = Math.Max(sideMeters, 1e-3);
+            double scale = StrokeScale(side);
+            BandOutlineOptions o = From(bands, InnerInsetFloorMeters * scale / side,
+                (MediumStrokeMeters * 0.5 + InnerCoreClearanceMeters) * scale / side);
+            o.StructureShown = !bands.Sanitized().HideStructure;
+            return o;
+        }
+
+        /// <summary>Stroke scale of a board side (BoardView.StrokeScaleFor): proportional to 0.40 m, clamped to [0.4, 2].</summary>
+        public static double StrokeScale(double sideMeters) => Math.Max(0.4, Math.Min(2.0, sideMeters / 0.40));
 
         public static BandOutlineOptions From(in LayerBands bands, double innerInsetFloor, double innerMinHalf)
         {
@@ -82,6 +125,8 @@ namespace GeoART.Engine
         /// <summary>Over-band bridges, two points per segment (Interlace only).</summary>
         public readonly List<Vec2> Bridges = new List<Vec2>();
         public readonly List<Vec2> InnerBridges = new List<Vec2>();
+        /// <summary>Hidden stretches of under bands' structure lines (Interlace with the structure shown), merged and sorted by (Shape, Edge, T0).</summary>
+        public readonly List<StructureCut> StructureCuts = new List<StructureCut>();
 
         public double Width { get; private set; }
         /// <summary>Largest width at which no offset segment collapses (+infinity when nothing limits it).</summary>
@@ -133,6 +178,7 @@ namespace GeoART.Engine
             BuildRuns();
             if (!opt.SkipSelfIntersections) CountSelfIntersections();
             if (opt.Interlace) AddBridges(opt.FlipWeave, false);
+            if (opt.Interlace && opt.StructureShown) ComputeStructureCuts(opt.FlipWeave);
 
             double inset = Math.Max(0.2 * opt.Width, opt.InnerInsetFloor);
             InnerHalfWidth = _h - inset;
@@ -446,6 +492,91 @@ namespace GeoART.Engine
                     into.Add(pa);
                     into.Add(pb);
                 }
+            }
+        }
+
+        // ---------- structure cut (Interlace, structure shown) ----------
+
+        /// <summary>
+        /// At each woven crossing the under thread's structure line is hidden where the over band covers it. Per under
+        /// half-edge u (the two sides can belong to different segments of a kinked thread), the hidden length L runs from
+        /// the node along u to the over band's edge on that side: the intersection of u's line with that side's bridge
+        /// (falling back to h / sin(angle) when the bridge is degenerate). Every input segment lying along u (duplicates
+        /// included) gets the interval from the node to L, in its own parameter, ending along the bridge direction.
+        /// </summary>
+        void ComputeStructureCuts(bool flip)
+        {
+            var raw = new List<StructureCut>();
+            for (int c = 0; c < _bg.CrossingCount; c++)
+            {
+                int v = _bg.CrossingNode(c);
+                Vec2 node = _g.Node(v);
+                int p = _bg.OverPass(c) ^ (flip ? 1 : 0);
+                Vec2 over = _g.Dir(_bg.StructureOut(v, p));
+                for (int side = 1; side <= 3; side += 2)
+                {
+                    int u = _bg.StructureOut(v, (p + side) % 4);
+                    Vec2 du = _g.Dir(u);
+                    Vec2 pa = side == 1 ? _wOut[_bg.StructureOut(v, p)] : _wOut[_bg.StructureOut(v, (p + 2) % 4)];
+                    Vec2 pb = side == 1 ? _wIn[_bg.StructureOut(v, (p + 1) % 4)] : _wIn[_bg.StructureOut(v, (p + 3) % 4)];
+                    double len = -1;
+                    Vec2 edgeDir = over;
+                    Vec2 e = pb - pa;
+                    double el = e.Length;
+                    if (el > 1e-12)
+                    {
+                        e = e * (1 / el);
+                        double den = du.X * e.Y - du.Y * e.X;
+                        if (Math.Abs(den) > 1e-9)
+                        {
+                            Vec2 w = pa - node;
+                            double t = (w.X * e.Y - w.Y * e.X) / den;
+                            if (t > 0 && t < 20 * _h) { len = t; edgeDir = e; }
+                        }
+                    }
+                    if (len < 0)
+                    {
+                        double sin = Math.Abs(du.X * over.Y - du.Y * over.X);
+                        len = _h / Math.Max(sin, 1e-6);
+                    }
+                    foreach (int k in _bg.InputsOnEdge(PlanarGraph.EdgeOf(u)))
+                    {
+                        PlanarSegment s = _bg.Input(k);
+                        Vec2 d = s.B - s.A;
+                        double sl = d.Length;
+                        double tc = ((node.X - s.A.X) * d.X + (node.Y - s.A.Y) * d.Y) / (sl * sl);
+                        bool forward = d.X * du.X + d.Y * du.Y > 0;
+                        double tf = tc + (forward ? len : -len) / sl;
+                        var cut = new StructureCut { Shape = s.Source, Edge = _bg.InputEdge(k) };
+                        if (forward) { cut.T0 = tc; cut.T1 = tf; cut.Dir1 = edgeDir; }
+                        else { cut.T0 = tf; cut.T1 = tc; cut.Dir0 = edgeDir; }
+                        if (cut.T0 < 0) { cut.T0 = 0; cut.Dir0 = default; }
+                        if (cut.T1 > 1) { cut.T1 = 1; cut.Dir1 = default; }
+                        if (cut.T1 > cut.T0) raw.Add(cut);
+                    }
+                }
+            }
+            raw.Sort((x, y) =>
+            {
+                int r = x.Shape.CompareTo(y.Shape);
+                if (r != 0) return r;
+                r = x.Edge.CompareTo(y.Edge);
+                return r != 0 ? r : x.T0.CompareTo(y.T0);
+            });
+            foreach (var cut in raw)
+            {
+                int n = StructureCuts.Count;
+                if (n > 0)
+                {
+                    StructureCut last = StructureCuts[n - 1];
+                    if (last.Shape == cut.Shape && last.Edge == cut.Edge && cut.T0 <= last.T1 + 1e-12)
+                    {
+                        if (cut.T1 > last.T1) { last.T1 = cut.T1; last.Dir1 = cut.Dir1; }
+                        StructureCuts[n - 1] = last;
+                        continue;
+                    }
+                }
+                StructureCuts.Add(cut);
             }
         }
 
