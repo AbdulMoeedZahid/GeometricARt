@@ -171,15 +171,13 @@ namespace GeoART.Tests.Verifier
             var column = Find("Column").transform;
             int n = 0;
             foreach (Transform c in column) if (c.GetComponent<Button>() != null) n++;
-            Assert.AreEqual(8, n, "8 column buttons");
-            _session.SetTool(ToolId.Fill);         // reachable only from code: the colour bar must still not offer No fill
+            Assert.AreEqual(9, n, "9 column buttons (Colour joined; no Fill)");
+            Assert.IsNull(Find("Colour menu: No fill", false), "the palette has no No fill chip (not even built)");
+            _session.SetTool(ToolId.Fill);         // reachable only from code
             Assert.AreEqual(ToolId.Fill, _session.ActiveTool, "precondition: the engine accepted Fill");
-            GameObject noFill = Find("No fill", false);
-            Assert.IsTrue(noFill == null || !noFill.activeInHierarchy, "No fill never shows");
-            Assert.IsTrue(Find("Board").activeInHierarchy, "the Board button stays");
             _session.SetFillErase(true);
-            Assert.IsTrue(noFill == null || !noFill.activeInHierarchy, "not even with erase on");
-            Assert.IsTrue(Find("Board").activeInHierarchy);
+            Assert.IsNull(Find("Colour menu: No fill", false), "still no No fill chip in the Fill tool with erase on");
+            Assert.IsNotNull(Find("Colour menu: Board", false), "Board stays in the palette");
         }
 
         // ---------- saved fills ----------

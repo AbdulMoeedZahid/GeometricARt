@@ -254,13 +254,13 @@ namespace GeoART.Tests.Verifier
         // ---------- the column ----------
 
         [Test]
-        public void ColumnHasEightButtonsWithBandsInTheOldDottedSlot()
+        public void ColumnHasNineButtonsWithBandsAndColour()
         {
-            string[] names = { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap" };   // H/V in Snap's menu; Fill switched off (FillEnabled = false)
+            string[] names = { "Line", "Circle", "Select", "Bands", "Medium", "Colour", "Square", "2x2", "Snap" };   // Colour palette; H/V in Snap's menu; Fill off
             var column = Find("Column").transform;
             var direct = new List<string>();
             foreach (Transform c in column) if (c.GetComponent<Button>() != null && c.gameObject.activeSelf) direct.Add(c.name);
-            Assert.AreEqual(8, direct.Count, "8 buttons directly under Column: " + string.Join(",", direct));
+            Assert.AreEqual(9, direct.Count, "9 buttons directly under Column: " + string.Join(",", direct));
             var canvas = _go.GetComponentInChildren<Canvas>(true);
             Vector3[] cc = new Vector3[4], bc = new Vector3[4];
             ((RectTransform)canvas.transform).GetWorldCorners(cc);
@@ -275,7 +275,7 @@ namespace GeoART.Tests.Verifier
             }
             foreach (var t in column.GetComponentsInChildren<Transform>(true))
                 Assert.AreNotEqual("Dotted", t.name, "the Dotted button is gone (its slot is Bands)");
-            Assert.AreEqual(8 * 52f + 4 * 8f + 3 * 14f, ToolBar.ColumnHeight, 0.01f, "8 buttons in 4 groups: 490");
+            Assert.AreEqual(9 * 52f + 5 * 8f + 3 * 14f, ToolBar.ColumnHeight, 0.01f, "9 buttons in 4 groups: 550");
         }
 
         [Test]
