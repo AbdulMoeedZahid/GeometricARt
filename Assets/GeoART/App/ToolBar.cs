@@ -340,6 +340,7 @@ namespace GeoART.App
             _column.localScale = new Vector3(fit, fit, 1f);
             PlaceActionBar(w, h, scale, fit);
             PlaceUndoButton(w, h, scale, fit);
+            CloseHoldMenus();   // an open row was placed for the old layout
         }
 
         // ---------- procedural icons (white on transparent, anti-aliased with a signed distance) ----------

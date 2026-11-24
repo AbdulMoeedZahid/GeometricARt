@@ -12,7 +12,8 @@ namespace GeoART.App
     /// tap one (tap outside to close). The Line icon is a solid or dashed diagonal and the Circle icon a solid or dashed
     /// ring, refreshed on StateChanged, so a mode set elsewhere shows too. A small corner triangle marks buttons that have
     /// a hold menu. The menus (rows and their full-screen blockers) sit under one "HoldMenus" rect, the last child of the
-    /// canvas, so an open row and its blocker draw over the column, the action bar and Undo.
+    /// canvas, so an open row and its blocker draw over the column, the action bar and Undo. Opening one menu closes the
+    /// other, and a re-layout (safe area, rotation) closes both, since a row is placed only when it opens.
     /// After the first placement a one-time toast says "Hold Line or Circle for line styles" (PlayerPrefs flag; only in
     /// Play mode, so EditMode tests never write it).
     /// </summary>
@@ -51,6 +52,8 @@ namespace GeoART.App
                 () => _session?.SetTool(ToolId.Line));
             _circleMenu = AddHoldMenu(_circleBg, "Circle", new[] { Glyph.Circle, Glyph.CircleDotted }, font,
                 () => _session?.SetTool(ToolId.Circle));
+            _lineMenu.Opened += () => _circleMenu.Close();   // one menu at a time (two fingers can hold both)
+            _circleMenu.Opened += () => _lineMenu.Close();
         }
 
         /// <summary>
@@ -159,10 +162,11 @@ namespace GeoART.App
         {
             if (!Application.isPlaying || _boardSpace == null || !_boardSpace.IsPlaced) return;
             if (PlayerPrefs.GetInt(LineMenuHintKey, 0) != 0) return;
+            var toast = GetComponent<ToastView>();
+            if (toast == null) return;   // remembered only once it was actually shown
+            toast.Show(LineMenuHint);
             PlayerPrefs.SetInt(LineMenuHintKey, 1);
             PlayerPrefs.Save();
-            var toast = GetComponent<ToastView>();
-            if (toast != null) toast.Show(LineMenuHint);
         }
 
         // ---------- Bands slot ----------

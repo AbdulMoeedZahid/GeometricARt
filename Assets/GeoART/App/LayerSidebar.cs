@@ -338,7 +338,7 @@ namespace GeoART.App
 
         void ILayerPointerTarget.OnRelayDown(int tag, PointerEventData e)
         {
-            if (tag == BlockerTag) { ClosePopup(); return; }
+            if (tag == BlockerTag) return;   // closes on release: the blocker must cover the whole touch (BoardInputRouter)
             if (_press != null)
             {
                 // Normally a second finger: ignore it. But if the old press's PointerUp was lost (system gesture,
@@ -383,6 +383,7 @@ namespace GeoART.App
 
         void ILayerPointerTarget.OnRelayUp(int tag, PointerEventData e)
         {
+            if (tag == BlockerTag) { ClosePopup(); return; }
             if (_press == null || e.pointerId != _pressPointer) return;
             Row row = _press;
             bool dragging = _dragging, held = _holdFired, second = _secondTap;

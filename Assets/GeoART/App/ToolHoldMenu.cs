@@ -15,7 +15,8 @@ namespace GeoART.App
     ///                the button and <see cref="Opened"/> is raised. Moving past the slop first cancels the hold.
     ///   slide        with the finger still down, the chip under it is highlighted; release on a chip picks it and closes
     ///                the row. Release anywhere else leaves the row open: tap a chip to pick, or tap outside (a
-    ///                full-screen transparent blocker under the chips) to close.
+    ///                full-screen transparent blocker under the chips) to close. The blocker closes on the release of
+    ///                that touch, so the whole touch stays on UI and never reaches the board.
     /// After a hold the Button's click on release must be ignored: the owner's onClick checks
     /// <see cref="SuppressClick"/> (true from the hold until the next press). The press uses its own thresholds, so the
     /// EventSystem drag threshold is turned off (as in LayerPointerRelay) and every move is seen.
@@ -243,8 +244,11 @@ namespace GeoART.App
 
         // ---------- blocker (LayerPointerRelay) ----------
 
-        void ILayerPointerTarget.OnRelayDown(int tag, PointerEventData e) => Close();
+        // Close on the blocker's RELEASE, not its press: the blocker must stay up for the whole touch, because
+        // BoardInputRouter decides at touch-begin (after the EventSystem ran) whether the touch is over UI. Closing on
+        // the press let the first board touch both close the row and draw a line.
+        void ILayerPointerTarget.OnRelayDown(int tag, PointerEventData e) { }
         void ILayerPointerTarget.OnRelayDrag(int tag, PointerEventData e) { }
-        void ILayerPointerTarget.OnRelayUp(int tag, PointerEventData e) { }
+        void ILayerPointerTarget.OnRelayUp(int tag, PointerEventData e) => Close();
     }
 }
