@@ -30,13 +30,15 @@ transparent colour to black. `LayerBands.Default` is off, Double, 6 mm, structur
 Three classes, built only when the shapes or the width change (never on the pointer path):
 
 ### `PlanarGraph`: planar arrangement (also reused by Fill later)
-1. Drop non-finite and zero-length segments. Clip to the board [0,1]^2 (a clipped end gets the side's coordinate
-   exactly) and snap every endpoint coordinate within 1e-5 of a side onto it.
-2. **Endpoint weld**: endpoints within 1e-5 become one point (a frame point wins, then the lexicographically smallest).
-   **Near-junction weld**: an endpoint within 1e-5 of another segment's interior (under- or overshoot) moves onto it;
-   repeated against the moved geometry until nothing moves (at most 4 passes).
-3. **Collinear merge**: segments collinear within 1e-7 that overlap or touch become one segment between the extreme
-   original endpoints (bit-exact). Tap-to-connect chains (A-B + B-C) and lines drawn over lines collapse to one edge.
+1. Drop non-finite and zero-length segments. Snap every endpoint coordinate within 1e-5 of a side onto it, clip to the
+   board [0,1]^2 (a clipped end gets the side's coordinate exactly) and snap again.
+2. **Endpoint weld**: endpoints within 1e-5 become one point (a point on more frame sides wins, so a corner beats a
+   side point, then the lexicographically smallest). **Near-junction weld**: an endpoint within 1e-5 of another
+   segment's interior (under- or overshoot) moves onto it; the ends are re-welded and the pass repeats against the moved
+   geometry until nothing moves (at most 4 passes).
+3. **Collinear merge**: segments collinear within 1e-5 that overlap or touch become one segment between the extreme
+   original endpoints (bit-exact). Tap-to-connect chains (A-B + B-C) and lines drawn over lines collapse to one edge. One
+   more near-junction pass then re-attaches ends to the merged segments.
 4. **Crossings**: every pair (uniform-grid prefilter) through `Intersect.SegmentSegment`, which returns segment ends
    bit-exactly (T-junctions). Points within 1e-7 are one node. Segments are split at their nodes into edges.
 5. **Frame**: the four board sides become edges (source `FrameSource`), cut at every node on them.
@@ -49,10 +51,12 @@ direction give a bit-identical graph and outline.
 ### `BandGraph`: band topology of a layer
 - **Side factor** per half-edge: 1 for a structure line, 0 for the frame and for the outer side of a structure line lying
   on the frame (nothing is offset outside the board along it).
-- **Threads** (one continuous band each) pass straight through structure-degree-4 nodes (sorted index i pairs with i+2,
-  which also covers two star tips touching tip to tip), turn at degree-2 nodes (also on the frame) and stop at degree 1,
-  3, 5+ and at degree-4 nodes on the frame.
-- **Crossings** are structure-degree-4 nodes off the frame. Pass p (0 or 1) of a crossing is the pair holding sorted
+- **Threads** (one continuous band each) turn at degree-2 nodes (also on the frame) and pass through structure-degree-4
+  nodes, where sorted index i pairs with i+2 (a crossing; this also covers two star tips touching tip to tip). The
+  exception is a degree-4 node where two ring-ADJACENT edges are collinear: a straight line with a tip touching it from
+  one side. There the line goes straight on, the tip turns, and the node is a flat junction, not a crossing. Threads stop
+  at degree 1, 3, 5+ and at degree-4 nodes on the frame.
+- **Crossings** are the other structure-degree-4 nodes off the frame. Pass p (0 or 1) of a crossing is the pair holding sorted
   index p. **Weave**: along every thread over and under alternate, so consecutive visits (c1, p1), (c2, p2) give
   `o1 XOR o2 = 1 XOR p1 XOR p2` for the over-pass bits (closed threads include the wrap-around pair; a thread passing the
   same crossing twice is a self-constraint). BFS 2-colouring in node order; each component is seeded at its smallest
@@ -87,8 +91,8 @@ direction give a bit-identical graph and outline.
   the under band at the over band's edges. Bridges are separate segments.
 - **Inner lines** at `h_in = h - max(0.2 width, 1.5 mm)`, drawn only when `h_in >= core half width + 1 mm` (turning them
   on will raise the width to at least 8 mm). Per wedge:
-  - between two band sides at a structure-degree-2 node (a corner of one band), at a free end, at a near-straight
-    pass-through (the bar of a T) and at a bevel: they **join** like the outer lines, at h_in;
+  - between two sides of the same band (a thread turns there: a degree-2 corner or a tip resting on a line), at a free
+    end, at a near-straight pass-through (the bar of a T) and at a bevel: they **join** like the outer lines, at h_in;
   - at every other wedge (junctions, crossings, the frame) each inner line **ends on the neighbouring band's outer
     edge** (on the frame itself for the frame). So at a T the bar's inner line stops at the stem's outer edges and the
     stem's inner lines stop at the bar's outer edge, and in flat Double both bands' inner lines stop at the crossing;
@@ -98,9 +102,13 @@ direction give a bit-identical graph and outline.
 Budget: 500 tile-like segments planarize and outline in about 10-15 ms on the desktop (check limit 50 ms); the book
 fixtures (8 and 32 lines) take under 0.5 ms.
 
+- **Inside the board**: after the safety counts every corner is clamped to [0,1]^2. A corner on a frame line stays on
+  it; a tip spike or cap near the frame is cut at the board edge.
+
 Known limits (v1):
-- Mitre spikes of tips near (not on) the frame and caps within h of the frame can reach outside the board.
-- `SelfIntersections` is per face cycle; a floating component's band running into another component is not counted.
+- A kinked "crossing" (two bent bands meeting at one point, pairing i with i+2) gets bridges between the corners next to
+  the over band, a chord rather than the band's own mitre.
+- `SelfIntersections` is per face cycle (a sweep over x-sorted segments); a floating component's band running into another component is not counted.
 - With "Show structure line" on, the under band's structure line would cross the over band at a woven crossing; how
   P5 handles it (Interlace hides the structure line, or the structure is cut there) is decided in P5.
 
