@@ -24,6 +24,10 @@ namespace GeoART.EditorTools
     ///      originals, orange ghosts, cursor, hover ring when snapped): xform-*.png, xform-dark-*.png, xform-scale-*.png;
     ///   5. renders the test board after two Undos (undo-*.png): the base design without the open green ghost, the blue
     ///      dotted circle and the tiny circle, so BoardView redraws from a swapped-in board.
+    ///   6. renders the band geometry (BandGraph + BandOutline, called directly; BoardView knows nothing about bands
+    ///      yet) of GoldenBoards.StarOnFullBoard and Tiled2x2 as thin black outlines over the structure layer: bands-*
+    ///      (Double, structure shown), bands-stripped-*, interlace-* and interlace-inner-* (8 mm), and the tiled
+    ///      bands-tiled-* / interlace-tiled-*, for comparison with the book (p22-23).
     /// Batch (needs graphics, so no -nographics):
     ///   -executeMethod GeoART.EditorTools.ToolsRenderCheck.RunBatch   (PNGs go to $GEOART_RENDER_OUT or Logs/GeoARtRenderCheck)
     /// </summary>
@@ -94,13 +98,90 @@ namespace GeoART.EditorTools
             // 5. Undo: the first Undo cancels the open green ghost and removes the last stroke (blue dotted circle), the
             //    second removes the tiny circle.
             RenderScenario(outDir, "undo-", s => { DrawTestDesign(s); s.Undo(); s.Undo(); }, showBase: true, dark: false);
+            // 6. Bands, drawn from the engine geometry directly.
+            RenderBands(outDir, "bands-", GoldenBoards.StarOnFullBoard, 0.015, false, false, true);
+            RenderBands(outDir, "bands-stripped-", GoldenBoards.StarOnFullBoard, 0.015, false, false, false);
+            RenderBands(outDir, "interlace-", GoldenBoards.StarOnFullBoard, 0.015, true, false, false);
+            RenderBands(outDir, "interlace-inner-", GoldenBoards.StarOnFullBoard, 0.02, true, true, false);
+            RenderBands(outDir, "bands-tiled-", GoldenBoards.Tiled2x2, 0.015, false, false, true);
+            RenderBands(outDir, "interlace-tiled-", GoldenBoards.Tiled2x2, 0.02, true, true, false);
         }
 
-        static void RenderScenario(string outDir, string prefix, Action<EditorSession> draw, bool showBase, bool dark)
+        /// <summary>
+        /// The board's top layer only (others hidden), its structure lines drawn by BoardView unless
+        /// <paramref name="structure"/> is false, plus the band outlines as Thin (1 mm) black lines on a mesh of their own
+        /// at the Shapes queue.
+        /// </summary>
+        static void RenderBands(string outDir, string prefix, Func<Board> make, double width, bool interlace, bool inner,
+            bool structure)
+        {
+            Board source = make();
+            Layer layer = source.Layers[source.Layers.Count - 1];
+            var graph = BandGraph.Build(layer.Shapes);
+            const double mm = 1.0 / 400.0;   // board units per mm on the 40 cm board
+            var options = new BandOutlineOptions
+            {
+                Width = width, Interlace = interlace, InnerLines = inner,
+                InnerInsetFloor = 1.5 * mm, InnerMinHalf = 0.85 * mm + 1.0 * mm,   // Medium core half + 1 mm
+            };
+            var outline = BandOutline.Build(graph, options);
+            Debug.Log($"[GeoART] Bands {prefix}: {outline.Runs.Count} runs, {outline.InnerRuns.Count} inner, " +
+                      $"{outline.Bridges.Count / 2} bridges, max safe {outline.MaxSafeWidth:0.####}, collapsed {outline.Collapsed}, " +
+                      $"self-intersections {outline.SelfIntersections}, conflicts {outline.WeaveConflicts}");
+
+            Board shown = make();
+            for (int i = 0; i < shown.Layers.Count - 1; i++) shown.Layers[i].Visible = false;
+            if (!structure) shown.Layers[shown.Layers.Count - 1].Shapes.Clear();
+
+            RenderScenario(outDir, prefix, s => s.LoadBoard(shown), showBase: true, dark: false, topView: true,
+                decorate: (boardGo, material) =>
+            {
+                var go = new GameObject("Bands", typeof(MeshFilter), typeof(MeshRenderer));
+                go.transform.SetParent(boardGo.transform, false);
+                var mesh = new Mesh { name = "Bands" };
+                var mat = new Material(material) { renderQueue = 3001 };
+                go.GetComponent<MeshFilter>().sharedMesh = mesh;
+                go.GetComponent<MeshRenderer>().sharedMaterial = mat;
+                var mb = new BoardMeshBuilder();
+                var pts = new System.Collections.Generic.List<Vector3>();
+                float side = BoardGeometry.DefaultSideMeters;
+                var black = new Color32(20, 20, 24, 255);
+                const float lift = 0.0009f, line = 0.0010f;
+                void Runs(System.Collections.Generic.List<BandRun> runs)
+                {
+                    foreach (var r in runs)
+                    {
+                        pts.Clear();
+                        for (int i = 0; i < r.Count; i++) pts.Add(BoardGeometry.BoardToLocal(outline.Points[r.Start + i], side, lift));
+                        mb.AddPolyline(pts, r.Closed, line, black);
+                    }
+                }
+                void Bridges(System.Collections.Generic.List<Vec2> list)
+                {
+                    for (int i = 0; i + 1 < list.Count; i += 2)
+                        mb.AddSegment(BoardGeometry.BoardToLocal(list[i], side, lift),
+                            BoardGeometry.BoardToLocal(list[i + 1], side, lift), line, black);
+                }
+                Runs(outline.Runs);
+                Runs(outline.InnerRuns);
+                Bridges(outline.Bridges);
+                Bridges(outline.InnerBridges);
+                mb.Apply(mesh);
+                return () =>
+                {
+                    UnityEngine.Object.DestroyImmediate(mesh);
+                    UnityEngine.Object.DestroyImmediate(mat);
+                };
+            });
+        }
+
+        static void RenderScenario(string outDir, string prefix, Action<EditorSession> draw, bool showBase, bool dark,
+            Func<GameObject, Material, Action> decorate = null, bool topView = false)
         {
             var material = AssetDatabase.LoadAssetAtPath<Material>(MaterialPath);
             var boardGo = new GameObject("RenderCheckBoard");
             var camGo = new GameObject("RenderCheckCamera", typeof(Camera));
+            Action cleanup = null;
             try
             {
                 var view = boardGo.AddComponent<BoardView>();
@@ -114,6 +195,7 @@ namespace GeoART.EditorTools
                 draw(session);
                 view.Bind(session);
                 Invoke(view, "LateUpdate");
+                cleanup = decorate?.Invoke(boardGo, material);
 
                 var cam = camGo.GetComponent<Camera>();
                 cam.clearFlags = CameraClearFlags.SolidColor;
@@ -125,10 +207,12 @@ namespace GeoART.EditorTools
 
                 Shoot(cam, new Vector3(0f, 0.36f, -0.3f), outDir, prefix + "near45cm");
                 Shoot(cam, new Vector3(0f, 0.6f, -0.7f), outDir, prefix + "far90cm");
+                if (topView) Shoot(cam, new Vector3(0f, 0.8f, -0.0001f), outDir, prefix + "top80cm");   // straight down
                 Invoke(view, "OnDestroy");
             }
             finally
             {
+                cleanup?.Invoke();
                 UnityEngine.Object.DestroyImmediate(boardGo);
                 UnityEngine.Object.DestroyImmediate(camGo);
             }
