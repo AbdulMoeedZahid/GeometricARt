@@ -48,7 +48,7 @@ selects: nothing is moved, added or removed, the board never raises `BoardChange
    touch-down point to the finger; never snapped, no H/V lock). Every shape that lies **wholly** inside the box (edges
    count) is highlighted in cyan as you drag; a shape the box only partly covers is not. Lift: the selection stays and a
    toast says "N shapes selected", or "Nothing selected: the box must enclose whole shapes".
-3. **Tap a stroke**: selects only the shape whose line or circle outline is nearest the finger (within 24 screen px, at
+3. **Tap a stroke**: selects only the shape whose line or circle outline is nearest the finger (within 32 screen px, at
    most 1.2 cm on the 40 cm board; the topmost shape wins a tie). Tapping inside a circle away from its outline does not
    pick it. A tap on empty board clears the selection.
 4. A new box or tap always **replaces** the selection (no add mode).
