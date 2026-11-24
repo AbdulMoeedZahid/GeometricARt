@@ -105,7 +105,7 @@ namespace GeoART.App
             if (!visible) CloseWheel();
 
             RgbaColor current = _session != null ? _session.Style.Color : Palette.Black;
-            bool fillTool = _session != null && _session.ActiveTool == ToolId.Fill;
+            bool fillTool = ToolBar.FillEnabled && _session != null && _session.ActiveTool == ToolId.Fill;
             bool erase = fillTool && _session.FillErase;
             RgbaColor[] colors = BoardAppearance.ShapeColors;
             for (int i = 0; i < colors.Length && i < _rings.Length; i++)

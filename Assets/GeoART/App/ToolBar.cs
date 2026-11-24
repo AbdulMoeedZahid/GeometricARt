@@ -22,7 +22,8 @@ namespace GeoART.App
     ///                   Hold Snap: a chip toggles the H/V lock (IEditorSession.SetOrthoLock: the Line tool draws
     ///                   horizontal/vertical lines); the Snap label reads "H/V" while the lock is on. H/V had its own
     ///                   button until the Fill tool needed the slot (decisions: fewer, bigger buttons, pulled forward)
-    ///   Fill            selects ToolId.Fill (paint bucket): tap inside a closed region to fill it (docs/FILL.md)
+    ///   Fill            selects ToolId.Fill (paint bucket): tap inside a closed region to fill it (docs/FILL.md). Only
+    ///                   while <see cref="FillEnabled"/> is on (off for now: 8 buttons)
     /// Nine buttons in four groups (3, 2, 2, 2), 550 reference px tall: fits a 390x844 portrait screen with room for
     /// the placement row and the coach text. Shorter screens (landscape: Android 16 ignores the portrait lock on large
     /// screens) shrink the column to stay between the two, see <see cref="ApplySafeArea"/>.
@@ -48,7 +49,14 @@ namespace GeoART.App
         // Screen-height fractions the column stays clear of: PlacementControls' row ends 11% above the safe-area bottom
         // (its Re-place button shows while the bar does), DevHud's coach text starts 20% below the top of the screen.
         const float PlacementRowTop = 0.11f, CoachTextBottom = 0.80f, MinFit = 0.4f;
-        const int ButtonCount = 9, GroupCount = 4;
+        /// <summary>
+        /// Switch for the Fill tool (docs/FILL.md). Off for now: the triangulator has a known issue with holes sharing a
+        /// rightmost x. Off = no Fill button (the column has 8 buttons) and the colour bar never shows "No fill"; the
+        /// engine, the model, saving and drawing of fills stay, so saved fills load, draw and survive a re-save.
+        /// </summary>
+        public const bool FillEnabled = false;
+
+        const int ButtonCount = FillEnabled ? 9 : 8, GroupCount = 4;
 
         /// <summary>Column height in reference px: 9 buttons, one spacing between buttons of a group, a gap between groups.</summary>
         public const float ColumnHeight =
@@ -101,7 +109,9 @@ namespace GeoART.App
             _lineBg = CreateButton("Line", Glyph.Line, font, ref y, () => TapTool(_lineMenu, ToolId.Line), out _);
             _circleBg = CreateButton("Circle", Glyph.Circle, font, ref y, () => TapTool(_circleMenu, ToolId.Circle), out _);
             _selectBg = CreateButton("Select", Glyph.Select, font, ref y, () => _session?.SetTool(ToolId.SelectMove), out _);
-            _fillBg = CreateButton("Fill", Glyph.Fill, font, ref y, () => _session?.SetTool(ToolId.Fill), out _);
+#pragma warning disable 162   // FillEnabled is a compile-time switch
+            if (FillEnabled) _fillBg = CreateButton("Fill", Glyph.Fill, font, ref y, () => _session?.SetTool(ToolId.Fill), out _);
+#pragma warning restore 162
             y += GroupGap - Spacing;
             BuildBandsButton(font, ref y);
             CreateButton("Medium", Glyph.Width, font, ref y, CycleWidth, out _widthLabel);
