@@ -251,21 +251,21 @@ namespace GeoART.Tests.Verifier
         }
 
         [Test]
-        public void GlyphTableHasSixteenDistinctSlotsWithTheRoundedSpriteAt15()
+        public void GlyphTableHasNineteenDistinctSlotsWithTheRoundedSpriteAt18()
         {
             MakeToolBar(place: true);
             var f = typeof(ToolBar).GetField("_textures", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(f, "ToolBar._textures");
             var table = (Texture2D[])f.GetValue(_appGo.GetComponent<ToolBar>());
-            Assert.AreEqual(16, table.Length, "GlyphCount 15 + the rounded sprite");
+            Assert.AreEqual(19, table.Length, "GlyphCount 18 + the rounded sprite");
             var distinct = new HashSet<Texture2D>();
             foreach (var t in table)
             {
                 Assert.NotNull(t, "every slot filled (a missing GlyphCount bump overwrites one)");
                 distinct.Add(t);
             }
-            Assert.AreEqual(16, distinct.Count, "all distinct");
-            Assert.AreSame(Find("Line").GetComponent<Image>().sprite.texture, table[15], "rounded sprite at index 15");
+            Assert.AreEqual(19, distinct.Count, "all distinct");
+            Assert.AreSame(Find("Line").GetComponent<Image>().sprite.texture, table[18], "rounded sprite at index 18");
             CollectionAssert.Contains(table, UndoGo.transform.Find("Icon").GetComponent<RawImage>().texture,
                 "the Undo glyph is in the table (freed on destroy)");
         }
