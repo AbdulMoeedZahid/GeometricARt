@@ -12,9 +12,9 @@ using UnityEngine.UI;
 namespace GeoART.Tests.Verifier
 {
     /// <summary>
-    /// VERIFIER: colour options. ColorBar (5 shape colours for new shapes, board guide lines Black/White toggle, hidden
-    /// until placed, clear of the ToolBar column) and BoardView's guide-line colour (dashed grid and outline only, no
-    /// fill: Black is the original look, White is light).
+    /// VERIFIER: colour options. The ToolBar's Colour palette with the ColorBar behind it (5 shape colours for new shapes,
+    /// board guide lines Black/White toggle, hidden until placed, no bottom pill any more) and BoardView's guide-line
+    /// colour (dashed grid and outline only, no fill: Black is the original look, White is light).
     /// </summary>
     public sealed class VerifierColorTests
     {
@@ -92,10 +92,14 @@ namespace GeoART.Tests.Verifier
             f.SetValue(target, value);
         }
 
+        /// <summary>The ToolBar (Colour button and palette) and the ColorBar (colour logic, wheel) on one GameObject.</summary>
         ColorBar AddColorBar()
         {
+            var tb = _go.AddComponent<ToolBar>();
             var c = _go.AddComponent<ColorBar>();
+            Call(tb, "Awake");
             Call(c, "Awake");
+            Call(tb, "Start");
             Call(c, "Start");
             return c;
         }
@@ -111,79 +115,99 @@ namespace GeoART.Tests.Verifier
         void Click(GameObject go) =>
             ExecuteEvents.Execute(go, new PointerEventData(_es) { button = PointerEventData.InputButton.Left }, ExecuteEvents.pointerClickHandler);
 
-        // ---------- ColorBar ----------
+        /// <summary>Opens the palette with a click on Colour, then clicks the chip.</summary>
+        void Pick(string chip)
+        {
+            Click(Find("Colour"));
+            Click(Find("Colour menu: " + chip));
+        }
+
+        Color ChipBg(string chip) => Find("Colour menu: " + chip).GetComponent<Image>().color;
+
+        // ---------- Colour button and palette ----------
 
         [Test]
-        public void ColorBar_HiddenUntilPlaced_AndBlocksTouches()
+        public void Palette_HiddenUntilPlaced_AndBlocksTouches()
         {
             AddColorBar();
-            var canvas = _go.GetComponentInChildren<Canvas>(true);
+            var canvas = Find("Colour").GetComponentInParent<Canvas>(true);
             Assert.IsFalse(canvas.enabled, "hidden before placement");
             _space.PlaceAtReticle();
             Assert.IsTrue(canvas.enabled, "shown once placed");
-            foreach (var name in new[] { "Pill", "Black", "White", "Red", "Green", "Blue", "Board" })
+            foreach (var name in new[] { "Colour", "Colour menu", "Colour menu: Black", "Colour menu: White", "Colour menu: Red",
+                         "Colour menu: Green", "Colour menu: Blue", "Colour menu: Custom", "Colour menu: Wheel…", "Colour menu: Board" })
                 Assert.IsTrue(Find(name).GetComponent<Graphic>().raycastTarget, $"{name} blocks drawing under it");
             _space.Reset();
             Assert.IsFalse(canvas.enabled, "hidden again after re-place");
         }
 
         [Test]
-        public void ColorBar_SwatchSetsColorForNewShapes_KeepsWidthAndDash()
+        public void Palette_NoBottomPillAnyMore()
+        {
+            AddColorBar();
+            _space.PlaceAtReticle();
+            foreach (var t in _go.GetComponentsInChildren<Transform>(true))
+                Assert.AreNotEqual("Pill", t.name, "the bottom-left colour pill is gone (nothing sits under the action bar)");
+            var canvases = _go.GetComponentsInChildren<Canvas>(true);
+            foreach (var c in canvases)
+                Assert.IsTrue(c.name == "ToolBar" || c.name == "ColorWheel", $"only the ToolBar and the colour wheel canvases ({c.name})");
+        }
+
+        [Test]
+        public void Palette_SwatchSetsColorForNewShapes_KeepsWidthAndDash()
         {
             AddColorBar();
             _space.PlaceAtReticle();
             _session.Style = new StrokeStyle(Palette.Black, LineWidth.Thick, LineStyle.Dotted);
-            Assert.That(Find("Black").GetComponent<Image>().color.a, Is.GreaterThan(0.5f), "black ringed by default");
+            Click(Find("Colour"));
+            Assert.AreNotEqual(ChipBg("Black"), ChipBg("Red"), "black highlighted by default");
 
-            Click(Find("Red"));
+            Click(Find("Colour menu: Red"));
             Assert.AreEqual(Palette.Red, _session.Style.Color);
             Assert.AreEqual(LineWidth.Thick, _session.Style.Width, "width kept");
             Assert.AreEqual(LineStyle.Dotted, _session.Style.Dash, "dash kept");
-            Assert.That(Find("Red").GetComponent<Image>().color.a, Is.GreaterThan(0.5f), "red ringed");
-            Assert.That(Find("Black").GetComponent<Image>().color.a, Is.EqualTo(0f), "black no longer ringed");
+            Click(Find("Colour"));
+            Assert.AreNotEqual(ChipBg("Red"), ChipBg("Black"), "red highlighted");
+            Assert.AreEqual(ChipBg("Black"), ChipBg("Green"), "black no longer highlighted");
+            Click(Find("Colour"));   // a second click closes it
 
             foreach (var (name, color) in new[] { ("White", Palette.White), ("Green", Palette.Green), ("Blue", Palette.Blue), ("Black", Palette.Black) })
             {
-                Click(Find(name));
+                Pick(name);
                 Assert.AreEqual(color, _session.Style.Color, name);
             }
         }
 
         [Test]
-        public void ColorBar_ExistingShapesKeepTheirColor()
+        public void Palette_ExistingShapesKeepTheirColor()
         {
             AddColorBar();
             _session.ActiveLayer.Shapes.Add(new LineShape(_session.Board.NewId(), new Vec2(0.1, 0.1), new Vec2(0.9, 0.9), StrokeStyle.Default));
-            Click(Find("Blue"));
+            Pick("Blue");
+            Assert.AreEqual(Palette.Blue, _session.Style.Color);
             Assert.AreEqual(Palette.Black, _session.ActiveLayer.Shapes[0].Style.Color);
         }
 
         [Test]
-        public void ColorBar_BoardButtonTogglesBlackAndWhite()
+        public void Palette_BoardChipTogglesBlackAndWhite_AndStaysOpen()
         {
             AddColorBar();
             _space.PlaceAtReticle();
             Assert.AreEqual(BoardGuideColor.Black, BoardAppearance.Guides, "black (original look) by default");
-            Text label = Find("Label").GetComponent<Text>();
-            Assert.AreEqual("Black", label.text);
+            var menu = Find("Colour").GetComponent<ToolHoldMenu>();
+            RawImage icon = Find("Colour menu: Board").transform.Find("Icon").GetComponent<RawImage>();
+            Assert.Less(icon.color.r, 0.2f, "the Board icon shows black guides");
 
-            Click(Find("Board"));
+            Click(Find("Colour"));
+            Click(Find("Colour menu: Board"));
             Assert.AreEqual(BoardGuideColor.White, BoardAppearance.Guides);
-            Assert.AreEqual("White", label.text);
-            Click(Find("Board"));
+            Assert.Greater(icon.color.r, 0.8f, "the Board icon shows white guides");
+            Assert.IsTrue(menu.IsOpen, "a toggle leaves the palette open");
+            Click(Find("Colour menu: Board"));
             Assert.AreEqual(BoardGuideColor.Black, BoardAppearance.Guides);
-            Assert.AreEqual("Black", label.text);
-        }
-
-        [Test]
-        public void ColorBar_EndsLeftOfTheToolBarColumn()
-        {
-            // Reference layout (390 px wide): ToolBar buttons sit EdgeMargin from the right edge.
-            var buttonW = (float)typeof(ToolBar).GetField("ButtonW", BindingFlags.NonPublic | BindingFlags.Static).GetRawConstantValue();
-            var toolMargin = (float)typeof(ToolBar).GetField("EdgeMargin", BindingFlags.NonPublic | BindingFlags.Static).GetRawConstantValue();
-            float toolLeft = 390f - toolMargin - buttonW;
-            Assert.That(ColorBar.EdgeMargin + ColorBar.PillWidth, Is.LessThanOrEqualTo(toolLeft - 8f), "clear of the tool column");
-            Assert.That(ColorBar.BottomFraction, Is.GreaterThan(0.11f), "above the placement row (4-11%)");
+            Assert.Less(icon.color.r, 0.2f);
+            BoardAppearance.SetGuides(BoardGuideColor.White);   // set elsewhere: the icon follows
+            Assert.Greater(icon.color.r, 0.8f);
         }
 
         // ---------- BoardView guide-line colour ----------

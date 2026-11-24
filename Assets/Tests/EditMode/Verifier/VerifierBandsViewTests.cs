@@ -376,8 +376,6 @@ namespace GeoART.Tests.Verifier
                 $"popup {popup} inside the {Screen.width}x{Screen.height} screen");
             Assert.IsFalse(popup.Overlaps(column), $"popup {popup} clear of the tool column {column}");
             ClosePopupByBlocker();
-            Rect pill = ScreenRect(Find("Board").transform.parent.gameObject);
-            Assert.IsFalse(pill.Overlaps(column), $"colour pill {pill} clear of the tool column {column} ({Screen.width}x{Screen.height})");
             var bar = _appGo.GetComponent<ColorBar>();
             bar.OpenWheel();
             Canvas.ForceUpdateCanvases();
@@ -386,6 +384,7 @@ namespace GeoART.Tests.Verifier
             Rect wheel = ScreenRect(panel);
             Assert.That(wheel.xMin >= 0 && wheel.yMin >= 0 && wheel.xMax <= Screen.width && wheel.yMax <= Screen.height,
                 $"wheel panel {wheel} inside the screen");
+            Assert.IsFalse(wheel.Overlaps(column), $"wheel panel {wheel} clear of the tool column {column} ({Screen.width}x{Screen.height})");
             bar.CloseWheel();
         }
     }

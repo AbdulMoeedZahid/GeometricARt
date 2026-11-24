@@ -6,31 +6,32 @@ using UnityEngine.UI;
 namespace GeoART.App
 {
     /// <summary>
-    /// The colour wheel (decision 7): a full-spectrum picker behind the custom swatch at the end of the palette.
-    ///   Custom swatch   a rainbow ring around the last picked colour (grey until one is picked). Tap: selects that
-    ///                   colour when it is not the current one; otherwise (or with none yet) opens the wheel
+    /// The colour wheel (decision 7): a full-spectrum picker, opened from the palette's "Wheel…" chip (or its Custom chip
+    /// while no custom colour exists yet).
+    ///   Custom colour   the last colour picked on the wheel (<see cref="CustomColor"/>; the palette shows it as a swatch
+    ///                   in a rainbow ring, grey until one is picked). Kept in PlayerPrefs (Play mode only)
     ///   Wheel popup     a hue/saturation disc (hue = angle, saturation = distance from the centre), a brightness slider,
     ///                   a preview and "Use colour". Dragging changes only the preview; Use makes it the current colour,
-    ///                   restyles the selection if there is one (one "Style" step), keeps it as the custom swatch
-    ///                   (PlayerPrefs, Play mode only) and closes. A touch outside closes without a change; the popup's
-    ///                   full-screen blocker closes on the touch's RELEASE, so the whole touch stays on UI and never draws.
-    /// The popup has its own canvas (sorting order 115) above the tool bar and the layer sidebar.
+    ///                   restyles the selection if there is one (one "Style" step), keeps it as the custom colour and
+    ///                   closes. A touch outside closes without a change; the popup's full-screen blocker closes on the
+    ///                   touch's RELEASE, so the whole touch stays on UI and never draws.
+    /// The popup has its own canvas (sorting order 115) above the tool bar and the layer sidebar. It opens centred in the
+    /// safe area left of the ToolBar column (shrunk if that space is too small), so it never covers the column.
     /// </summary>
     public sealed partial class ColorBar : ILayerPointerTarget
     {
         const string CustomColorKey = "GeoART.CustomColor";
         const int WheelBlockerTag = -1, WheelTag = -2;
-        const int WheelPx = 192, RingPx = 64;
+        const int WheelPx = 192;
         const float PanelW = 260f, PanelH = 330f, WheelSize = 200f;
-        static readonly Color NoCustom = new Color(0.35f, 0.35f, 0.38f, 1f);
 
         Canvas _wheelCanvas;
         RectTransform _wheelPanel, _wheelRect, _wheelMarker;
         RawImage _wheelImage;
         GameObject _wheelBlocker;
         Slider _brightness;
-        Image _preview, _customRing, _customFill;
-        Texture2D _wheelTex, _ringTex;
+        Image _preview;
+        Texture2D _wheelTex;
         float _hue, _sat = 1f, _val = 1f;
         bool _hasCustom;
         RgbaColor _custom;
@@ -52,53 +53,19 @@ namespace GeoART.App
             }
         }
 
-        // ---------- custom swatch ----------
+        // ---------- custom colour ----------
 
-        void CreateCustomSwatch(float x)
+        void LoadCustom()
         {
-            _customRing = LayerUiKit.NewImage("Custom", _pill, Clear, true, Ring * 0.5f);
-            LayerUiKit.Place(_customRing.rectTransform, new Vector2(0f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(x + SwatchSlot * 0.5f, 0f), new Vector2(Ring, Ring));
-            var button = _customRing.gameObject.AddComponent<Button>();
-            button.transition = Selectable.Transition.None;
-            button.onClick.AddListener(OnCustomTap);
-
-            _ringTex = MakeSpectrumTexture(RingPx, 0.72f);
-            var spectrum = new GameObject("Spectrum", typeof(RectTransform), typeof(RawImage));
-            var srt = (RectTransform)spectrum.transform;
-            srt.SetParent(_customRing.transform, false);
-            LayerUiKit.Place(srt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(Swatch + 3f, Swatch + 3f));
-            var raw = spectrum.GetComponent<RawImage>();
-            raw.texture = _ringTex;
-            raw.raycastTarget = false;
-
-            _customFill = LayerUiKit.NewImage("Color", _customRing.transform, NoCustom, false, (Swatch - 10f) * 0.5f);
-            LayerUiKit.Place(_customFill.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero,
-                new Vector2(Swatch - 10f, Swatch - 10f));
-
-            if (Application.isPlaying && PlayerPrefs.HasKey(CustomColorKey))
-            {
-                int v = PlayerPrefs.GetInt(CustomColorKey);
-                _custom = new RgbaColor((byte)(v >> 24), (byte)(v >> 16), (byte)(v >> 8), 255);
-                _hasCustom = true;
-            }
-        }
-
-        void OnCustomTap()
-        {
-            if (_hasCustom && _session != null && !_custom.Equals(_session.Style.Color)) SelectColor(_custom);
-            else OpenWheel();
-        }
-
-        void RefreshCustom(RgbaColor current)
-        {
-            if (_customRing == null) return;
-            SetColor(_customRing, _hasCustom && _custom.Equals(current) ? Accent : Clear);
-            SetColor(_customFill, _hasCustom ? ToColor(_custom) : NoCustom);
+            if (!Application.isPlaying || !PlayerPrefs.HasKey(CustomColorKey)) return;
+            int v = PlayerPrefs.GetInt(CustomColorKey);
+            _custom = new RgbaColor((byte)(v >> 24), (byte)(v >> 16), (byte)(v >> 8), 255);
+            _hasCustom = true;
         }
 
         void SetCustom(RgbaColor c)
         {
+            bool changed = !_hasCustom || !_custom.Equals(c);
             _hasCustom = true;
             _custom = c;
             if (Application.isPlaying)
@@ -106,6 +73,7 @@ namespace GeoART.App
                 PlayerPrefs.SetInt(CustomColorKey, (c.R << 24) | (c.G << 16) | (c.B << 8) | 255);
                 PlayerPrefs.Save();
             }
+            if (changed) CustomChanged?.Invoke();
         }
 
         // ---------- wheel popup ----------
@@ -187,7 +155,7 @@ namespace GeoART.App
             handleArea.sizeDelta = new Vector2(-20f, 0f);
             Image handle = LayerUiKit.NewImage("Handle", handleArea, Color.white, false, 11f);
             handle.rectTransform.anchorMin = handle.rectTransform.anchorMax = new Vector2(0f, 0.5f);
-            handle.rectTransform.sizeDelta = new Vector2(22f, 22f);
+            handle.rectTransform.sizeDelta = new Vector2(22f, 22f - 32f);   // the Slider stretches it over the 32 px area's height: 22 x 22
             var slider = hit.gameObject.AddComponent<Slider>();
             slider.transition = Selectable.Transition.None;
             slider.navigation = new Navigation { mode = Navigation.Mode.None };
@@ -206,8 +174,30 @@ namespace GeoART.App
             Color.RGBToHSV(ToColor(start), out _hue, out _sat, out _val);
             _brightness.SetValueWithoutNotify(_val);
             SyncWheel();
+            PlaceWheel();
             _wheelBlocker.SetActive(true);
             _wheelPanel.gameObject.SetActive(true);
+        }
+
+        /// <summary>
+        /// Centres the panel in the safe area left of the ToolBar column (EdgeMargin 8 ref px from both), shrunk (not
+        /// below 0.4) when that space is smaller than the panel.
+        /// </summary>
+        void PlaceWheel()
+        {
+            float w = Mathf.Max(1, UiScreen.Width), h = Mathf.Max(1, UiScreen.Height);
+            float scale = ScreenSnapMetric.ScaleFactor(w, h);
+            float margin = 8f * scale;
+            Rect safe = UiScreen.SafeArea;
+            float left = safe.xMin + margin, right = safe.xMax - margin, bottom = safe.yMin + margin, top = safe.yMax - margin;
+            var toolBar = GetComponent<ToolBar>();
+            if (toolBar != null && toolBar.TryGetColumnScreenRect(out Rect column) && column.xMin - margin > left)
+                right = Mathf.Min(right, column.xMin - margin);
+            float fit = Mathf.Clamp(Mathf.Min((right - left) / (PanelW * scale), (top - bottom) / (PanelH * scale)), 0.4f, 1f);
+            _wheelPanel.anchorMin = _wheelPanel.anchorMax = new Vector2((left + right) * 0.5f / w, (bottom + top) * 0.5f / h);
+            _wheelPanel.pivot = new Vector2(0.5f, 0.5f);
+            _wheelPanel.anchoredPosition = Vector2.zero;
+            _wheelPanel.localScale = new Vector3(fit, fit, 1f);
         }
 
         public void CloseWheel()
@@ -222,8 +212,7 @@ namespace GeoART.App
             RgbaColor c = WheelColor;
             SetCustom(c);
             CloseWheel();
-            SelectColor(c);   // StateChanged -> Refresh (also redraws the custom swatch)
-            RefreshCustom(_session != null ? _session.Style.Color : c);
+            SelectColor(c);   // StateChanged -> the ToolBar redraws the Colour button
         }
 
         /// <summary>
@@ -274,7 +263,7 @@ namespace GeoART.App
         /// A disc (or, with <paramref name="hole"/> &gt; 0, a ring) of hues around the circle, white at the centre and
         /// fully saturated at the rim, anti-aliased at the edges.
         /// </summary>
-        static Texture2D MakeSpectrumTexture(int size, float hole)
+        internal static Texture2D MakeSpectrumTexture(int size, float hole)
         {
             var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
             {
@@ -305,7 +294,6 @@ namespace GeoART.App
         void DestroyWheelTextures()
         {
             if (_wheelTex != null) Destroy(_wheelTex);
-            if (_ringTex != null) Destroy(_ringTex);
         }
     }
 }

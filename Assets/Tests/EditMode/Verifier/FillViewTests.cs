@@ -13,7 +13,7 @@ using Object = UnityEngine.Object;
 namespace GeoART.Tests.Verifier
 {
     /// <summary>
-    /// The Fill tool's view side (decision 6): the Fill button, the colour bar's "No fill" in the Board button's place,
+    /// The Fill tool's view side (decision 6): the Fill button, the Colour palette's "No fill" chip (Fill tool only),
     /// fills drawn first in the layer's Shapes mesh (under its strokes), hidden layers drawing none, and the cost of a
     /// band-width drag on a banded layer with fills. Edit Mode does not tick MonoBehaviours, so Awake/Start/LateUpdate are
     /// invoked by reflection.
@@ -125,34 +125,40 @@ namespace GeoART.Tests.Verifier
         }
 
         [Test]
-        public void FillButtonAndNoFillInTheColourBar()
+        public void FillButtonAndNoFillInThePalette()
         {
             MakeApp();
             if (!ToolBar.FillEnabled)
             {
-                // Switched off (docs/FILL.md, known issue): no Fill button, and "No fill" never shows, even if the engine's
-                // Fill tool is selected from code.
+                // Switched off (docs/FILL.md, known issue): no Fill button and no "No fill" chip, even if the engine's Fill
+                // tool is selected from code.
                 foreach (var t in _appGo.GetComponentsInChildren<Transform>(true))
+                {
                     Assert.AreNotEqual("Fill", t.name, "no Fill button while Fill is switched off");
+                    Assert.AreNotEqual("Colour menu: No fill", t.name, "no No fill chip while Fill is switched off");
+                }
                 _session.SetTool(ToolId.Fill);
-                Assert.IsFalse(Find("No fill").activeSelf, "No fill stays hidden");
-                Assert.IsTrue(Find("Board").activeSelf, "the Board button stays");
+                Click("Colour");
+                Assert.IsTrue(Find("Colour menu: Board").activeSelf, "the Board chip stays");
                 return;
             }
-            Assert.IsTrue(Find("Board").activeSelf && !Find("No fill").activeSelf, "Board button outside Fill");
+            Assert.IsFalse(Find("Colour menu: No fill").activeSelf, "No fill only with the Fill tool");
             Click("Fill");
             Assert.AreEqual(ToolId.Fill, _session.ActiveTool, "Fill button selects the Fill tool");
             Assert.AreNotEqual(Find("Medium").GetComponent<Image>().color, Find("Fill").GetComponent<Image>().color, "highlighted");
-            Assert.IsTrue(Find("No fill").activeSelf && !Find("Board").activeSelf, "No fill takes the Board button's place");
-            Click("No fill");
+            Assert.IsTrue(Find("Colour menu: No fill").activeSelf && Find("Colour menu: Board").activeSelf, "No fill joins the palette");
+            Click("Colour");
+            Click("Colour menu: No fill");
             Assert.IsTrue(_session.FillErase, "No fill: taps clear");
-            Click("Red");
+            Click("Colour");
+            Click("Colour menu: Red");
             Assert.IsFalse(_session.FillErase, "a colour ends No fill");
             Assert.AreEqual(Palette.Red, _session.Style.Color);
-            Click("No fill");
+            Click("Colour");
+            Click("Colour menu: No fill");
             Click("Line");
             Assert.IsFalse(_session.FillErase, "leaving Fill resets it");
-            Assert.IsTrue(Find("Board").activeSelf && !Find("No fill").activeSelf, "Board button back");
+            Assert.IsFalse(Find("Colour menu: No fill").activeSelf, "No fill hidden again");
         }
 
         [Test]

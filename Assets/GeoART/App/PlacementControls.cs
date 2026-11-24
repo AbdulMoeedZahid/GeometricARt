@@ -86,7 +86,7 @@ namespace GeoART.App
 
         void Refresh()
         {
-            if (Screen.safeArea != _safeArea) ApplySafeArea();
+            if (UiScreen.SafeArea != _safeArea) ApplySafeArea();
             if (_boardSpace == null) { SetAllHidden(); return; }
 
             PlacementState state = _boardSpace.State;
@@ -147,8 +147,8 @@ namespace GeoART.App
         /// <summary>Row at 4-11% of the screen height, inside the safe area (home indicator, rounded corners).</summary>
         void ApplySafeArea()
         {
-            _safeArea = Screen.safeArea;
-            float w = Mathf.Max(1, Screen.width), h = Mathf.Max(1, Screen.height);
+            _safeArea = UiScreen.SafeArea;
+            float w = Mathf.Max(1, UiScreen.Width), h = Mathf.Max(1, UiScreen.Height);
             float left = _safeArea.xMin / w + 0.03f, right = _safeArea.xMax / w - 0.03f;
             float bottom = _safeArea.yMin / h;
             _row.anchorMin = new Vector2(left, bottom + 0.04f);

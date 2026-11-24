@@ -113,7 +113,7 @@ namespace GeoART.App.Save
 
         void LateUpdate()
         {
-            if (Screen.safeArea != _safeArea || Screen.width != _screenW || Screen.height != _screenH) ApplySafeArea();
+            if (UiScreen.SafeArea != _safeArea || UiScreen.Width != _screenW || UiScreen.Height != _screenH) ApplySafeArea();
             if (_armed != null && Time.unscaledTime > _armedUntil) Disarm();
         }
 
@@ -667,16 +667,16 @@ namespace GeoART.App.Save
         }
 
         /// <summary>
-        /// Both canvases follow Screen.safeArea. The button sits in the top-right corner; on a short screen where the
+        /// Both canvases follow UiScreen.SafeArea. The button sits in the top-right corner; on a short screen where the
         /// ToolBar column (vertically centred on the right) would reach up to it, it moves one column to the left.
         /// The card is centred and as tall as fits, up to <see cref="CardMaxHeight"/>.
         /// </summary>
         void ApplySafeArea()
         {
-            _safeArea = Screen.safeArea;
-            _screenW = Screen.width;
-            _screenH = Screen.height;
-            float w = Mathf.Max(1, Screen.width), h = Mathf.Max(1, Screen.height);
+            _safeArea = UiScreen.SafeArea;
+            _screenW = UiScreen.Width;
+            _screenH = UiScreen.Height;
+            float w = Mathf.Max(1, UiScreen.Width), h = Mathf.Max(1, UiScreen.Height);
             var min = new Vector2(_safeArea.xMin / w, _safeArea.yMin / h);
             var max = new Vector2(_safeArea.xMax / w, _safeArea.yMax / h);
             foreach (var area in new[] { _buttonArea, _panelArea })

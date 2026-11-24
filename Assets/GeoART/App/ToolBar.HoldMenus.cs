@@ -17,7 +17,8 @@ namespace GeoART.App
     /// ring, refreshed on StateChanged, so a mode set elsewhere shows too. A small corner triangle marks buttons that have
     /// a hold menu. The menus (rows and their full-screen blockers) sit under one "HoldMenus" rect, the last child of the
     /// canvas, so an open row and its blocker draw over the column, the action bar and Undo. Opening one menu closes the
-    /// other, and a re-layout (safe area, rotation) closes both, since a row is placed only when it opens.
+    /// others (the Colour palette, ToolBar.Colour.cs, is one of them), and a re-layout (safe area, rotation) closes them
+    /// all, since a row is placed only when it opens.
     /// After the first placement a one-time toast says "Hold Line or Circle for line styles" (PlayerPrefs flag; only in
     /// Play mode, so EditMode tests never write it).
     /// </summary>
@@ -60,8 +61,9 @@ namespace GeoART.App
             // Snap: tap toggles snapping; hold opens the H/V lock chip (later the angle-lock steps join it).
             _snapMenu = AddHoldMenu(_snapBg, "Snap", new[] { Glyph.HV }, new[] { "H/V" }, font,
                 () => _session != null && _session.OrthoLock ? 0 : -1, _ => ToggleOrthoLock(), null);
+            BuildPalette(font);
             // One menu at a time (two fingers can hold two buttons).
-            var menus = new[] { _lineMenu, _circleMenu, _bandsMenu, _snapMenu };
+            var menus = new[] { _lineMenu, _circleMenu, _bandsMenu, _snapMenu, _colourMenu };
             foreach (var m in menus)
             {
                 ToolHoldMenu self = m;
@@ -72,11 +74,16 @@ namespace GeoART.App
         /// <summary>
         /// A <see cref="ToolHoldMenu"/> on <paramref name="button"/> with one chip per option (named
         /// "<paramref name="name"/> menu: label"), a charging overlay and the corner mark. <paramref name="getCurrent"/>
-        /// gives the highlighted chip, <paramref name="onPick"/> applies a chip.
+        /// gives the highlighted chip, <paramref name="onPick"/> applies a chip. The chips form one row, or a grid of
+        /// <paramref name="columns"/> chips per row (filled row by row from the top left) of <paramref name="chipW"/> x
+        /// ChipH chips <paramref name="spacing"/> apart.
         /// </summary>
         ToolHoldMenu AddHoldMenu(Image button, string name, Glyph[] glyphs, string[] labels, Font font,
-            System.Func<int> getCurrent, System.Action<int> onPick, System.Action onHold)
+            System.Func<int> getCurrent, System.Action<int> onPick, System.Action onHold,
+            int columns = 0, float chipW = ChipW, float spacing = ChipSpacing)
         {
+            int cols = columns > 0 ? Mathf.Min(columns, glyphs.Length) : glyphs.Length;
+            int rows = (glyphs.Length + cols - 1) / cols;
             var blocker = new GameObject(name + " menu blocker", typeof(RectTransform), typeof(Image));
             var brt = (RectTransform)blocker.transform;
             brt.SetParent(_holdMenus, false);
@@ -91,17 +98,20 @@ namespace GeoART.App
             var rowGo = new GameObject(name + " menu", typeof(RectTransform));
             var row = (RectTransform)rowGo.transform;
             row.SetParent(_holdMenus, false);
-            row.sizeDelta = new Vector2(glyphs.Length * ChipW + (glyphs.Length - 1) * ChipSpacing, ChipH);
+            row.sizeDelta = new Vector2(cols * chipW + (cols - 1) * spacing, rows * ChipH + (rows - 1) * spacing);
             AddTouchBlocker(rowGo);   // the gap between chips is part of the menu, not "outside"
             var chips = new Image[glyphs.Length];
             for (int i = 0; i < glyphs.Length; i++)
             {
-                chips[i] = MakeButton(labels[i], glyphs[i], font, row, () => { }, out _);
+                chips[i] = MakeButton(labels[i], glyphs[i], font, row, () => { }, out Text text);
                 chips[i].gameObject.name = name + " menu: " + labels[i];
+                text.horizontalOverflow = HorizontalWrapMode.Overflow;   // "Custom" / "Wheel…" never wrap away on a narrow chip
                 var rt = chips[i].rectTransform;
-                rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0.5f);
-                rt.sizeDelta = new Vector2(ChipW, ChipH);
-                rt.anchoredPosition = new Vector2(i * (ChipW + ChipSpacing), 0f);
+                rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+                rt.pivot = new Vector2(0.5f, 0.5f);   // the hover enlargement grows around the chip's centre
+                rt.sizeDelta = new Vector2(chipW, ChipH);
+                rt.anchoredPosition = new Vector2(i % cols * (chipW + spacing) + chipW * 0.5f,
+                    -(i / cols) * (ChipH + spacing) - ChipH * 0.5f);
             }
 
             var charge = AddOverlay(button.transform, "Charge");
@@ -181,6 +191,7 @@ namespace GeoART.App
             if (_circleMenu != null) _circleMenu.Close();
             if (_bandsMenu != null) _bandsMenu.Close();
             if (_snapMenu != null) _snapMenu.Close();
+            if (_colourMenu != null) _colourMenu.Close();
         }
 
         void MaybeShowLineMenuHint()

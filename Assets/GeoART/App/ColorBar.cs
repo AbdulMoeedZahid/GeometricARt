@@ -1,23 +1,24 @@
+using System;
 using GeoART.Contracts;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace GeoART.App
 {
     /// <summary>
-    /// Colour picker built as uGUI at runtime (like ToolBar): one slim pill at the bottom-left of the safe area, just
-    /// above the placement buttons. It is narrow enough (about 290 of 390 reference px) to end left of the right-edge
-    /// ToolBar column, whose bottom reaches down to about 19% of the screen height.
-    ///   5 round swatches  shape colour for NEW lines/circles/polygons: Black, White, Red, Green, Blue
-    ///                     (sets IEditorSession.Style colour, like the Width button sets its width; the selected
-    ///                     swatch gets the accent orange ring). With a selection the colour also restyles the selected
-    ///                     shapes (one "Style" step); without one, drawn shapes keep their colour
-    ///   Custom swatch     a rainbow ring around the last colour picked on the colour wheel (ColorBar.Wheel.cs): a tap
-    ///                     selects that colour, or opens the wheel when there is none or it is already the current one
-    ///   Board button      board guide lines Black &lt;-&gt; White (BoardAppearance.Guides: dashed grid and outline;
-    ///                     nothing is filled, the real surface stays visible)
-    /// Every element, including the pill background, is a raycast target, so BoardInputRouter ignores touches on it.
-    /// Visible only while the board is placed (or when the scene has no IBoardSpace), like ToolBar.
+    /// Colour logic behind the ToolBar's Colour button and its palette (ToolBar.Colour.cs). It has no bar of its own any
+    /// more: the slim pill that sat at the bottom-left was hidden under the Select action bar exactly when a colour was
+    /// needed to restyle the selection, so the palette moved into the right-hand tool column. What stays here:
+    ///   shape colour      <see cref="SelectColor"/> / <see cref="SelectShapeColor"/>: the colour for NEW
+    ///                     lines/circles/polygons (IEditorSession.Style colour, like the Width button sets its width); with
+    ///                     a selection it also restyles the selected shapes (one "Style" step); without one, drawn shapes
+    ///                     keep their colour
+    ///   custom colour     the last colour picked on the colour wheel (ColorBar.Wheel.cs), kept in PlayerPrefs
+    ///   board guides      <see cref="ToggleBoardGuides"/>: board guide lines Black &lt;-&gt; White (BoardAppearance.Guides:
+    ///                     dashed grid and outline; nothing is filled, the real surface stays visible)
+    ///   no fill           <see cref="SelectNoFill"/>, the Fill tool's eraser (only reachable while ToolBar.FillEnabled)
+    ///   the colour wheel  its own canvas (sorting order 115), see ColorBar.Wheel.cs
+    /// The wheel closes while the board is not placed (or the component is switched off with <c>show</c>). Scenes and
+    /// tests add this component next to the ToolBar; scenes saved before it existed get one at runtime.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed partial class ColorBar : MonoBehaviour
@@ -25,52 +26,20 @@ namespace GeoART.App
         [SerializeField] bool show = true;
 
         static readonly Color Accent = new Color(1f, 0.42f, 0f, 0.95f);
-        static readonly Color PillColor = new Color(0.08f, 0.08f, 0.1f, 0.78f);
-        static readonly Color SwatchOutline = new Color(1f, 1f, 1f, 0.55f);
         static readonly Color Clear = new Color(1f, 1f, 1f, 0f);
 
-        // Reference px (390x844, match 0.5).
-        // Slots went from 40 to 36 px when the custom swatch was added, so the pill still ends left of the tool column.
-        public const float PillHeight = 48f, Swatch = 28f, Ring = 34f, SwatchSlot = 36f, BoardButtonW = 72f;
-        public const float EdgeMargin = 8f;
-        const float Pad = 6f, Gap = 8f;
-        /// <summary>Pill bottom above the safe area's bottom, as a fraction of the screen height (placement row ends at 11%).</summary>
-        public const float BottomFraction = 0.12f;
-
-        /// <summary>Palette swatches, the custom swatch, the Board button.</summary>
-        public static float PillWidth => Pad + (BoardAppearance.ShapeColors.Length + 1) * SwatchSlot + Gap + BoardButtonW + Pad;
+        /// <summary>Raised when the custom colour (the wheel's last pick) changes.</summary>
+        public event Action CustomChanged;
 
         IEditorSession _session;
         IBoardSpace _boardSpace;
-        Canvas _canvas;
-        RectTransform _pill;
         Rect _safeArea;
         int _screenW, _screenH;
-        readonly Image[] _rings = new Image[BoardAppearance.ShapeColors.Length];
-        Image _boardIcon, _boardIconBorder;
-        Text _boardLabel;
-
-        public RectTransform Pill => _pill;
 
         void Awake()
         {
-            _canvas = LayerUiKit.CreateCanvas(transform, "ColorBar", 104, true);
-            _pill = LayerUiKit.NewImage("Pill", _canvas.transform, PillColor, true, PillHeight * 0.5f).rectTransform;
-            ApplySafeArea();
-
-            float x = Pad;
-            RgbaColor[] colors = BoardAppearance.ShapeColors;
-            for (int i = 0; i < colors.Length && i < _rings.Length; i++)
-            {
-                _rings[i] = CreateSwatch(i, colors[i], x);
-                x += SwatchSlot;
-            }
-            CreateCustomSwatch(x);
-            x += SwatchSlot;
-            x += Gap;
-            CreateBoardButton(x);
+            LoadCustom();
             BuildWheel();
-            _canvas.enabled = false;
         }
 
         void Start()
@@ -79,7 +48,6 @@ namespace GeoART.App
             ServiceHub.TryResolve(out _boardSpace);
             if (_session != null) _session.StateChanged += Refresh;
             if (_boardSpace != null) _boardSpace.StateChanged += OnPlacementChanged;
-            BoardAppearance.Changed += Refresh;
             Refresh();
         }
 
@@ -88,12 +56,15 @@ namespace GeoART.App
             DestroyWheelTextures();
             if (_session != null) _session.StateChanged -= Refresh;
             if (_boardSpace != null) _boardSpace.StateChanged -= OnPlacementChanged;
-            BoardAppearance.Changed -= Refresh;
         }
 
         void LateUpdate()
         {
-            if (Screen.safeArea != _safeArea || Screen.width != _screenW || Screen.height != _screenH) ApplySafeArea();
+            if (UiScreen.SafeArea == _safeArea && UiScreen.Width == _screenW && UiScreen.Height == _screenH) return;
+            _safeArea = UiScreen.SafeArea;
+            _screenW = UiScreen.Width;
+            _screenH = UiScreen.Height;
+            if (WheelOpen) PlaceWheel();   // placed for the old layout
         }
 
         void OnPlacementChanged(PlacementState _) => Refresh();
@@ -101,26 +72,7 @@ namespace GeoART.App
         void Refresh()
         {
             bool visible = show && _session != null && (_boardSpace == null || _boardSpace.IsPlaced);
-            if (_canvas.enabled != visible) _canvas.enabled = visible;
             if (!visible) CloseWheel();
-
-            RgbaColor current = _session != null ? _session.Style.Color : Palette.Black;
-            bool fillTool = ToolBar.FillEnabled && _session != null && _session.ActiveTool == ToolId.Fill;
-            bool erase = fillTool && _session.FillErase;
-            RgbaColor[] colors = BoardAppearance.ShapeColors;
-            for (int i = 0; i < colors.Length && i < _rings.Length; i++)
-                SetColor(_rings[i], !erase && colors[i].Equals(current) ? Accent : Clear);
-            RefreshCustom(erase ? new RgbaColor(0, 0, 0, 0) : current);
-            // While Fill is active the Board button's place holds "No fill" (the pill has no room for another slot).
-            if (_boardButton.activeSelf == fillTool) _boardButton.SetActive(!fillTool);
-            if (_noFill.gameObject.activeSelf != fillTool) _noFill.gameObject.SetActive(fillTool);
-            SetColor(_noFillRing, erase ? Accent : new Color(1f, 1f, 1f, 0.12f));
-
-            bool white = BoardAppearance.Guides == BoardGuideColor.White;
-            SetColor(_boardIcon, white ? ToColor(Palette.White) : ToColor(Palette.Black));
-            SetColor(_boardIconBorder, white ? new Color(0.55f, 0.55f, 0.6f, 1f) : new Color(0.9f, 0.9f, 0.92f, 1f));
-            string label = white ? "White" : "Black";
-            if (_boardLabel != null && _boardLabel.text != label) _boardLabel.text = label;
         }
 
         // ---------- actions ----------
@@ -133,119 +85,42 @@ namespace GeoART.App
         }
 
         /// <summary>Makes <paramref name="color"/> the current colour; with a selection, one "Style" step restyles it.</summary>
-        public void SelectColor(RgbaColor color)
+        public void SelectColor(RgbaColor color) => ApplyColor(_session, color);
+
+        /// <summary>
+        /// The colour change itself, also used by the ToolBar when the scene has no ColorBar: Style colour (raises
+        /// StateChanged), the Fill tool's "no fill" ends, and a non-empty selection is restyled (one "Style" step).
+        /// </summary>
+        public static void ApplyColor(IEditorSession session, RgbaColor color)
         {
-            if (_session == null) return;
-            if (_session.ActiveTool == ToolId.Fill) _session.SetFillErase(false);   // a colour ends "no fill"
-            _session.Style = _session.Style.WithColor(color);   // raises StateChanged -> Refresh
-            if (_session.ActiveTool != ToolId.Fill && _session.Selection.Ids.Count > 0)
-                _session.RestyleSelection(StyleParts.Color, _session.Style);
+            if (session == null) return;
+            if (session.ActiveTool == ToolId.Fill) session.SetFillErase(false);   // a colour ends "no fill"
+            session.Style = session.Style.WithColor(color);
+            if (session.ActiveTool != ToolId.Fill && session.Selection.Ids.Count > 0)
+                session.RestyleSelection(StyleParts.Color, session.Style);
+        }
+
+        /// <summary>The custom colour when there is one; otherwise (nothing picked on the wheel yet) opens the wheel.</summary>
+        public void SelectCustom()
+        {
+            if (_hasCustom) SelectColor(_custom);
+            else OpenWheel();
         }
 
         /// <summary>The Fill tool's "no fill": taps clear fills until a colour is picked or the tool changes.</summary>
-        public void SelectNoFill()
+        public void SelectNoFill() => ApplyNoFill(_session);
+
+        public static void ApplyNoFill(IEditorSession session)
         {
-            if (_session == null || _session.ActiveTool != ToolId.Fill) return;
-            _session.SetFillErase(true);
+            if (session == null || session.ActiveTool != ToolId.Fill) return;
+            session.SetFillErase(true);
         }
 
         /// <summary>Board guide lines Black &lt;-&gt; White.</summary>
-        public void ToggleBoardGuides() =>
+        public static void ToggleBoardGuides() =>
             BoardAppearance.SetGuides(BoardAppearance.Guides == BoardGuideColor.Black ? BoardGuideColor.White : BoardGuideColor.Black);
 
-        // ---------- building ----------
-
-        Image CreateSwatch(int index, RgbaColor color, float x)
-        {
-            // Slot (the hit area and the selection ring), an outline so black reads on the dark pill, then the colour.
-            Image ring = LayerUiKit.NewImage(BoardAppearance.ShapeColorNames[index], _pill, Clear, true, Ring * 0.5f);
-            LayerUiKit.Place(ring.rectTransform, new Vector2(0f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(x + SwatchSlot * 0.5f, 0f), new Vector2(Ring, Ring));
-            var button = ring.gameObject.AddComponent<Button>();
-            button.transition = Selectable.Transition.None;
-            button.onClick.AddListener(() => SelectShapeColor(index));
-
-            Image outline = LayerUiKit.NewImage("Outline", ring.transform, SwatchOutline, false, (Swatch + 3f) * 0.5f);
-            LayerUiKit.Place(outline.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero,
-                new Vector2(Swatch + 3f, Swatch + 3f));
-            Image fill = LayerUiKit.NewImage("Color", ring.transform, ToColor(color), false, Swatch * 0.5f);
-            LayerUiKit.Place(fill.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero,
-                new Vector2(Swatch, Swatch));
-            return ring;
-        }
-
-        GameObject _boardButton;
-        Image _noFill, _noFillRing;
-
-        /// <summary>"No fill" (Fill tool only), in the Board button's place: a white chip with a red slash.</summary>
-        void CreateNoFillButton(float x)
-        {
-            const float h = 40f;
-            _noFillRing = LayerUiKit.NewImage("No fill", _pill, new Color(1f, 1f, 1f, 0.12f), true, 10f);
-            _noFill = _noFillRing;
-            LayerUiKit.Place(_noFill.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(x, 0f),
-                new Vector2(BoardButtonW, h));
-            var button = _noFill.gameObject.AddComponent<Button>();
-            button.transition = Selectable.Transition.None;
-            button.onClick.AddListener(SelectNoFill);
-            Image swatch = LayerUiKit.NewImage("Swatch", _noFill.transform, Color.white, false, 4f);
-            LayerUiKit.Place(swatch.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(8f, 0f), new Vector2(20f, 20f));
-            Image slash = LayerUiKit.NewImage("Slash", swatch.transform, new Color(0.84f, 0.19f, 0.19f, 1f), false, 1f);
-            LayerUiKit.Place(slash.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(26f, 3f));
-            slash.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);
-            var label = LayerUiKit.NewText("Label", _noFill.transform, 12, TextAnchor.MiddleLeft, Color.white);
-            LayerUiKit.Place(label.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(32f, 0f), new Vector2(40f, 30f));
-            label.text = "No fill";
-            label.horizontalOverflow = HorizontalWrapMode.Wrap;
-            _noFill.gameObject.SetActive(false);
-        }
-
-        void CreateBoardButton(float x)
-        {
-            const float h = 40f;
-            Image bg = LayerUiKit.NewImage("Board", _pill, new Color(1f, 1f, 1f, 0.12f), true, 10f);
-            _boardButton = bg.gameObject;
-            CreateNoFillButton(x);
-            LayerUiKit.Place(bg.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(x, 0f),
-                new Vector2(BoardButtonW, h));
-            var button = bg.gameObject.AddComponent<Button>();
-            button.transition = Selectable.Transition.None;
-            button.onClick.AddListener(ToggleBoardGuides);
-
-            _boardIconBorder = LayerUiKit.NewImage("IconBorder", bg.transform, Color.white, false, 3f);
-            LayerUiKit.Place(_boardIconBorder.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(8f, 0f), new Vector2(20f, 20f));
-            _boardIcon = LayerUiKit.NewImage("Icon", _boardIconBorder.transform, Color.white, false, 2f);
-            LayerUiKit.Place(_boardIcon.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero,
-                new Vector2(16f, 16f));
-
-            var caption = LayerUiKit.NewText("Caption", bg.transform, 9, TextAnchor.MiddleLeft, new Color(1f, 1f, 1f, 0.65f));
-            LayerUiKit.Place(caption.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0f), new Vector2(32f, 0f),
-                new Vector2(36f, 14f));
-            caption.text = "Board";
-            _boardLabel = LayerUiKit.NewText("Label", bg.transform, 13, TextAnchor.MiddleLeft, Color.white);
-            LayerUiKit.Place(_boardLabel.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 1f), new Vector2(32f, 1f),
-                new Vector2(36f, 16f));
-            _boardLabel.text = "Black";
-        }
-
-        /// <summary>Left edge of the safe area (plus EdgeMargin); bottom at BottomFraction of the screen above the safe bottom.</summary>
-        void ApplySafeArea()
-        {
-            _safeArea = Screen.safeArea;
-            _screenW = Screen.width;
-            _screenH = Screen.height;
-            float w = Mathf.Max(1, Screen.width), h = Mathf.Max(1, Screen.height);
-            var anchor = new Vector2(_safeArea.xMin / w, _safeArea.yMin / h + BottomFraction);
-            LayerUiKit.Place(_pill, anchor, new Vector2(0f, 0f), new Vector2(EdgeMargin, 0f), new Vector2(PillWidth, PillHeight));
-        }
-
-        static void SetColor(Graphic g, Color c)
-        {
-            if (g != null && g.color != c) g.color = c;
-        }
-
-        static Color ToColor(RgbaColor c) => new Color32(c.R, c.G, c.B, c.A);
+        internal static Color ToColor(RgbaColor c) => new Color32(c.R, c.G, c.B, c.A);
 
         // ---------- installer for scenes built before the colour picker existed ----------
 

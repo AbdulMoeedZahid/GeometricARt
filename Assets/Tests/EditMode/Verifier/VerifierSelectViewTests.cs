@@ -36,8 +36,8 @@ namespace GeoART.Tests.Verifier
         }
 
         static readonly string[] ButtonOrder = ToolBar.FillEnabled
-            ? new[] { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Square", "2x2", "Snap" }
-            : new[] { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap" };   // Fill switched off (docs/FILL.md)
+            ? new[] { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Colour", "Square", "2x2", "Snap" }
+            : new[] { "Line", "Circle", "Select", "Bands", "Medium", "Colour", "Square", "2x2", "Snap" };   // Fill switched off (docs/FILL.md)
 
         EditorSession _session;
         Space _space;
@@ -319,10 +319,12 @@ namespace GeoART.Tests.Verifier
             ((RectTransform)canvas.transform).GetWorldCorners(cc);
             // The column's buttons; the contextual action bar (Move, Scale, Duplicate, Extend, Delete, Deselect) has its own six.
             var buttons = new List<Button>(Find("Column").GetComponentsInChildren<Button>(true));
-            int column = ToolBar.FillEnabled ? 9 : 8;   // Fill switched off for now (docs/FILL.md)
+            int column = ToolBar.FillEnabled ? 10 : 9;   // Fill switched off for now (docs/FILL.md); Colour since the palette moved in
             Assert.AreEqual(column, buttons.Count, "the column's buttons");
-            Assert.AreEqual(column + 13, _appGo.GetComponentsInChildren<Button>(true).Length,
-                "plus the six action bar buttons, Undo, Redo, the Line and Circle menus' two mode chips each and Snap's H/V chip");
+            int palette = ToolBar.FillEnabled ? 9 : 8;   // 5 colours, Custom, Wheel…, Board (+ No fill with Fill on)
+            Assert.AreEqual(column + 13 + palette, _appGo.GetComponentsInChildren<Button>(true).Length,
+                "plus the six action bar buttons, Undo, Redo, the Line and Circle menus' two mode chips each, Snap's H/V chip " +
+                "and the Colour palette's chips");
 
             float prevBottom = float.MaxValue;
             var tops = new float[ButtonOrder.Length];
