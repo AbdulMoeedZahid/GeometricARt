@@ -135,6 +135,31 @@ namespace GeoART.EngineCheck
             Check.That(flushBottom, "an end 1e-6 inside is welded onto the bottom side");
         }
 
+        public static void NearAxisLinesAtTheFrame_AreKeptWhole()
+        {
+            foreach (var seg in new[] { S(-1.1e-16, 0.3, 0.6e-16, 0.7), S(-1e-6, 0.3, -1e-6, 0.7), S(1 + 2e-16, 0.2, 1 - 1e-16, 0.6) })
+            {
+                var g = Graph(seg);
+                Check.That(g.StructureEdgeCount == 1, $"{seg.A}-{seg.B}: kept");
+                double lenSum = 0;
+                for (int h = 0; h < g.Graph.HalfEdgeCount; h += 2)
+                    if (!g.Graph.IsFrame(h)) lenSum += g.Graph.Length(h);
+                Check.Near(lenSum, Vec2.Distance(seg.A, seg.B), $"{seg.A}-{seg.B}: whole length kept", 1e-9);
+                var o = Outline(g, 0.02);
+                AssertWellFormed(o, "near-axis");
+                foreach (var p in o.Points) Check.That(p.X >= 0 && p.X <= 1, $"inside the board ({p})");
+            }
+        }
+
+        public static void ShallowLineFromTheFrame_StaysInsideTheBoard()
+        {
+            var g = Graph(S(0.5, 0, 0.9, 0.001));
+            var o = Outline(g, 0.02);
+            AssertWellFormed(o, "shallow");
+            foreach (var p in o.Points)
+                Check.That(p.X >= 0 && p.X <= 1 && p.Y >= 0 && p.Y <= 1, $"no corner flies outside the board ({p})");
+        }
+
         public static void StructureLineOnTheFrame_OnlyItsInnerSideIsDrawn()
         {
             var g = Graph(S(0.2, 0, 0.8, 0), S(0.5, 0, 0.5, 0.4));

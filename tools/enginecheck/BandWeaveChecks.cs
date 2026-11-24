@@ -132,6 +132,48 @@ namespace GeoART.EngineCheck
             }
         }
 
+        public static void TipTouchingALine_IsATurnNotACrossing()
+        {
+            // A V tip resting on a horizontal line: degree 4, but the line goes straight on and the tip turns.
+            var g = Graph(S(0.2, 0.3, 0.8, 0.3), S(0.5, 0.3, 0.4, 0.5), S(0.5, 0.3, 0.6, 0.5));
+            int v = -1;
+            for (int n = 0; n < g.Graph.NodeCount; n++)
+                if (g.Graph.Node(n) == new Vec2(0.5, 0.3)) v = n;
+            Check.That(v >= 0 && g.StructureDegree(v) == 4, "degree 4 at the touch point");
+            Check.That(g.CrossingCount == 0, "not a crossing");
+            Check.That(g.ThreadCount == 2, $"two threads: the line and the V (got {g.ThreadCount})");
+            const double h = 0.01;
+            var o = Outline(g, 2 * h, interlace: true, inner: true);
+            Check.That(o.Bridges.Count == 0 && o.InnerBridges.Count == 0, "no bridges cut through the line's band");
+            double half = Math.Atan2(0.1, 0.2);
+            Check.That(HasPoint(o, new Vec2(0.5, 0.3 + o.InnerHalfWidth / Math.Sin(half)), 1e-12), "the tip's inner lines mitre (same band)");
+            AssertWellFormed(o, "tip on line");
+        }
+
+        public static void StarInASquareTouchingItsTips_WeavesOnlyRealCrossings()
+        {
+            var segs = SegmentsOf(StarLayer());
+            const double lo = 0.15, hi = 0.85;   // a square whose sides touch the star's four cardinal tips
+            segs.Add(S(lo, lo, hi, lo, 100)); segs.Add(S(hi, lo, hi, hi, 101));
+            segs.Add(S(hi, hi, lo, hi, 102)); segs.Add(S(lo, hi, lo, lo, 103));
+            var g = BandGraph.Build(segs);
+            Check.That(g.CrossingCount == 8, $"only the star's 8 crossings weave (got {g.CrossingCount})");
+            Check.That(g.WeaveConflicts == 0, "no conflicts");
+            AssertAlternates(g, "star in square");
+            var o = Outline(g, 0.015, interlace: true);
+            for (int c = 0; c < g.CrossingCount; c++)
+            {
+                int v = g.CrossingNode(c);
+                Vec2 over = g.Graph.Dir(g.StructureOut(v, g.OverPass(c)));
+                for (int i = 0; i < o.Bridges.Count; i += 2)
+                {
+                    if (Vec2.Distance(o.Bridges[i], g.Graph.Node(v)) > 0.03) continue;
+                    Vec2 d = o.Bridges[i + 1] - o.Bridges[i];
+                    Check.Near(d.X * over.Y - d.Y * over.X, 0, "every bridge runs along its over band", 1e-12);
+                }
+            }
+        }
+
         public static void InnerLines_MitreAtCornersAndAreSkippedWhenTooThin()
         {
             var g = Graph(S(0.3, 0.3, 0.6, 0.3), S(0.6, 0.3, 0.6, 0.6));
