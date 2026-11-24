@@ -81,9 +81,16 @@ namespace GeoART.BoardRender
 
         public void Clear() => _entries.Clear();
 
+        /// <summary>The outline drawn for a layer in the last frame, if any (tests).</summary>
+        public bool TryGetOutline(EntityId layer, out BandOutline outline)
+        {
+            outline = _entries.TryGetValue(layer, out Entry e) ? e.Outline : null;
+            return outline != null;
+        }
+
         static bool SameOptions(in BandOutlineOptions a, in BandOutlineOptions b) =>
             a.Width == b.Width && a.Interlace == b.Interlace && a.FlipWeave == b.FlipWeave && a.InnerLines == b.InnerLines &&
             a.InnerInsetFloor == b.InnerInsetFloor && a.InnerMinHalf == b.InnerMinHalf &&
-            a.SkipSelfIntersections == b.SkipSelfIntersections;
+            a.SkipSelfIntersections == b.SkipSelfIntersections && a.StructureShown == b.StructureShown;
     }
 }

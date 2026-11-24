@@ -391,15 +391,26 @@ namespace GeoART.BoardRender
                     if (opacity <= 0f) continue;
                     LayerBands bands = layer.Bands.Sanitized();
                     bool hideStructure = false;
+                    BandOutline outline = null;
                     if (bands.On)
                     {
-                        AddBands(mb, layer, bands, opacity);
+                        outline = AddBands(mb, layer, bands, opacity);
                         hideStructure = bands.HideStructure;
                     }
-                    foreach (var shape in layer.Shapes)
+                    List<StructureCut> cuts = outline?.StructureCuts;
+                    int cut = 0;
+                    for (int i = 0; i < layer.Shapes.Count; i++)
                     {
+                        Shape shape = layer.Shapes[i];
                         if (shape == null || (hideStructure && !(shape is CircleShape))) continue;   // circles are never banded
-                        AddShape(mb, shape, WithOpacity(ToColor32(shape.Style.Color), opacity), ShapesLift);
+                        Color32 color = WithOpacity(ToColor32(shape.Style.Color), opacity);
+                        // Interlace with the structure shown: an under band's structure line is cut where the over band covers it.
+                        while (cuts != null && cut < cuts.Count && cuts[cut].Shape < i) cut++;
+                        int end = cut;
+                        while (cuts != null && end < cuts.Count && cuts[end].Shape == i) end++;
+                        if (end > cut && (shape is LineShape || shape is PolygonShape)) AddCutShape(mb, shape, cuts, cut, end, color);
+                        else AddShape(mb, shape, color, ShapesLift);
+                        cut = end;
                     }
                     Color32 snapColor = WithOpacity(SnapPointColor, opacity);
                     foreach (var sp in layer.SnapPoints)
@@ -411,25 +422,17 @@ namespace GeoART.BoardRender
         }
 
         /// <summary>
-        /// Band options for this board: the inner-line inset floor (1.5 mm) and the inner lines' minimum half width (a
-        /// Medium core's half plus 1 mm) scale like the strokes, converted to board units with the board side.
+        /// Band options for this board (shared with the layer popup: BandOutlineOptions.ForBoard): the inner-line inset
+        /// floor (2 mm) and minimum half width scale like the strokes. Drawing skips the global crossing count.
         /// </summary>
         BandOutlineOptions BandOptions(in LayerBands bands)
         {
-            float side = Mathf.Max(sideMeters, 1e-3f);
-            return new BandOutlineOptions
-            {
-                Width = bands.Width,
-                Interlace = bands.Mode == BandMode.Interlace,
-                FlipWeave = bands.FlipWeave,
-                InnerLines = bands.InnerLines,
-                InnerInsetFloor = 0.0015f * StrokeScale / side,
-                InnerMinHalf = (WidthOf(LineWidth.Medium) * 0.5f + 0.001f * StrokeScale) / side,
-                SkipSelfIntersections = true,   // drawing does not need it (the layer popup computes it)
-            };
+            BandOutlineOptions o = BandOutlineOptions.ForBoard(bands, sideMeters);
+            o.SkipSelfIntersections = true;
+            return o;
         }
 
-        void AddBands(BoardMeshBuilder mb, Layer layer, in LayerBands bands, float opacity)
+        BandOutline AddBands(BoardMeshBuilder mb, Layer layer, in LayerBands bands, float opacity)
         {
             BandOutline o = _bandCache.Get(layer, BandOptions(bands));
             Color32 color = WithOpacity(ToColor32(bands.OutlineColor), opacity);
@@ -438,6 +441,90 @@ namespace GeoART.BoardRender
             AddRuns(mb, o, o.InnerRuns, width, color);
             AddBridges(mb, o.Bridges, width, color);
             AddBridges(mb, o.InnerBridges, width, color);
+            return o;
+        }
+
+        /// <summary>Flat local direction of a board direction at a board point (zero stays zero).</summary>
+        Vector3 LocalDir(Vec2 at, Vec2 dir)
+        {
+            if (dir.X == 0 && dir.Y == 0) return Vector3.zero;
+            Vector3 d = P(new Vec2(at.X + dir.X * 1e-3, at.Y + dir.Y * 1e-3), 0f) - P(at, 0f);
+            d.y = 0f;
+            return d;
+        }
+
+        static Vec2 Along(Vec2 a, Vec2 b, double t) => new Vec2(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t);
+
+        /// <summary>
+        /// A line or polygon with cuts[from..to) hidden (StructureCuts of one shape, sorted by edge and T0): the visible
+        /// pieces as open polylines, square caps at the shape's own ends, cut ends along the over band's edge, mitred joins
+        /// at polygon corners. Dotted pieces carry the dash phase across the gaps.
+        /// </summary>
+        void AddCutShape(BoardMeshBuilder mb, Shape shape, List<StructureCut> cuts, int from, int to, Color32 color)
+        {
+            float width = WidthOf(shape.Style.Width);
+            bool dashed = shape.Style.Dash == LineStyle.Dotted;
+            float phase = 0f;
+            if (shape is LineShape line)
+            {
+                double prev = 0;
+                Vec2 prevDir = default;
+                bool prevCap = true;
+                for (int k = from; k < to; k++)
+                {
+                    StructureCut c = cuts[k];
+                    if (c.T0 > prev) AddPiece(mb, Along(line.A, line.B, prev), Along(line.A, line.B, c.T0), null, prevCap, prevDir, false, c.Dir0, width, color, dashed, ref phase);
+                    phase += (float)(Vec2.Distance(line.A, line.B) * (c.T1 - System.Math.Max(prev, c.T0)) * sideMeters);
+                    prev = System.Math.Max(prev, c.T1);
+                    prevDir = c.Dir1;
+                    prevCap = false;
+                }
+                if (prev < 1) AddPiece(mb, Along(line.A, line.B, prev), line.B, null, prevCap, prevDir, true, default, width, color, dashed, ref phase);
+                return;
+            }
+            var poly = (PolygonShape)shape;
+            int n = poly.Sides;
+            int m = to - from;
+            for (int i = 0; i < m; i++)
+            {
+                StructureCut start = cuts[from + i], next = cuts[from + (i + 1) % m];
+                Vec2 a0 = BandGraph.PolygonVertex(poly, start.Edge), a1 = BandGraph.PolygonVertex(poly, (start.Edge + 1) % n);
+                Vec2 b0 = BandGraph.PolygonVertex(poly, next.Edge), b1 = BandGraph.PolygonVertex(poly, (next.Edge + 1) % n);
+                _cutPoints.Clear();
+                _cutPoints.Add(Along(a0, a1, start.T1));
+                bool sameEdgeAhead = m > 1 && next.Edge == start.Edge && next.T0 >= start.T1;
+                if (!sameEdgeAhead)
+                {
+                    int k = start.Edge;
+                    do
+                    {
+                        k = (k + 1) % n;
+                        _cutPoints.Add(BandGraph.PolygonVertex(poly, k));
+                    } while (k != next.Edge);
+                }
+                _cutPoints.Add(Along(b0, b1, next.T0));
+                AddPiece(mb, default, default, _cutPoints, false, start.Dir1, false, next.Dir0, width, color, dashed, ref phase);
+            }
+        }
+
+        readonly List<Vec2> _cutPoints = new List<Vec2>(16);
+
+        /// <summary>One visible piece: a..b, or the board points in <paramref name="points"/> when given.</summary>
+        void AddPiece(BoardMeshBuilder mb, Vec2 a, Vec2 b, List<Vec2> points, bool capStart, Vec2 dirStart, bool capEnd,
+            Vec2 dirEnd, float width, Color32 color, bool dashed, ref float phase)
+        {
+            _poly.Clear();
+            if (points == null) { _poly.Add(P(a, ShapesLift)); _poly.Add(P(b, ShapesLift)); }
+            else foreach (var p in points) _poly.Add(P(p, ShapesLift));
+            if (_poly.Count < 2) return;
+            if (dashed)
+            {
+                for (int i = 0; i + 1 < _poly.Count; i++)
+                    mb.AddDashedSegment(_poly[i], _poly[i + 1], width, color, StrokeDash, StrokeGap, ref phase);
+                return;
+            }
+            Vec2 first = points == null ? a : points[0], last = points == null ? b : points[points.Count - 1];
+            mb.AddOpenPolyline(_poly, width, color, capStart, LocalDir(first, dirStart), capEnd, LocalDir(last, dirEnd));
         }
 
         void AddRuns(BoardMeshBuilder mb, BandOutline o, List<BandRun> runs, float width, Color32 color)

@@ -194,7 +194,40 @@ namespace GeoART.BoardRender
             AddQuadIndices(i);
         }
 
-        void AddStrip(IReadOnlyList<Vector3> points, bool closed, float width, Color32 color)
+        /// <summary>
+        /// Open solid polyline whose two ends are chosen separately: a square cap (as <see cref="AddPolyline"/>), or a cut
+        /// end that stops exactly at the last point, its cross-section running along <paramref name="cutStart"/> /
+        /// <paramref name="cutEnd"/> (a flat direction, e.g. the edge of the band the line goes under; zero = square to the
+        /// line). Joins stay mitred. Used for structure lines interrupted by an interlace crossing.
+        /// </summary>
+        public void AddOpenPolyline(IReadOnlyList<Vector3> points, float width, Color32 color, bool capStart, Vector3 cutStart,
+            bool capEnd, Vector3 cutEnd)
+        {
+            if (points.Count < 2 || width <= 0f) return;
+            AddStrip(points, false, width, color, capStart, cutStart, capEnd, cutEnd);
+        }
+
+        void AddStrip(IReadOnlyList<Vector3> points, bool closed, float width, Color32 color) =>
+            AddStrip(points, closed, width, color, true, Vector3.zero, true, Vector3.zero);
+
+        /// <summary>Cross-section offset at an open end with direction <paramref name="d"/>: square, or along a cut direction.</summary>
+        static Vector3 EndOffset(Vector3 d, Vector3 cut, float half, out float miter)
+        {
+            Vector3 n = Perp(d);
+            miter = 1f;
+            cut.y = 0f;
+            float len = cut.magnitude;
+            if (len < 1e-6f) return n * half;
+            Vector3 e = cut / len;
+            float sin = Mathf.Abs(d.x * e.z - d.z * e.x);   // |d x e|: 1 when the cut is square to the line
+            if (sin < 1e-3f) return n * half;
+            miter = Mathf.Min(1f / sin, MiterLimit);
+            if (Vector3.Dot(e, n) < 0f) e = -e;             // same side as the left normal
+            return e * (half * miter);
+        }
+
+        void AddStrip(IReadOnlyList<Vector3> points, bool closed, float width, Color32 color, bool capStart, Vector3 cutStart,
+            bool capEnd, Vector3 cutEnd)
         {
             // Drop repeated points (a zero-length piece has no direction).
             _clean.Clear();
@@ -204,7 +237,8 @@ namespace GeoART.BoardRender
                 _clean.RemoveAt(_clean.Count - 1);
             int n = _clean.Count;
             if (n < 2) return;
-            if (n == 2 || (closed && n < 3)) { AddSegment(_clean[0], _clean[1], width, color); return; }
+            if (closed && n < 3) { AddSegment(_clean[0], _clean[1], width, color); return; }
+            if (n == 2 && capStart && capEnd) { AddSegment(_clean[0], _clean[1], width, color); return; }
 
             float half = width * 0.5f;
             int first = _vertices.Count;
@@ -218,13 +252,21 @@ namespace GeoART.BoardRender
                 float miter = 1f;
                 if (!hasPrev)
                 {
-                    offset = Perp(dOut) * half;
-                    c -= dOut * half;   // square cap
+                    if (capStart)
+                    {
+                        offset = Perp(dOut) * half;
+                        c -= dOut * half;   // square cap
+                    }
+                    else offset = EndOffset(dOut, cutStart, half, out miter);
                 }
                 else if (!hasNext)
                 {
-                    offset = Perp(dIn) * half;
-                    c += dIn * half;
+                    if (capEnd)
+                    {
+                        offset = Perp(dIn) * half;
+                        c += dIn * half;
+                    }
+                    else offset = EndOffset(dIn, cutEnd, half, out miter);
                 }
                 else
                 {
