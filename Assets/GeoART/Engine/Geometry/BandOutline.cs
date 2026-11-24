@@ -58,7 +58,8 @@ namespace GeoART.Engine
             double scale = StrokeScale(side);
             BandOutlineOptions o = From(bands, InnerInsetFloorMeters * scale / side,
                 (MediumStrokeMeters * 0.5 + InnerCoreClearanceMeters) * scale / side);
-            o.StructureShown = !bands.Sanitized().HideStructure;
+            LayerBands b = bands.Sanitized();
+            o.StructureShown = b.Mode == BandMode.Interlace && !b.HideStructure;   // only Interlace cuts the structure
             return o;
         }
 
@@ -531,7 +532,7 @@ namespace GeoART.Engine
                         {
                             Vec2 w = pa - node;
                             double t = (w.X * e.Y - w.Y * e.X) / den;
-                            if (t > 0 && t < 20 * _h) { len = t; edgeDir = e; }
+                            if (t > 0) { len = t; edgeDir = e; }
                         }
                     }
                     if (len < 0)
@@ -539,12 +540,17 @@ namespace GeoART.Engine
                         double sin = Math.Abs(du.X * over.Y - du.Y * over.X);
                         len = _h / Math.Max(sin, 1e-6);
                     }
+                    len = Math.Min(len, 20 * _h);   // a nearly parallel crossing: never hide more than this
                     foreach (int k in _bg.InputsOnEdge(PlanarGraph.EdgeOf(u)))
                     {
                         PlanarSegment s = _bg.Input(k);
                         Vec2 d = s.B - s.A;
                         double sl = d.Length;
                         double tc = ((node.X - s.A.X) * d.X + (node.Y - s.A.Y) * d.Y) / (sl * sl);
+                        // An end welded onto the node is the node: no hair-thin piece with a cap at the crossing.
+                        double snap = BandGraph.InputMatchEps / sl;
+                        if (Math.Abs(tc) <= snap) tc = 0;
+                        else if (Math.Abs(1 - tc) <= snap) tc = 1;
                         bool forward = d.X * du.X + d.Y * du.Y > 0;
                         double tf = tc + (forward ? len : -len) / sl;
                         var cut = new StructureCut { Shape = s.Source, Edge = _bg.InputEdge(k) };

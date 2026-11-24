@@ -121,7 +121,7 @@ namespace GeoART.Engine
         readonly Dictionary<int, int[]> _edgeInputs = new Dictionary<int, int[]>();
 
         /// <summary>Collinearity tolerance for matching input segments to planar edges (welds move ends by up to 1e-5).</summary>
-        public const double InputMatchEps = 2e-5;
+        public const double InputMatchEps = 3 * PlanarGraph.WeldEps;   // two welds and a merge can each move an end by WeldEps
 
         public int InputCount => _inputs.Count;
         /// <summary>Input segment i as drawn: the shape's own A-B (unclipped), its shape index and polygon edge index.</summary>

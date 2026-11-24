@@ -504,6 +504,7 @@ namespace GeoART.BoardRender
                 }
                 _cutPoints.Add(Along(b0, b1, next.T0));
                 AddPiece(mb, default, default, _cutPoints, false, start.Dir1, false, next.Dir0, width, color, dashed, ref phase);
+                phase += (float)(Vec2.Distance(b0, b1) * (next.T1 - next.T0) * sideMeters);   // dots continue across the gap
             }
         }
 

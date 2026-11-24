@@ -633,15 +633,17 @@ namespace GeoART.App
         void OnFlipToggle() => EditBands(b => { b.FlipWeave = !b.FlipWeave; return b; });
 
         /// <summary>
-        /// Inner lines on/off. Turning them on raises the band to at least 10 mm on this board in the same step, so the
-        /// inner lines show and stay 2 mm clear of a Medium structure line (readable at arm's length in AR).
+        /// Inner lines on/off. Turning them on raises the band to at least 10 mm (times the stroke scale, as the inner-line
+        /// limits scale) in the same step, so the inner lines show and stay 2 mm clear of a Medium structure line.
         /// </summary>
         void OnInnerToggle() => EditBands(b =>
         {
             b.InnerLines = !b.InnerLines;
             if (b.InnerLines)
             {
-                double min = GeoART.Engine.BandOutlineOptions.InnerLinesMinWidthMeters / BoardSideMeters();
+                double side = BoardSideMeters();   // 10 mm times the stroke scale, like the inner-line limits themselves
+                double min = GeoART.Engine.BandOutlineOptions.InnerLinesMinWidthMeters
+                             * GeoART.Engine.BandOutlineOptions.StrokeScale(side) / side;
                 if (b.Width < min) b.Width = System.Math.Min(min, LayerBands.MaxWidth);
             }
             return b;
