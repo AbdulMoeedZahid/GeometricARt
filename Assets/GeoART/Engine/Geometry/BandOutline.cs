@@ -20,6 +20,7 @@ namespace GeoART.Engine
         public bool InnerLines;           // second pair of lines inside each band
         public double InnerInsetFloor;    // inner lines sit at least this far in from the outer edge (1.5 mm on the board)
         public double InnerMinHalf;       // inner lines only when their half-width is at least this (core half + 1 mm)
+        public bool SkipSelfIntersections;   // drawing only: skip the global crossing count (the width popup needs it)
 
         public static BandOutlineOptions From(in LayerBands bands, double innerInsetFloor, double innerMinHalf)
         {
@@ -130,7 +131,7 @@ namespace GeoART.Engine
             for (int g = 0; g < nh; g++) OuterWedge(g);
             SafetyAndCollapse();
             BuildRuns();
-            CountSelfIntersections();
+            if (!opt.SkipSelfIntersections) CountSelfIntersections();
             if (opt.Interlace) AddBridges(opt.FlipWeave, false);
 
             double inset = Math.Max(0.2 * opt.Width, opt.InnerInsetFloor);

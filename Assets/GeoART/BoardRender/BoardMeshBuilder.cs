@@ -169,7 +169,11 @@ namespace GeoART.BoardRender
             AddQuadIndices(i);
         }
 
-        void AddSegmentNoCaps(Vector3 a, Vector3 b, float width, Color32 color)
+        /// <summary>
+        /// A ribbon from a to b without the half-width end extension of <see cref="AddSegment"/>: interlace bridges join
+        /// band corners exactly, so at layer opacity &lt; 1 they never double-blend over the corners.
+        /// </summary>
+        public void AddSegmentNoCaps(Vector3 a, Vector3 b, float width, Color32 color)
         {
             Vector3 d = b - a;
             d.y = 0f;

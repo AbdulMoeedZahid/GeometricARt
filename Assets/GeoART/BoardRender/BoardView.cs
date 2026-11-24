@@ -14,6 +14,10 @@ namespace GeoART.BoardRender
     ///             dark colours, default) or White (light, for dark surfaces). Nothing is filled in AR
     ///             from <see cref="TileGrid"/> (D-07; drawn whenever showGrid is on, so also in AR)
     ///   Shapes  - committed lines/circles/polygons on visible layers + user snap points  (BoardChanged)
+    ///             A layer with bands on (Layer.Bands, docs/BANDS.md) draws its band outlines first (BandCache: the
+    ///             topology is rebuilt only on shape changes, the outline only when the band settings change), then its
+    ///             lines and polygons unless the structure is hidden, then circles and snap points as usual. Like every
+    ///             part, it is rebuilt at most once per frame (LateUpdate), however many changes arrive.
     ///   Selection - each selected shape on a visible layer: a wide translucent halo (solid even for dotted shapes), then
     ///             the shape's own stroke again on top, so it reads above its neighbours  (BoardChanged/StateChanged)
     ///   Candidates - snap candidate dots, tinted and sized by SnapKind tier               (BoardChanged/StateChanged)
@@ -116,6 +120,10 @@ namespace GeoART.BoardRender
         readonly List<(Vec2 A, Vec2 B)> _gridEdges = new List<(Vec2 A, Vec2 B)>(64);
         float _surfaceW = float.NaN, _surfaceH = float.NaN;
         readonly List<Vector3> _poly = new List<Vector3>(16);
+        readonly BandCache _bandCache = new BandCache();
+
+        /// <summary>The band geometry cache (counters for tests and the width-slider cost estimate).</summary>
+        public BandCache Bands => _bandCache;
 
         public float SideMeters => sideMeters;
 
@@ -177,6 +185,7 @@ namespace GeoART.BoardRender
         {
             Unsubscribe();
             _session = session;
+            _bandCache.Clear();
             if (isActiveAndEnabled) Subscribe();
             MarkAllDirty();
         }
@@ -252,6 +261,7 @@ namespace GeoART.BoardRender
             _candidatesDirty = true;   // candidates depend on geometry, layer visibility and grid
             _overlayDirty = true;
             if ((kind & (BoardChangeKind.Grid | BoardChangeKind.Reset)) != 0) _baseDirty = true;
+            if ((kind & (BoardChangeKind.Shapes | BoardChangeKind.Reset | BoardChangeKind.History)) != 0) _bandCache.MarkTopologyDirty();
         }
 
         void OnPreviewChanged() => _overlayDirty = true;
@@ -371,6 +381,7 @@ namespace GeoART.BoardRender
         {
             var mb = _shapes.Builder;
             mb.Clear();
+            _bandCache.BeginFrame();
             if (board != null)
             {
                 foreach (var layer in board.Layers)
@@ -378,14 +389,72 @@ namespace GeoART.BoardRender
                     if (layer == null || !layer.Visible) continue;
                     float opacity = Mathf.Clamp01((float)layer.Opacity);
                     if (opacity <= 0f) continue;
+                    LayerBands bands = layer.Bands.Sanitized();
+                    bool hideStructure = false;
+                    if (bands.On)
+                    {
+                        AddBands(mb, layer, bands, opacity);
+                        hideStructure = bands.HideStructure;
+                    }
                     foreach (var shape in layer.Shapes)
-                        if (shape != null) AddShape(mb, shape, WithOpacity(ToColor32(shape.Style.Color), opacity), ShapesLift);
+                    {
+                        if (shape == null || (hideStructure && !(shape is CircleShape))) continue;   // circles are never banded
+                        AddShape(mb, shape, WithOpacity(ToColor32(shape.Style.Color), opacity), ShapesLift);
+                    }
                     Color32 snapColor = WithOpacity(SnapPointColor, opacity);
                     foreach (var sp in layer.SnapPoints)
                         if (sp != null) mb.AddDisc(P(sp.Position, ShapesLift), 0.0035f * StrokeScale, snapColor);
                 }
             }
+            _bandCache.EndFrame();
             _shapes.Apply();
+        }
+
+        /// <summary>
+        /// Band options for this board: the inner-line inset floor (1.5 mm) and the inner lines' minimum half width (a
+        /// Medium core's half plus 1 mm) scale like the strokes, converted to board units with the board side.
+        /// </summary>
+        BandOutlineOptions BandOptions(in LayerBands bands)
+        {
+            float side = Mathf.Max(sideMeters, 1e-3f);
+            return new BandOutlineOptions
+            {
+                Width = bands.Width,
+                Interlace = bands.Mode == BandMode.Interlace,
+                FlipWeave = bands.FlipWeave,
+                InnerLines = bands.InnerLines,
+                InnerInsetFloor = 0.0015f * StrokeScale / side,
+                InnerMinHalf = (WidthOf(LineWidth.Medium) * 0.5f + 0.001f * StrokeScale) / side,
+                SkipSelfIntersections = true,   // drawing does not need it (the layer popup computes it)
+            };
+        }
+
+        void AddBands(BoardMeshBuilder mb, Layer layer, in LayerBands bands, float opacity)
+        {
+            BandOutline o = _bandCache.Get(layer, BandOptions(bands));
+            Color32 color = WithOpacity(ToColor32(bands.OutlineColor), opacity);
+            float width = WidthOf(bands.OutlineWidth);
+            AddRuns(mb, o, o.Runs, width, color);
+            AddRuns(mb, o, o.InnerRuns, width, color);
+            AddBridges(mb, o.Bridges, width, color);
+            AddBridges(mb, o.InnerBridges, width, color);
+        }
+
+        void AddRuns(BoardMeshBuilder mb, BandOutline o, List<BandRun> runs, float width, Color32 color)
+        {
+            for (int r = 0; r < runs.Count; r++)
+            {
+                BandRun run = runs[r];
+                _poly.Clear();
+                for (int i = 0; i < run.Count; i++) _poly.Add(P(o.Points[run.Start + i], ShapesLift));
+                mb.AddPolyline(_poly, run.Closed, width, color);
+            }
+        }
+
+        void AddBridges(BoardMeshBuilder mb, List<Vec2> pairs, float width, Color32 color)
+        {
+            for (int i = 0; i + 1 < pairs.Count; i += 2)
+                mb.AddSegmentNoCaps(P(pairs[i], ShapesLift), P(pairs[i + 1], ShapesLift), width, color);
         }
 
         /// <summary>
