@@ -1647,14 +1647,15 @@ namespace GeoART.EngineCheck
 
         public static void V_MoveSnapAndTapWithAffineMetric()
         {
-            var s = new EditorSession { SnapMetric = new AffineMetric { Scale = 1000, Tol = 24 } };
+            // Tol 32 (the device radius since ui-line-plan 4.2), so the tap slop is still 10 px (10/32 of the tolerance).
+            var s = new EditorSession { SnapMetric = new AffineMetric { Scale = 1000, Tol = 32 } };
             var L = AddLine(s.Board, s.ActiveLayer, 0.21, 0.23, 0.33, 0.29);
             var M = AddLine(s.Board, s.ActiveLayer, 0.61, 0.13, 0.83, 0.17);
             Enter(s, ToolId.Move, L);
             Vec2 f0 = V(0.335, 0.285);
             Vec2 f = V(f0.X + (0.515 - 0.33), f0.Y + (0.515 - 0.29));   // the end 0.0212 = 21 px from (0.5, 0.5)
             Drag(s, f0, f, 8);
-            Exact(L.B, V(0.5, 0.5), "24 px tolerance snaps at 0.0212 board units (the 0.02 fallback would not)");
+            Exact(L.B, V(0.5, 0.5), "32 px tolerance snaps at 0.0212 board units (the 0.02 fallback would not)");
 
             // Tap-pick tolerance in Move is in pixels too: 0.0216 from M's stroke picks it.
             Tap(s, V(0.72, 0.172));
@@ -1678,12 +1679,44 @@ namespace GeoART.EngineCheck
             Drag(s, f0, f, 8);
             Exact(L.B, V(0.5, 0.5), "perspective: within 24 px and 0.03 board units -> exact");
 
-            Vec2 b0 = L.B;
+            // The board cap is adaptive now (EditorSession.BoardCap): on this mild perspective it never binds inside the
+            // pixels, so 0.035 board (about 18 px, beyond the old fixed 0.03) snaps back onto (0.5, 0.5).
+            Check.That(s.BoardCap(V(0.5, 0.535)) > 0.035, "precondition: 0.035 is inside the adaptive cap");
             f0 = V(0.504, 0.504);
-            f = V(f0.X + 0.0, f0.Y + 0.035);   // 0.035 board > MaxSnapBoardDistance, though only about 18 px
+            f = V(f0.X + 0.0, f0.Y + 0.035);
             Drag(s, f0, f, 8);
-            Near(L.B, V(0.5, 0.535), "beyond the 0.03 board cap: no snap, plain translation");
-            Check.That(L.B != b0, "moved");
+            Exact(L.B, V(0.5, 0.5), "0.035 board, 18 px: snaps (the old 0.03 cap blocked it)");
+
+            // A grazing view still caps Move: the far corner (0.5, 1) is inside 32 px of (0.5, 0.8) but 0.2 board units
+            // away, beyond BoardCap there.
+            var g = new EditorSession { SnapMetric = new GrazingMetric() };
+            g.SetGrid(1);
+            var K = AddLine(g.Board, g.ActiveLayer, 0.31, 0.57, 0.43, 0.61);
+            Enter(g, ToolId.Move, K);
+            var gm = new GrazingMetric();
+            gm.TryToScreen(V(0.5, 0.8), out Vec2 sa);
+            gm.TryToScreen(V(0.5, 1.0), out Vec2 sb);
+            Check.That(Vec2.Distance(sa, sb) <= gm.TolerancePx, "precondition: the corner is inside 32 px");
+            Check.That(0.2 > g.BoardCap(V(0.5, 0.8)) * 1.05, "precondition: and beyond the cap");
+            Vec2 b0 = K.B;
+            f0 = V(0.434, 0.614);
+            f = V(f0.X + (0.5 - 0.43), f0.Y + (0.8 - 0.61));
+            Drag(g, f0, f, 8);
+            Near(K.B, V(0.5, 0.8), "beyond BoardCap on a grazing view: no snap, plain translation");
+            Check.That(K.B != b0, "moved");
+        }
+
+        /// <summary>w = 1 + 3 y: a grazing view (far edge compressed about 4x), 32 px tolerance.</summary>
+        sealed class GrazingMetric : ISnapMetric
+        {
+            public double TolerancePx => 32;
+
+            public bool TryToScreen(Vec2 board, out Vec2 screenPx)
+            {
+                double w = 1 + 3 * board.Y;
+                screenPx = new Vec2(1000 * board.X / w, 1000 * board.Y / w);
+                return true;
+            }
         }
 
         // ================= allocation =================
