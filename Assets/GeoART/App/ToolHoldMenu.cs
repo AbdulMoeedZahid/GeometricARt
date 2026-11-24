@@ -20,6 +20,7 @@ namespace GeoART.App
     /// After a hold the Button's click on release must be ignored: the owner's onClick checks
     /// <see cref="SuppressClick"/> (true from the hold until the next press). The press uses its own thresholds, so the
     /// EventSystem drag threshold is turned off (as in LayerPointerRelay) and every move is seen.
+    /// A haptic tick (<see cref="Haptics.Tick"/>) plays when the row opens.
     /// Time comes from <see cref="Clock"/> (Time.unscaledTime; EditMode tests swap in a fake clock). Update only runs the
     /// hold timer while a press is down.
     /// </summary>
@@ -166,6 +167,7 @@ namespace GeoART.App
             SetCharge(0f);
             _onHold?.Invoke();
             Open();
+            Haptics.Tick();   // the menu opened under the finger
             Opened?.Invoke();
         }
 

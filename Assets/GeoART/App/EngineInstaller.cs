@@ -6,7 +6,8 @@ namespace GeoART.App
 {
     /// <summary>
     /// Registers the real <see cref="EditorSession"/> as the scene's IEditorSession and gives it a
-    /// <see cref="ScreenSnapMetric"/> for screen-space snapping. Runs with the module installers
+    /// <see cref="ScreenSnapMetric"/> for screen-space snapping, and adds <see cref="SnapFeedback"/> (haptic tick on each
+    /// snap). Runs with the module installers
     /// (-100), before StubSessionInstaller (-50), so the stub then stays out of the way.
     /// </summary>
     [DefaultExecutionOrder(-100)]
@@ -32,6 +33,8 @@ namespace GeoART.App
             // Screen-space snap/tap tolerances. The metric resolves IBoardSpace lazily, so Awake order does not matter.
             _session = new EditorSession(board) { SnapMetric = new ScreenSnapMetric() };
             ServiceHub.Register<IEditorSession>(_session);
+            // Haptic tick on each snap acquisition; added here (not in the scenes) so no scene has to be regenerated.
+            if (GetComponent<SnapFeedback>() == null) gameObject.AddComponent<SnapFeedback>();
         }
 
         void OnDestroy()
