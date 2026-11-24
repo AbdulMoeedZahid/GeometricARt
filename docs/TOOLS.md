@@ -23,8 +23,14 @@ divisions...), and tapping two points connects them with a line. An H/V lock kee
      closes the row: nothing is drawn and no other button is pressed). Holding the other button opens its row and closes
      this one; rotating or resizing the screen closes an open row.
    - After the first placement a one-time toast says "Hold Line or Circle for line styles" (remembered once shown).
-   **Bands** (under Select) will turn the active layer's band treatment on and off; until bands exist it is dimmed, shows
-   "Off" and a tap only toasts "Bands are coming soon". **Width** cycles Thin / Medium / Thick for new shapes.
+   **Bands** (under Select): tap turns the active layer's bands (double lines) on or off, keeping its remembered mode
+   and width; hold opens the layer popup with the band settings; the label shows Off / Double / Weave and the button is
+   orange while on (`docs/BANDS.md`). **Width** cycles Thin / Medium / Thick for new shapes.
+   - **Restyle selection**: while something is selected (Select, Move, Scale, Duplicate), a colour swatch, the Width
+     button or a line-mode chip also applies that one attribute to the selected shapes (one "Style" undo step, toast
+     "Restyled N shapes"), besides setting it for new shapes. Holding Line or Circle with a selection opens the chips
+     **without** switching tool or clearing the selection; a plain tap still switches tools. This is how a band's
+     structure line is highlighted in colour or weight, as in the book (p22).
    **Snap** (orange = on, the default) and **H/V** (orange = on) are at the bottom of the tool bar; see `docs/SNAPPING.md`.
 5. Shapes go into the active layer (the one selected in the left sidebar). If that layer is hidden, nothing is drawn and a
    toast says "Layer is hidden: double-tap it in the sidebar to show it".
@@ -141,6 +147,8 @@ layer opacity popup is open its full-screen blocker covers the button. One tap =
 | Add layer / Delete (bottom) layer / reorder | Add layer / Delete layer / Layer order |
 | Hide / show a layer | Hide layer / Show layer |
 | Layer opacity (one popup session on one layer) | Layer opacity |
+| Band width (one slider session on one layer) / any other band setting | Band width / Bands |
+| Restyle selection (colour, width or dash) | Style |
 | Grid Square/Hex / Tiles | Grid type / Tiles |
 | ClearBoard (API only, no button) | Clear board |
 
@@ -211,7 +219,14 @@ finger every frame and filters the board point with a One Euro filter (`Engine/O
 
 A slim colour bar sits at the bottom-left, just above the placement buttons, once the board is placed. It ends left of the tool column.
 
-- **Shape colour:** 5 round swatches, Black, White, Red, Green, Blue (the D-08 `Palette` values). The selected swatch has an orange ring. The colour applies to **new** lines, circles and polygons, exactly like the Width button. Shapes you already drew keep their colour, so one pattern can mix colours. The preview while dragging stays orange, as before. Default: Black.
+- **Shape colour:** 5 round swatches, Black, White, Red, Green, Blue (the D-08 `Palette` values). The selected swatch has an orange ring. The colour applies to **new** lines, circles and polygons, exactly like the Width button. Shapes you already drew keep their colour, so one pattern can mix colours; with a selection the swatch also restyles it (above). The preview while dragging stays orange, as before. Default: Black.
+- **Custom colour / colour wheel:** the sixth swatch is a rainbow ring around the last colour picked on the wheel (grey
+  until one is picked). A tap selects that colour; when there is none yet, or it already is the current colour, the tap
+  opens the **colour wheel**: a hue/saturation disc (drag on it), a brightness slider and a preview. **Use colour**
+  makes it the current colour, restyles the selection if there is one, keeps it on the custom swatch (remembered between
+  sessions, PlayerPrefs) and closes. A touch outside closes without a change (on release, so it never draws). Custom
+  colours are saved in designs like any other colour. Swatch slots are 36 ref px (40 before) so the bar still ends left
+  of the tool column.
 - **Board colour:** the Board button switches the board's **guide lines** between **Black** (default, the original look) and **White** (for dark surfaces). Only the dashed grid and outline (and the frame and user snap points) change colour. Nothing is filled: the real surface stays visible under the board.
 
 Reference colours:

@@ -8,8 +8,41 @@ the other under at each crossing, alternating along every band, and an optional 
 Bands are a **per-layer, non-destructive setting** (`LayerBands`, `Contracts/Model/Bands.cs`). A banded layer draws its
 lines and polygon edges as bands and recomputes them after every edit, Undo or Redo. Circles are never banded.
 
-Status: the model type and the geometry engine are done (P2). The layer field, save format, rendering, layer popup and
-toolbar button come in P4; interlace and inner-line wiring in P5.
+Status: model, geometry, layer field, undo, save, rendering (Double and stripped), the layer popup and the toolbar
+button are done (P2, P4). Interlace, Flip weave and inner lines exist in the geometry and the renderer; their popup
+controls are enabled with the weave work (P5), together with cutting the under band's structure line.
+
+## Using bands
+1. Draw the structure on a layer (lines and stamps; circles are construction and are never banded).
+2. Tap **Bands** in the tool column: the active layer's lines become bands (6 mm on the 40 cm board). Tap again: off.
+   The layer remembers its settings while off.
+3. Hold **Bands** (or hold the layer's dash in the sidebar) to open the layer popup:
+   - **Off / Double / Interlace** (Interlace arrives with P5),
+   - **Width** slider, 1.6 to 20 mm, shown in mm for this board (board units x the board's side). One drag is one undo
+     step ("Band width"),
+   - **Structure line**: on = the book's bold line inside the band; off = the "stripped" view,
+   - **Outline**: sets the band outline colour to the current colour (the swatch shows it),
+   - **Inner lines**, **Flip weave** (P5),
+   - a note: amber "Bands this wide make the shapes small." above 75% of the largest safe width, red "Too wide: the bands
+     overlap. Make them narrower." at or beyond it **or** whenever the outlines cross (`SelfIntersections` > 0, e.g. a
+     pinched U whose ends nearly touch), grey "Circles are not banded." when the layer has circles.
+4. To highlight the structure line, select its lines and tap a colour or Width (restyle selection, `docs/TOOLS.md`).
+
+Every band change is undoable ("Bands"; width drags merge per layer into "Band width"), saved with the design
+(`docs/SAVE.md`) and recomputed after any edit, Undo or Redo. The weave never flips across Undo, Redo or reload.
+
+### Rendering and cost
+- `BoardView` draws a banded visible layer's outlines (outline colour and width, layer opacity) before its structure,
+  hides lines and polygons when the structure is off, and always draws circles and snap points.
+- `BandCache` (BoardRender) keeps per layer the topology (rebuilt only after a shape change, Undo/Redo or a reload) and
+  the outline (rebuilt only when the band settings change). A width drag never re-planarizes; however many slider
+  events arrive in one frame, BoardView rebuilds once in LateUpdate. Hidden layers and layers with bands off cost
+  nothing.
+- The global crossing count (`SelfIntersections`) is not needed for drawing and is skipped there; the popup counts it
+  on open, after shape edits and when the width slider is released, never per slider tick.
+- Measured in the editor (EditMode `BandsViewTests.BandRebuildCostForTheWidthSlider`, 200 tile-like lines): planarize +
+  outline 4.0 ms, a width-slider frame (outline + the Shapes mesh) 4.6 ms. Estimate for an iPhone: 2-3x, so about
+  10-14 ms for 200 lines; the book fixtures (8-128 lines) stay well under a frame. To be confirmed on the device.
 
 ## Model: `LayerBands`
 | Field | Meaning | Zero / false value |
@@ -114,6 +147,8 @@ Known limits and decisions (v1):
 - A kinked "crossing" (two bent bands meeting at one point, pairing i with i+2) gets bridges between the corners next to
   the over band, a chord rather than the band's own mitre.
 - Near misses are tracked only below 0.1 board units (twice the widest band).
+- Pathological designs (500 long board-spanning lines, about 10^4 crossings) take about 250 ms for the global crossing
+  count on the Mac; it only runs in the popup (open, release, shape edits), never while drawing or dragging.
 - Interlace with "Show structure line" on (decided): the under band's structure line is **cut** at each woven crossing so
   it goes under with its band (P5); the structure line is not force-hidden.
 - Fill (P6) on a banded layer: in flat Double and in the stripped view the crossing squares are open, so all the band

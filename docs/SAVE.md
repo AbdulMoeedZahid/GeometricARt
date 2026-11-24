@@ -51,6 +51,8 @@ To get rid of all saves in the Editor, delete that folder. You can also copy des
         "gridN": 3, "gridKind": 1, "nextId": 8, "activeLayerId": 1,
         "layers": [
             { "id": 1, "name": "Layer 1", "visible": true, "opacity": "0.4",
+              "bandOn": true, "bandMode": 0, "bandWidth": "0.015", "bandHideStructure": false, "bandInner": false,
+              "bandFlip": false, "bandR": 20, "bandG": 20, "bandB": 24, "bandA": 255, "bandLineWidth": 0,
               "shapes": [ { "kind": 0, "id": 2, "r": 20, "g": 20, "b": 24, "a": 255, "width": 1, "dash": 0,
                             "ax": "0.2", "ay": "0.2", "bx": "0.8", "by": "0.3",
                             "cx": "0", "cy": "0", "radius": "0", "rotation": "0", "sides": 0 } ],
@@ -78,6 +80,13 @@ To get rid of all saves in the Editor, delete that folder. You can also copy des
   ("saved by a newer version of the app"). If you change the format in a way old code can't read, bump the version and
   convert old files in `DesignSerializer.ToBoard`. Adding a new field doesn't need a bump: old files just read the
   default value (0, or NaN for a number stored as text, so give a new number a fallback in `ToBoard`).
+- **Bands** (`docs/BANDS.md`): each layer stores its `LayerBands` as `bandOn`, `bandMode` (`BandMode`), `bandWidth`
+  (a double as text), `bandHideStructure`, `bandInner`, `bandFlip`, the outline colour `bandR..bandA` and
+  `bandLineWidth` (`LineWidth`). The saved value is the sanitized one, and loading reads it back through
+  `LayerBands.Sanitized()`: an unknown mode becomes Double, a missing or bad width the default 6 mm, a too large one
+  20 mm, a transparent colour black. No version bump: a file from before bands has none of these fields and loads with
+  bands off; an older app reading a new file ignores them and shows the design unbanded (nothing is lost on disk unless
+  that old app saves over it).
 - A file that can't be read is skipped in the list with one warning in the console. It is never deleted.
 
 ## How it is wired (notes for teammates)
