@@ -389,6 +389,7 @@ namespace GeoART.Tests.Verifier
             Assert.NotNull(Find("Line").transform.Find("HoldMark"), "Line has a hold menu mark");
             Assert.NotNull(Find("Circle").transform.Find("HoldMark"), "Circle has a hold menu mark");
             Assert.NotNull(Find("Bands").transform.Find("HoldMark"), "Bands has a hold mark (layer popup)");
+            Assert.NotNull(Find("Colour").transform.Find("HoldMark"), "Colour has the menu mark (palette)");
             Assert.IsNull(Find("Select").transform.Find("HoldMark"), "Select has no menu");
             var bands = Find("Bands");
             Assert.AreEqual("Off", bands.GetComponentInChildren<Text>().text, "Bands starts Off");

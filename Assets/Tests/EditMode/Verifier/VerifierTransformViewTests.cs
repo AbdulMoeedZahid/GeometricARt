@@ -41,8 +41,8 @@ namespace GeoART.Tests.Verifier
 
         static readonly string[] BarOrder = { "Move", "Scale", "Duplicate", "Extend", "Delete", "Deselect" };
         static readonly string[] ColumnOrder = ToolBar.FillEnabled
-            ? new[] { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Square", "2x2", "Snap" }
-            : new[] { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap" };   // Fill switched off (docs/FILL.md)
+            ? new[] { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Colour", "Square", "2x2", "Snap" }
+            : new[] { "Line", "Circle", "Select", "Bands", "Medium", "Colour", "Square", "2x2", "Snap" };   // Fill switched off (docs/FILL.md)
 
         // Spec constants (ToolBar / BoardView), restated here so the tests do not read them from the code under test.
         const float BarButtonW = 48f, BarButtonH = 52f, BarSpacing = 4f, BarWidth = 308f;   // 6 buttons since Extend (48 wide, spacing 4)
@@ -484,22 +484,23 @@ namespace GeoART.Tests.Verifier
                 Assert.AreEqual(BarButtonH, rt.rect.height, 0.01f, $"{n} is {BarButtonH} tall");
             }
 
-            // GlyphCount 22 (15 + CircleDotted, Bands, HoldMark, Fill, Delete, Redo, Extend): the bar glyphs, Undo, plus the rounded sprite at index GlyphCount, all distinct.
+            // GlyphCount 25 (15 + CircleDotted, Bands, HoldMark, Fill, Delete, Redo, Extend, Disc, Ring, NoFill): the bar glyphs, Undo, plus the rounded sprite at index GlyphCount, all distinct.
             var f = typeof(ToolBar).GetField("_textures", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(f, "ToolBar._textures");
             var table = (Texture2D[])f.GetValue(tb);
-            Assert.AreEqual(23, table.Length, "22 glyphs (incl. Undo, Redo, the line-mode glyphs, Fill, Delete and Extend) + the rounded sprite");
-            // With Fill switched off (ToolBar.FillEnabled) no button draws the Fill glyph (slot 18), so that slot stays empty.
-            const int FillSlot = 18;
+            Assert.AreEqual(26, table.Length, "25 glyphs (incl. Undo, Redo, the line-mode glyphs, Fill, Delete, Extend and the palette's) + the rounded sprite");
+            // With Fill switched off (ToolBar.FillEnabled) nothing draws the Fill glyph (slot 18) or the palette's No fill
+            // glyph (slot 24), so those slots stay empty.
+            const int FillSlot = 18, NoFillSlot = 24;
             var distinct = new HashSet<Texture2D>();
             for (int i = 0; i < table.Length; i++)
             {
-                if (i == FillSlot && !ToolBar.FillEnabled) { Assert.IsNull(table[i], "no Fill glyph while Fill is off"); continue; }
+                if ((i == FillSlot || i == NoFillSlot) && !ToolBar.FillEnabled) { Assert.IsNull(table[i], "no Fill glyphs while Fill is off"); continue; }
                 Assert.NotNull(table[i], "every glyph slot is filled (a missing GlyphCount bump overwrites one)");
                 distinct.Add(table[i]);
             }
-            Assert.AreEqual(ToolBar.FillEnabled ? 23 : 22, distinct.Count, "all distinct");
-            Assert.AreSame(rounded.texture, table[22], "the rounded sprite sits at index GlyphCount (22)");
+            Assert.AreEqual(ToolBar.FillEnabled ? 26 : 24, distinct.Count, "all distinct");
+            Assert.AreSame(rounded.texture, table[25], "the rounded sprite sits at index GlyphCount (25)");
             foreach (var t in icons) CollectionAssert.Contains(table, t, "every icon is in the table (freed on destroy)");
         }
 
@@ -625,7 +626,7 @@ namespace GeoART.Tests.Verifier
         public void SpecLayoutFitsThe390x844ReferenceAndIPhone14ProMax()
         {
             // The formula verified against the real bar above, evaluated for the target phones (reference px, scale 1).
-            // 390x844 with no insets; column fit 1 (550 px fits between 11% + 8 and 80% - 8).
+            // 390x844 with no insets; column fit 1 (550 px, nine buttons with Colour, fits between 11% + 8 and 80% - 8).
             Rect bar = SpecBarRect(390f, 844f, new Rect(0, 0, 390, 844), 1f, out float fit);
             Assert.AreEqual(1f, fit, "390x844: no shrink");
             Assert.AreEqual(100.84f, bar.yMin, 0.05f, "390x844: bottom at 11% + 8");
@@ -640,14 +641,15 @@ namespace GeoART.Tests.Verifier
             var safe = Rect.MinMaxRect(0f, 31f * s, w, h - 54f * s);
             float band = (Mathf.Min(safe.yMax, 0.8f * h) - EdgeMargin * s) - (safe.yMin + PlacementRowTop * h + EdgeMargin * s);
             float columnFit = Mathf.Clamp(band / (ToolBar.ColumnHeight * s), MinFit, 1f);
-            Assert.AreEqual(ToolBar.ColumnHeight > 540f ? 0.975f : 1f, columnFit, 0.01f,
-                "the column fit the brief quotes (no shrink with the 8-button column while Fill is off)");
+            Assert.AreEqual(ToolBar.ColumnHeight > 600f ? 0.878f : ToolBar.ColumnHeight > 540f ? 0.975f : 1f, columnFit, 0.01f,
+                "the column fit: about 0.975 with the 9-button column (Colour in, Fill off)");
             bar = SpecBarRect(w, h, safe, columnFit, out fit);
             Assert.AreEqual(1f, fit, "14 Pro Max: no shrink");
             Assert.AreEqual(132f, bar.yMin / s, 1.5f, "14 Pro Max: bar 132..184 ref px from the bottom");
             Assert.AreEqual(184f, bar.yMax / s, 1.5f);
-            Assert.AreEqual(8.9f, bar.xMin / s, 1.0f, "14 Pro Max: x about 8.9..316.9 ref px");
-            Assert.AreEqual(316.9f, bar.xMax / s, 1.0f);
+            float shift = (56f - ButtonW * columnFit) * 0.5f - (56f - ButtonW * 0.975f) * 0.5f;   // 0 at the 9-button fit
+            Assert.AreEqual(8.9f + shift, bar.xMin / s, 1.0f, "14 Pro Max: x about 8.9..316.9 ref px");
+            Assert.AreEqual(316.9f + shift, bar.xMax / s, 1.0f);
             float columnLeft = w - (EdgeMargin + ButtonW * columnFit) * s;
             Assert.Less(bar.xMax, columnLeft, "no overlap with the column");
             Assert.Greater(bar.yMin, safe.yMin + PlacementRowTop * h, "above the placement row");

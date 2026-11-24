@@ -19,7 +19,7 @@ namespace GeoART.Tests.Verifier
     /// hidden layers cost nothing, a width change never re-planarizes and many changes in a frame rebuild once); the
     /// toolbar Bands button (tap toggles, hold opens the layer popup); the popup's Bands section (mode chips, width
     /// slider as one undo step, structure and outline buttons, amber/red/circle notes); restyle selection from the
-    /// colour swatches, the Width button and the Line chips (decision 6); the colour wheel. Edit Mode does not tick
+    /// Colour palette, the Width button and the Line chips (decision 6); the colour wheel. Edit Mode does not tick
     /// MonoBehaviours, so Awake/Start/Update/LateUpdate are invoked by reflection.
     /// </summary>
     public sealed class BandsViewTests
@@ -418,19 +418,24 @@ namespace GeoART.Tests.Verifier
             MakeApp();
             var other = (LineShape)Star.Shapes[1];
             var line = SelectFirstLine();
-            Click(BoardAppearance.ShapeColorNames[2]);   // red
+            Click("Colour");
+            Click("Colour menu: " + BoardAppearance.ShapeColorNames[2]);   // red
             Assert.AreEqual(Palette.Red, line.Style.Color, "the selected line turns red");
             Assert.AreNotEqual(Palette.Red, other.Style.Color, "others keep their colour");
             Assert.AreEqual(Palette.Red, _session.Style.Color, "and red is the current colour");
             Assert.AreEqual("Style", _session.NextUndoLabel);
+            Assert.IsFalse(Find("Colour").GetComponent<ToolHoldMenu>().IsOpen, "the pick closes the palette");
+            Assert.IsTrue(Find("Move").activeInHierarchy, "the action bar stays");
             Click("Medium");   // Width: Medium -> Thick
             Assert.AreEqual(LineWidth.Thick, line.Style.Width, "Width restyles the selection");
             Assert.AreEqual(1, _session.SelectionCount, "the selection is kept");
 
             _session.ClearSelection();
             int steps = _session.UndoCount;
-            Click(BoardAppearance.ShapeColorNames[4]);
+            Click("Colour");
+            Click("Colour menu: " + BoardAppearance.ShapeColorNames[4]);
             Assert.AreEqual(steps, _session.UndoCount, "without a selection a swatch only sets the colour");
+            Assert.AreEqual(Palette.Blue, _session.Style.Color);
         }
 
         [Test]
@@ -467,8 +472,9 @@ namespace GeoART.Tests.Verifier
             var bar = _appGo.GetComponent<ColorBar>();
             var line = SelectFirstLine();
             Assert.IsNull(bar.CustomColor, "no custom colour yet");
-            Click("Custom");
-            Assert.IsTrue(bar.WheelOpen, "with no custom colour the swatch opens the wheel");
+            Click("Colour");
+            Click("Colour menu: Custom");
+            Assert.IsTrue(bar.WheelOpen, "with no custom colour the Custom chip opens the wheel");
             bar.PickOnWheel(new Vector2(0f, 1f));   // hue 0.25 (yellow-green), full saturation
             var slider = Find("BrightnessSlider").GetComponent<Slider>();
             slider.value = 0.5f;
@@ -480,12 +486,16 @@ namespace GeoART.Tests.Verifier
             Assert.AreEqual(picked, line.Style.Color, "and restyles the selection");
             Assert.AreEqual(picked, bar.CustomColor, "and stays as the custom swatch");
 
-            Click(BoardAppearance.ShapeColorNames[0]);
-            Click("Custom");
-            Assert.AreEqual(picked, _session.Style.Color, "a tap on the custom swatch selects it again");
+            Click("Colour");
+            Click("Colour menu: " + BoardAppearance.ShapeColorNames[0]);
+            Click("Colour");
+            Click("Colour menu: Custom");
+            Assert.AreEqual(picked, _session.Style.Color, "a tap on the Custom chip selects it again");
             Assert.IsFalse(bar.WheelOpen, "without opening the wheel");
-            Click("Custom");
-            Assert.IsTrue(bar.WheelOpen, "when it is already current, a tap opens the wheel");
+            Click("Colour");
+            Click("Colour menu: Wheel…");
+            Assert.IsTrue(bar.WheelOpen, "Wheel… opens the wheel");
+            Assert.IsFalse(Find("Colour").GetComponent<ToolHoldMenu>().IsOpen, "and closes the palette");
         }
 
         [Test]
@@ -503,13 +513,6 @@ namespace GeoART.Tests.Verifier
             ExecuteEvents.Execute(blocker, e, ExecuteEvents.pointerUpHandler);
             Assert.IsFalse(bar.WheelOpen, "closes on release");
             Assert.AreEqual(before, _session.Style.Color, "without a change");
-        }
-
-        [Test]
-        public void ColourBarStillClearsTheToolColumn()
-        {
-            Assert.LessOrEqual(ColorBar.EdgeMargin + ColorBar.PillWidth, 390f - 8f - 56f - 8f, "pill ends left of the tool column");
-            Assert.AreEqual(6 + 6 * 36 + 8 + 72 + 6, ColorBar.PillWidth, 1e-3f, "five palette swatches, the custom swatch, Board");
         }
     }
 }

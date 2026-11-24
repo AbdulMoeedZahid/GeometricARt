@@ -162,8 +162,8 @@ namespace GeoART.Tests.Verifier
             Vector3[] cc = new Vector3[4], bc = new Vector3[4];
             ((RectTransform)canvas.transform).GetWorldCorners(cc);
             string[] names = ToolBar.FillEnabled
-                ? new[] { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Square", "2x2", "Snap" }
-                : new[] { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap" };
+                ? new[] { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Colour", "Square", "2x2", "Snap" }
+                : new[] { "Line", "Circle", "Select", "Bands", "Medium", "Colour", "Square", "2x2", "Snap" };
             float prevTop = float.MaxValue;
             foreach (var n in names)
             {
