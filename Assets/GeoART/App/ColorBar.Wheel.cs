@@ -185,10 +185,10 @@ namespace GeoART.App
         /// </summary>
         void PlaceWheel()
         {
-            float w = Mathf.Max(1, Screen.width), h = Mathf.Max(1, Screen.height);
+            float w = Mathf.Max(1, UiScreen.Width), h = Mathf.Max(1, UiScreen.Height);
             float scale = ScreenSnapMetric.ScaleFactor(w, h);
             float margin = 8f * scale;
-            Rect safe = Screen.safeArea;
+            Rect safe = UiScreen.SafeArea;
             float left = safe.xMin + margin, right = safe.xMax - margin, bottom = safe.yMin + margin, top = safe.yMax - margin;
             var toolBar = GetComponent<ToolBar>();
             if (toolBar != null && toolBar.TryGetColumnScreenRect(out Rect column) && column.xMin - margin > left)

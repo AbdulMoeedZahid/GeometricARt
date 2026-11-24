@@ -60,10 +60,10 @@ namespace GeoART.App
 
         void LateUpdate()
         {
-            if (Screen.safeArea == _safeArea && Screen.width == _screenW && Screen.height == _screenH) return;
-            _safeArea = Screen.safeArea;
-            _screenW = Screen.width;
-            _screenH = Screen.height;
+            if (UiScreen.SafeArea == _safeArea && UiScreen.Width == _screenW && UiScreen.Height == _screenH) return;
+            _safeArea = UiScreen.SafeArea;
+            _screenW = UiScreen.Width;
+            _screenH = UiScreen.Height;
             if (WheelOpen) PlaceWheel();   // placed for the old layout
         }
 

@@ -172,7 +172,7 @@ namespace GeoART.App
                 return;
             }
             if (_cancelled) return;
-            float scale = ScreenSnapMetric.ScaleFactor(Screen.width, Screen.height);
+            float scale = ScreenSnapMetric.ScaleFactor(UiScreen.Width, UiScreen.Height);
             if (((e.position - _pressPos) / scale).sqrMagnitude >= Slop * Slop)
             {
                 _cancelled = true;   // a moving finger is not a hold; the release may still be a tap

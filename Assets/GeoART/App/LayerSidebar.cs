@@ -192,7 +192,7 @@ namespace GeoART.App
 
         void Update()
         {
-            if (Screen.safeArea != _safeArea || Screen.width != _screenW || Screen.height != _screenH)
+            if (UiScreen.SafeArea != _safeArea || UiScreen.Width != _screenW || UiScreen.Height != _screenH)
             {
                 ApplySafeArea();
                 Layout();
@@ -297,7 +297,7 @@ namespace GeoART.App
         void Layout()
         {
             int n = Mathf.Max(1, _count);
-            float screenH = Screen.height / _scale, areaH = _safeArea.height / _scale;
+            float screenH = UiScreen.Height / _scale, areaH = _safeArea.height / _scale;
             float maxPill = Mathf.Min(screenH * MaxHeightFraction, areaH - 16f);
             _rowH = Mathf.Clamp((maxPill - 2f * (ButtonHeight + Pad)) / n, RowMin, RowMax);
             _pillH = n * _rowH + 2f * (ButtonHeight + Pad);
@@ -983,14 +983,14 @@ namespace GeoART.App
             return slider;
         }
 
-        /// <summary>Area = Screen.safeArea; the pill hugs its left edge, vertically centred.</summary>
+        /// <summary>Area = UiScreen.SafeArea; the pill hugs its left edge, vertically centred.</summary>
         void ApplySafeArea()
         {
-            _safeArea = Screen.safeArea;
-            _screenW = Screen.width;
-            _screenH = Screen.height;
+            _safeArea = UiScreen.SafeArea;
+            _screenW = UiScreen.Width;
+            _screenH = UiScreen.Height;
             _scale = LayerUiKit.ScaleFactor();
-            float w = Mathf.Max(1, Screen.width), h = Mathf.Max(1, Screen.height);
+            float w = Mathf.Max(1, UiScreen.Width), h = Mathf.Max(1, UiScreen.Height);
             _area.anchorMin = new Vector2(_safeArea.xMin / w, _safeArea.yMin / h);
             _area.anchorMax = new Vector2(_safeArea.xMax / w, _safeArea.yMax / h);
             _area.offsetMin = _area.offsetMax = Vector2.zero;

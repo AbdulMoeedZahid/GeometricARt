@@ -170,7 +170,7 @@ namespace GeoART.App
 
         void LateUpdate()
         {
-            if (Screen.safeArea != _safeArea || Screen.width != _screenW || Screen.height != _screenH) ApplySafeArea();
+            if (UiScreen.SafeArea != _safeArea || UiScreen.Width != _screenW || UiScreen.Height != _screenH) ApplySafeArea();
         }
 
         void OnPlacementChanged(PlacementState _)
@@ -355,10 +355,10 @@ namespace GeoART.App
         /// </summary>
         void ApplySafeArea()
         {
-            _safeArea = Screen.safeArea;
-            _screenW = Screen.width;
-            _screenH = Screen.height;
-            float w = Mathf.Max(1, Screen.width), h = Mathf.Max(1, Screen.height);
+            _safeArea = UiScreen.SafeArea;
+            _screenW = UiScreen.Width;
+            _screenH = UiScreen.Height;
+            float w = Mathf.Max(1, UiScreen.Width), h = Mathf.Max(1, UiScreen.Height);
             float scale = ScreenSnapMetric.ScaleFactor(w, h);   // reference px -> screen px, as the CanvasScaler computes it
             float margin = EdgeMargin * scale;
             float bottom = _safeArea.yMin + PlacementRowTop * h + margin;
@@ -375,8 +375,9 @@ namespace GeoART.App
         }
 
         /// <summary>
-        /// The tool column's rect in screen pixels (the overlay canvas: world = screen), e.g. for popups that must not cover
-        /// it. False before the column exists.
+        /// The tool column's rect in screen pixels, e.g. for popups that must not cover it (the overlay canvas: world =
+        /// screen; a camera canvas, as in the Editor's UI layout shot, goes through its camera). False before the column
+        /// exists.
         /// </summary>
         public bool TryGetColumnScreenRect(out Rect rect)
         {
@@ -384,7 +385,9 @@ namespace GeoART.App
             if (_column == null) return false;
             var c = new Vector3[4];
             _column.GetWorldCorners(c);
-            rect = Rect.MinMaxRect(c[0].x, c[0].y, c[2].x, c[2].y);
+            Camera cam = _canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : _canvas.worldCamera;
+            Vector2 min = RectTransformUtility.WorldToScreenPoint(cam, c[0]), max = RectTransformUtility.WorldToScreenPoint(cam, c[2]);
+            rect = Rect.MinMaxRect(min.x, min.y, max.x, max.y);
             return true;
         }
 

@@ -25,7 +25,7 @@ namespace GeoART.App
         /// <summary>Screen pixels per reference unit, exactly as CanvasScaler ScaleWithScreenSize (match 0.5) computes it.</summary>
         public static float ScaleFactor()
         {
-            float w = Mathf.Max(1, Screen.width), h = Mathf.Max(1, Screen.height);
+            float w = Mathf.Max(1, UiScreen.Width), h = Mathf.Max(1, UiScreen.Height);
             float logW = Mathf.Log(w / RefWidth, 2f), logH = Mathf.Log(h / RefHeight, 2f);
             return Mathf.Pow(2f, Mathf.Lerp(logW, logH, MatchWidthOrHeight));
         }
