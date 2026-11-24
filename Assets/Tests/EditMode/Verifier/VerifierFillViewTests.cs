@@ -1,3 +1,4 @@
+#if VERIFIER_FILL   // Fill is paused (user decision): define VERIFIER_FILL to run these again when Fill resumes
 using System;
 using System.Reflection;
 using GeoART.App;
@@ -209,3 +210,4 @@ namespace GeoART.Tests.Verifier
         }
     }
 }
+#endif

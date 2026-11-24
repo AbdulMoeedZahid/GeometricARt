@@ -1,3 +1,4 @@
+#if VERIFIER_FILL   // Fill is paused (user decision): define VERIFIER_FILL to run these again when Fill resumes
 using System;
 using System.Collections.Generic;
 using GeoART.Contracts;
@@ -368,3 +369,4 @@ namespace GeoART.EngineCheck
         }
     }
 }
+#endif
