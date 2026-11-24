@@ -287,7 +287,8 @@ namespace GeoART.EngineCheck
                        && (int)ToolId.Circle == 4 && (int)ToolId.Snap == 5 && (int)ToolId.Scale == 6 && (int)ToolId.Stamps == 7
                        && (int)ToolId.Erase == 8 && (int)ToolId.Duplicate == 9, "existing ToolId ordinals unchanged");
             Check.That((int)ToolId.Move == 10, $"Move appended last (10), got {(int)ToolId.Move}");
-            Check.That(Enum.GetValues(typeof(ToolId)).Length == 11, "11 ToolId values");
+            Check.That((int)ToolId.Fill == 11, $"Fill appended after Move (11), got {(int)ToolId.Fill}");
+            Check.That(Enum.GetValues(typeof(ToolId)).Length == 12, "12 ToolId values (Fill added in P6)");
 
             Check.That(EditorSession.MoveHintToast == MoveHint, $"MoveHintToast '{EditorSession.MoveHintToast}'");
             Check.That(EditorSession.ScaleHintToast == ScaleHint, $"ScaleHintToast '{EditorSession.ScaleHintToast}'");

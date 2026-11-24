@@ -31,7 +31,8 @@ namespace GeoART.EngineCheck
         const string SelectHint = "Select: drag a box around whole shapes, or tap one";
 
         static readonly BoardChangeKind HistoryKind = BoardChangeKind.Shapes | BoardChangeKind.Layers
-            | BoardChangeKind.SnapPoints | BoardChangeKind.Grid | (BoardChangeKind)32;
+            | BoardChangeKind.SnapPoints | BoardChangeKind.Grid | (BoardChangeKind)32
+            | (BoardChangeKind)64;   // Fills (P6): Undo/Redo also restore fills
 
         // ================= helpers =================
 
@@ -412,7 +413,7 @@ namespace GeoART.EngineCheck
                 "existing BoardChangeKind values unchanged");
             Check.That((int)BoardChangeKind.History == 32, $"History appended as 32, got {(int)BoardChangeKind.History}");
             Check.That(EditorSession.HistoryChangeKind == HistoryKind,
-                $"HistoryChangeKind = Shapes|Layers|SnapPoints|Grid|History, got {EditorSession.HistoryChangeKind}");
+                $"HistoryChangeKind = Shapes|Layers|SnapPoints|Grid|History|Fills, got {EditorSession.HistoryChangeKind}");
             Check.That((EditorSession.HistoryChangeKind & BoardChangeKind.Reset) == 0, "HistoryChangeKind does not carry Reset");
         }
 

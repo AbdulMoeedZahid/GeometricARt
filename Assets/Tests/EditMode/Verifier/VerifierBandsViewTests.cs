@@ -240,6 +240,130 @@ namespace GeoART.Tests.Verifier
             Assert.AreEqual(steps, _session.UndoCount, "opening an unbanded layer's popup: no step");
         }
 
+        // ---------- P5: interlace, flip, inner lines ----------
+
+        sealed class Corners : ICornerPlacement
+        {
+            public double Side = 1.2;
+            public PlacementMode Mode => PlacementMode.Corners;
+            public void SetMode(PlacementMode mode) { }
+            public int RequiredCorners => 4;
+            public int CornerCount => 4;
+            public bool CanAddCorner => false;
+            public bool CanConfirm => false;
+            public CornerIssue Issue => CornerIssue.None;
+            public int IssueCorner => -1;
+            public double LiveEdgeMeters => double.NaN;
+            public double SurfaceWidthMeters => Side;
+            public double SurfaceHeightMeters => Side;
+            public double BoardSideMeters => Side;
+            public bool IsVerticalSurface => false;
+            public bool TryAddCorner() => false;
+            public void UndoCorner() { }
+            public void ClearCorners() { }
+            public bool ConfirmCorners() => false;
+#pragma warning disable 67
+            public event Action CornersChanged;
+#pragma warning restore 67
+        }
+
+        Text Note => Find("BandNote").GetComponent<Text>();
+
+        void InnerBumpCase(double side)
+        {
+            LayerBands b = On();
+            b.Width = 0.008;
+            _session.SetLayerBands(Star.Id, b);
+            int steps = _session.UndoCount;
+            OpenPopup(Star.Id);
+            Click(Find("Inner lines"));
+            double scale = Math.Max(0.4, Math.Min(2.0, side / 0.40));
+            double min = 0.010 * scale / side;   // 10 mm times the stroke scale (P5)
+            Assert.IsTrue(Star.Bands.InnerLines, $"side {side}: inner lines on");
+            Assert.AreEqual(min, Star.Bands.Width, 1e-12, $"side {side}: width raised to 10 mm x stroke scale");
+            Assert.AreEqual(steps + 1, _session.UndoCount, $"side {side}: toggle + bump = ONE step");
+            Assert.AreEqual("Bands", _session.NextUndoLabel);
+            var o = BandOutline.Build(BandGraph.Build(Star.Shapes), BandOutlineOptions.ForBoard(Star.Bands, side));
+            Assert.IsTrue(o.InnerShown, $"side {side}: after the bump the inner lines are actually drawn");
+            Click(Find("Inner lines"));
+            Assert.IsFalse(Star.Bands.InnerLines, "off again");
+            Assert.AreEqual(min, Star.Bands.Width, 1e-12, "turning them off keeps the width");
+            _session.Undo();
+            _session.Undo();
+            Assert.IsFalse(Star.Bands.InnerLines, $"side {side}: Undo of the toggle");
+            Assert.AreEqual(0.008, Star.Bands.Width, 1e-12, $"side {side}: the same Undo restores the width");
+        }
+
+        [Test]
+        public void InnerLinesBumpTheWidthInTheSameStepOnTheDefaultBoard() => InnerBumpCase(0.40);
+
+        [Test]
+        public void InnerLinesBumpScalesOnALargeCornerPlacedBoard()
+        {
+            ServiceHub.Register<ICornerPlacement>(new Corners { Side = 1.2 });
+            InnerBumpCase(1.2);
+            double w = Star.Bands.Width;   // after the two Undos: 0.008 board units = 9.6 mm on the 1.2 m board
+            StringAssert.StartsWith((w * 1200).ToString("0.0"), Find("WidthValue").GetComponent<Text>().text, "mm of the 1.2 m board");
+        }
+
+        [Test]
+        public void FlipIsOnlyForInterlaceAndIsOneStep()
+        {
+            _session.SetLayerBands(Star.Id, On());
+            OpenPopup(Star.Id);
+            Assert.IsFalse(Find("Flip weave").GetComponent<Button>().interactable, "Double: Flip weave dimmed");
+            Click(Find("Bands Interlace"));
+            Assert.IsTrue(Find("Flip weave").GetComponent<Button>().interactable, "Interlace: Flip weave enabled");
+            Assert.AreEqual("Weave", BandsLabel);
+            int steps = _session.UndoCount;
+            Click(Find("Flip weave"));
+            Assert.IsTrue(Star.Bands.FlipWeave);
+            Assert.AreEqual(steps + 1, _session.UndoCount, "one step");
+            _session.Undo();
+            Assert.IsFalse(Star.Bands.FlipWeave, "Undo un-flips");
+        }
+
+        [Test]
+        public void NotesFollowTheirPriority()
+        {
+            // A triangle crossed once by a line that starts inside it: one crossing that can't alternate.
+            // Scaled by 0.3 about the centre so MaxSafeWidth (0.03) is inside the slider range.
+            Vec2 S(double x, double y) => new Vec2(0.5 + (x - 0.5) * 0.3, 0.5 + (y - 0.5) * 0.3);
+            Star.Shapes.Clear();
+            Star.Shapes.Add(new LineShape(_session.Board.NewId(), S(0.3, 0.3), S(0.7, 0.3), StrokeStyle.Default));
+            Star.Shapes.Add(new LineShape(_session.Board.NewId(), S(0.7, 0.3), S(0.5, 0.7), StrokeStyle.Default));
+            Star.Shapes.Add(new LineShape(_session.Board.NewId(), S(0.5, 0.7), S(0.3, 0.3), StrokeStyle.Default));
+            Star.Shapes.Add(new LineShape(_session.Board.NewId(), S(0.45, 0.4), S(0.45, 0.9), StrokeStyle.Default));
+            _session.LoadBoard(_session.Board);
+            var g = BandGraph.Build(Star.Shapes);
+            Assert.AreEqual(1, g.WeaveConflicts, "precondition: one conflict");
+            double safe = BandOutline.Build(g, BandOutlineOptions.ForBoard(LayerBands.Default, 0.40)).MaxSafeWidth;
+            Assert.That(safe > 0.012 && safe < 0.045, $"precondition: MaxSafeWidth {safe} inside the slider range");
+
+            LayerBands b = On(BandMode.Interlace);
+            b.Width = 0.006;
+            _session.SetLayerBands(Star.Id, b);
+            OpenPopup(Star.Id);
+            Assert.AreEqual(LayerSidebar.ConflictsNote(1), Note.text, "narrow interlace: the conflict note");
+            b.Width = safe * 0.9;
+            _session.SetLayerBands(Star.Id, b);
+            Assert.AreEqual(LayerSidebar.BandsWideNote, Note.text, "amber width outranks the conflicts");
+            b.Width = Math.Min(LayerBands.MaxWidth, safe * 1.05);
+            _session.SetLayerBands(Star.Id, b);
+            Assert.AreEqual(LayerSidebar.BandsTooWideNote, Note.text, "red outranks everything");
+            b.Width = 0.006;
+            b.Mode = BandMode.Double;
+            _session.SetLayerBands(Star.Id, b);
+            Assert.AreNotEqual(LayerSidebar.ConflictsNote(1), Note.text, "Double: conflicts are not a concern");
+            b.Mode = BandMode.Interlace;
+            b.InnerLines = true;               // set directly at a narrow width: no bump
+            _session.SetLayerBands(Star.Id, b);
+            Assert.AreEqual(LayerSidebar.ConflictsNote(1), Note.text, "amber conflicts outrank the grey inner-lines note");
+            b.Mode = BandMode.Double;
+            _session.SetLayerBands(Star.Id, b);
+            Assert.AreEqual(LayerSidebar.InnerTooNarrowNote, Note.text, "then the grey note");
+        }
+
         // ---------- layout ----------
 
         [Test]
