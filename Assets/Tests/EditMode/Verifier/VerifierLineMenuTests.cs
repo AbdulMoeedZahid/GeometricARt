@@ -256,7 +256,7 @@ namespace GeoART.Tests.Verifier
         [Test]
         public void ColumnHasNineButtonsWithBandsInTheOldDottedSlot()
         {
-            string[] names = { "Line", "Circle", "Select", "Bands", "Medium", "Square", "2x2", "Snap", "HV" };
+            string[] names = { "Line", "Circle", "Select", "Fill", "Bands", "Medium", "Square", "2x2", "Snap" };   // P6: Fill added, H/V moved into Snap's menu
             var column = Find("Column").transform;
             var direct = new List<string>();
             foreach (Transform c in column) if (c.GetComponent<Button>() != null && c.gameObject.activeSelf) direct.Add(c.name);
@@ -290,9 +290,9 @@ namespace GeoART.Tests.Verifier
         {
             MenuOn(Find("Line"));
             MenuOn(Find("Circle"));
-            foreach (var n in new[] { "Select", "Medium", "Square", "2x2", "Snap", "HV" })
+            foreach (var n in new[] { "Select", "Fill", "Medium", "Square", "2x2" })
                 foreach (var mb in Find(n).GetComponents<MonoBehaviour>())
-                    Assert.IsFalse(mb.GetType().Name.Contains("HoldMenu"), $"{n} has no hold menu in P1");
+                    Assert.IsFalse(mb.GetType().Name.Contains("HoldMenu"), $"{n} has no hold menu (Line, Circle, Bands and Snap do)");
             Assert.NotNull(Find("Line").GetComponent<Button>(), "the uGUI Button stays (view tests click through it)");
         }
 
