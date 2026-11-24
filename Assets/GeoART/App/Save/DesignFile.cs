@@ -46,6 +46,7 @@ namespace GeoART.App.Save
         public int bandR, bandG, bandB, bandA;
         public int bandLineWidth;       // LineWidth ordinal
         public List<ShapeData> shapes = new List<ShapeData>();
+        public List<FillData> fills = new List<FillData>();   // missing in older files: no fills
         public List<SnapPointData> snapPoints = new List<SnapPointData>();
     }
 
@@ -63,6 +64,14 @@ namespace GeoART.App.Save
         public int dash;          // LineStyle ordinal
         public string ax, ay, bx, by, cx, cy, radius, rotation;   // doubles, see DesignSerializer
         public int sides;
+    }
+
+    /// <summary>A fill seed: the tapped point (doubles as text) and the colour.</summary>
+    [Serializable]
+    public sealed class FillData
+    {
+        public string x, y;
+        public int r, g, b, a;
     }
 
     [Serializable]
@@ -112,6 +121,8 @@ namespace GeoART.App.Save
                     if (shape != null) ld.shapes.Add(FromShape(shape));
                 foreach (var p in layer.SnapPoints)
                     if (p != null) ld.snapPoints.Add(new SnapPointData { id = p.Id.Value, x = D(p.Position.X), y = D(p.Position.Y) });
+                foreach (var f in layer.Fills)
+                    ld.fills.Add(new FillData { x = D(f.Point.X), y = D(f.Point.Y), r = f.Color.R, g = f.Color.G, b = f.Color.B, a = f.Color.A });
                 d.layers.Add(ld);
             }
             return d;
@@ -192,6 +203,14 @@ namespace GeoART.App.Save
                             if (!Finite(x) || !Finite(y)) continue;
                             layer.SnapPoints.Add(new SnapPoint(new EntityId(pd.id), new Vec2(x, y)));
                             maxId = Math.Max(maxId, pd.id);
+                        }
+                    if (ld.fills != null)
+                        foreach (var fd in ld.fills)
+                        {
+                            if (fd == null) continue;
+                            double x = P(fd.x), y = P(fd.y);
+                            if (!Finite(x) || !Finite(y)) continue;
+                            layer.Fills.Add(new FillSeed(new Vec2(x, y), new RgbaColor(Byte(fd.r), Byte(fd.g), Byte(fd.b), Byte(fd.a))));
                         }
                     b.Layers.Add(layer);
                 }

@@ -34,6 +34,12 @@ namespace GeoART.Tests.Save
                 Assert.That(a.Shapes.Count, Is.EqualTo(e.Shapes.Count), at + " shape count");
                 for (int k = 0; k < e.Shapes.Count; k++)
                     ShapesEqual(e.Shapes[k], a.Shapes[k], $"{at} shape {k}");
+                Assert.That(a.Fills.Count, Is.EqualTo(e.Fills.Count), at + " fill count");
+                for (int k = 0; k < e.Fills.Count; k++)
+                {
+                    Same(e.Fills[k].Point, a.Fills[k].Point, $"{at} fill {k} Point");
+                    Assert.That(a.Fills[k].Color, Is.EqualTo(e.Fills[k].Color), $"{at} fill {k} Color");
+                }
                 Assert.That(a.SnapPoints.Count, Is.EqualTo(e.SnapPoints.Count), at + " snap point count");
                 for (int k = 0; k < e.SnapPoints.Count; k++)
                 {
@@ -365,6 +371,32 @@ namespace GeoART.Tests.Save
                 Assert.That(lb.OutlineWidth, Is.EqualTo(LineWidth.Thin), $"{width}: outline width");
                 Assert.That(lb.OutlineColor, Is.EqualTo(Palette.Black), $"{width}: transparent colour -> black");
             }
+        }
+
+        [Test]
+        public void FillsRoundTripAndOldFilesHaveNone()
+        {
+            var b = GoldenBoards.StarOnFullBoard();
+            b.Layers[2].Fills.Add(new FillSeed(new Vec2(0.5, 0.5000000000000001), new RgbaColor(12, 200, 30, 255)));
+            b.Layers[2].Fills.Add(new FillSeed(new Vec2(0.2, 0.3), Palette.Red));
+            var back = RoundTrip(b);
+            BoardAssert.AreEqual(b, back);
+            Assert.That(back.Layers[2].Fills[0].Point, Is.EqualTo(new Vec2(0.5, 0.5000000000000001)), "bit-exact seed");
+
+            string json = DesignSerializer.ToJson(b, "Old", When);
+            string old = System.Text.RegularExpressions.Regex.Replace(json, "\\s*\"fills\": \\[[^\\]]*\\],?", "");
+            Assert.That(old, Does.Not.Contain("\"fills\""), "precondition: a file from before fills");
+            Assert.That(DesignSerializer.TryParse(old, out DesignFile file, out string error), Is.True, error);
+            foreach (var layer in DesignSerializer.ToBoard(file.board).Layers) Assert.That(layer.Fills.Count, Is.EqualTo(0), layer.Name);
+
+            var d = new BoardData { gridN = 2, nextId = 5 };
+            d.layers.Add(new LayerData { id = 1, name = "A", visible = true, opacity = "1" });
+            d.layers[0].fills.Add(new FillData { x = "abc", y = "0.5", r = 1, g = 2, b = 3, a = 255 });
+            d.layers[0].fills.Add(null);
+            d.layers[0].fills.Add(new FillData { x = "0.4", y = "0.6", r = 300, g = -5, b = 3, a = 255 });
+            var layer0 = DesignSerializer.ToBoard(d).Layers[0];
+            Assert.That(layer0.Fills.Count, Is.EqualTo(1), "an unreadable point and a null record are dropped");
+            Assert.That(layer0.Fills[0].Color, Is.EqualTo(new RgbaColor(255, 0, 3, 255)), "colour values are clamped");
         }
 
         [Test]
