@@ -57,9 +57,9 @@ namespace GeoART.App
         enum Glyph
         {
             Line, Circle, Dotted, Width, Square, Hex, Tiles, Snap, HV, Select, Move, Scale, Duplicate, Deselect, Undo,
-            CircleDotted, Bands, HoldMark, Fill,
+            CircleDotted, Bands, HoldMark, Fill, Delete, Redo,
         }
-        const int GlyphCount = 19;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
+        const int GlyphCount = 21;   // = number of Glyph values: the rounded sprite's texture sits at index GlyphCount
 
         IEditorSession _session;
         IBoardSpace _boardSpace;
@@ -534,6 +534,20 @@ namespace GeoART.App
                     d = Mathf.Min(d, SegmentDistance(p, tip, new Vector2(0.37f, 0.755f)));
                     d = Mathf.Min(d, SegmentDistance(p, tip, new Vector2(0.37f, 0.495f)));
                     return d - 0.045f;
+                }
+                case Glyph.Redo:   // the Undo arrow mirrored: pointing forward
+                    return GlyphDistance(Glyph.Undo, new Vector2(1f - p.x, p.y));
+                case Glyph.Delete:   // trash can: lid with a handle, a tapered bin with two ribs
+                {
+                    float d = SegmentDistance(p, new Vector2(0.2f, 0.74f), new Vector2(0.8f, 0.74f)) - 0.04f;
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.4f, 0.84f), new Vector2(0.6f, 0.84f)) - 0.035f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.4f, 0.84f), new Vector2(0.4f, 0.76f)) - 0.035f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.6f, 0.84f), new Vector2(0.6f, 0.76f)) - 0.035f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.27f, 0.66f), new Vector2(0.33f, 0.16f)) - 0.04f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.73f, 0.66f), new Vector2(0.67f, 0.16f)) - 0.04f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.33f, 0.16f), new Vector2(0.67f, 0.16f)) - 0.04f);
+                    d = Mathf.Min(d, SegmentDistance(p, new Vector2(0.43f, 0.58f), new Vector2(0.45f, 0.26f)) - 0.03f);
+                    return Mathf.Min(d, SegmentDistance(p, new Vector2(0.57f, 0.58f), new Vector2(0.55f, 0.26f)) - 0.03f);
                 }
                 case Glyph.Deselect:   // an X
                     return Mathf.Min(SegmentDistance(p, new Vector2(0.26f, 0.26f), new Vector2(0.74f, 0.74f)),
