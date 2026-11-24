@@ -421,6 +421,8 @@ namespace GeoART.Tests.Verifier.PlayMode
             public void SetLayerOpacity(EntityId id, double o) => _s.SetLayerOpacity(id, o);
             public void SetLayerBands(EntityId id, LayerBands b) => _s.SetLayerBands(id, b);
             public void RestyleSelection(StyleParts p, StrokeStyle st) => _s.RestyleSelection(p, st);
+            public bool FillErase => _s.FillErase;
+            public void SetFillErase(bool e) => _s.SetFillErase(e);
             public void SetGrid(int n) => _s.SetGrid(n);
             public void SetGridKind(GridKind k) => _s.SetGridKind(k);
             public bool CanUndo => _s.CanUndo;

@@ -122,6 +122,15 @@ namespace GeoART.Mocks
             if (any) BoardChanged?.Invoke(BoardChangeKind.Shapes);
         }
 
+        public bool FillErase { get; private set; }
+
+        public void SetFillErase(bool erase)
+        {
+            if (FillErase == erase) return;
+            FillErase = erase;
+            StateChanged?.Invoke();
+        }
+
         public void ClearBoard() => LoadBoard(GoldenBoards.Empty());
 
         public void LoadBoard(Board b)

@@ -15,6 +15,7 @@ namespace GeoART.Contracts
         bool SnapEnabled { get; }
         bool OrthoLock { get; }                                   // Line tool: new lines horizontal/vertical in board axes
         bool DottedLine { get; }
+        bool FillErase { get; }                                   // Fill tool: taps clear fills instead of filling ("no fill")
         StrokeStyle Style { get; set; }                           // palette colour + width (Settings)
         Selection Selection { get; }
         Vec2? Cursor { get; }
@@ -48,6 +49,7 @@ namespace GeoART.Contracts
         void SetLayerOpacity(EntityId id, double opacity);       // clamped to [0,1]
         void SetLayerBands(EntityId id, LayerBands bands);       // sanitized; one undo step ("Bands", or "Band width" merged per layer)
         void RestyleSelection(StyleParts parts, StrokeStyle style);   // selected shapes on visible layers; one "Style" step
+        void SetFillErase(bool erase);                            // the colour picker's "no fill"; StateChanged; reset when leaving Fill
         void SetGrid(int n);                                      // tiles per side, clamped to [MinGridN, MaxGridN]
         void SetGridKind(GridKind kind);                          // square or hex tiles; read back from Board.GridKind
 
