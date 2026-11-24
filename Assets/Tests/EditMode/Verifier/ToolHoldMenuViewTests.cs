@@ -137,6 +137,14 @@ namespace GeoART.Tests.Verifier
             return e;
         }
 
+        void TapBlocker(string button)
+        {
+            var b = Find(button + " menu blocker");
+            var e = new PointerEventData(_es) { position = Vector2.zero, button = PointerEventData.InputButton.Left };
+            ExecuteEvents.Execute(b, e, ExecuteEvents.pointerDownHandler);
+            ExecuteEvents.Execute(b, e, ExecuteEvents.pointerUpHandler);
+        }
+
         Texture Icon(string button) => Find(button).transform.Find("Icon").GetComponent<RawImage>().texture;
 
         // ---------- tests ----------
@@ -182,8 +190,7 @@ namespace GeoART.Tests.Verifier
             Advance(1f);
             Assert.AreEqual(1, opened, "no second open while it stays open");
 
-            var b = Find("Line menu blocker");
-            ExecuteEvents.Execute(b, new PointerEventData(_es) { position = Vector2.zero }, ExecuteEvents.pointerDownHandler);
+            TapBlocker("Line");
             Assert.IsFalse(Menu("Line").IsOpen, "the blocker closes it");
 
             var e2 = Down(line);   // the next tap works again
@@ -256,8 +263,12 @@ namespace GeoART.Tests.Verifier
             var b = Find("Line menu blocker");
             Assert.IsTrue(b.GetComponent<Graphic>().raycastTarget, "the blocker catches touches");
             Assert.AreEqual(0f, b.GetComponent<Graphic>().color.a, 1e-6f, "and is invisible");
-            ExecuteEvents.Execute(b, new PointerEventData(_es) { position = Vector2.zero }, ExecuteEvents.pointerDownHandler);
-            Assert.IsFalse(Menu("Line").IsOpen);
+            var e2 = new PointerEventData(_es) { position = Vector2.zero, button = PointerEventData.InputButton.Left };
+            ExecuteEvents.Execute(b, e2, ExecuteEvents.pointerDownHandler);
+            Assert.IsTrue(Menu("Line").IsOpen && b.activeSelf,
+                "still up while the finger is down: the whole touch stays on UI (BoardInputRouter checks at touch-begin)");
+            ExecuteEvents.Execute(b, e2, ExecuteEvents.pointerUpHandler);
+            Assert.IsFalse(Menu("Line").IsOpen, "closes on release");
             Assert.IsFalse(b.activeSelf, "blocker gone");
             Assert.AreEqual(LineStyle.Solid, _session.Style.Dash, "nothing picked");
             Assert.AreEqual(ToolId.Line, _session.ActiveTool);
@@ -338,6 +349,28 @@ namespace GeoART.Tests.Verifier
             Rect blocker = WorldRect(Find("Line menu blocker"));
             Assert.IsTrue(blocker.Contains(button.center) && blocker.Contains(cr.min + Vector2.one) && blocker.Contains(cr.max - Vector2.one),
                 "the blocker covers the whole screen");
+        }
+
+        [Test]
+        public void OpeningOneMenuClosesTheOther()
+        {
+            var line = Find("Line");
+            var circle = Find("Circle");
+            var e1 = Down(line);
+            var e2 = Down(circle);
+            Advance(ToolHoldMenu.HoldSeconds + 0.05f);   // both holds fire in the same tick (two fingers)
+            Assert.AreNotEqual(Menu("Line").IsOpen, Menu("Circle").IsOpen, "only one row is open");
+            Assert.IsFalse(Find("Line menu blocker").activeSelf && Find("Circle menu blocker").activeSelf, "and one blocker");
+            Up(line, e1);
+            Up(circle, e2);
+        }
+
+        [Test]
+        public void ReLayoutClosesTheMenu()
+        {
+            Hold("Line");
+            Call(_go.GetComponent<ToolBar>(), "ApplySafeArea");   // safe area / rotation change
+            Assert.IsFalse(Menu("Line").IsOpen, "a row placed for the old layout is closed");
         }
 
         [Test]
