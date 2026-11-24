@@ -38,7 +38,7 @@ namespace GeoART.Tests.Verifier
         const float ButtonW = 56f, ButtonH = 52f, Spacing = 8f, GroupGap = 14f, EdgeMargin = 8f, RowGap = 10f;
         const float PlacementRowTop = 0.11f, CoachTextBottom = 0.80f, MinFit = 0.4f;
         const float PaletteW = 5 * 48f + 4 * 4f, PaletteH = 2 * 52f + 4f;   // 2 rows of 5 chips, 48 x 52, spacing 4
-        const float BarWidth = 308f, BarH = 52f, SidebarRight = 6f + 50f;
+        const float BarWidth = 308f, BarH = 52f, SidebarRight = 6f + 50f, SidebarGap = 4f;
 
         EditorSession _session;
         Space _space;
@@ -419,6 +419,68 @@ namespace GeoART.Tests.Verifier
                 Assert.IsFalse(palette.Overlaps(WorldRect(Find(n))), $"clear of {n}");
         }
 
+        [Test]
+        public void OpenMenusHaveTheirOwnCanvasAboveTheSidebarAndDesignsButtonBelowTheWheel()
+        {
+            GameObject menus = Find("HoldMenus");
+            var canvas = menus.GetComponent<Canvas>();
+            Assert.NotNull(canvas, "the open menus are on a canvas of their own");
+            Assert.IsTrue(canvas.overrideSorting, "with its own sorting order");
+            Assert.AreEqual(ToolBar.HoldMenusSortingOrder, canvas.sortingOrder);
+            Assert.NotNull(menus.GetComponent<GraphicRaycaster>(), "and its own raycaster, so its blocker is hit first");
+            Assert.Greater(canvas.sortingOrder, 110, "above the layer sidebar (110)");
+            Assert.Greater(canvas.sortingOrder, 106, "above the Designs button (106)");
+            Assert.Greater(canvas.sortingOrder, Colour.GetComponentInParent<Canvas>().sortingOrder, "above the column");
+            Assert.Less(canvas.sortingOrder, Find("ColorWheel").GetComponent<Canvas>().sortingOrder, "below the colour wheel");
+            Assert.Less(canvas.sortingOrder, 120, "below the toasts");
+            foreach (var n in new[] { "Colour menu", "Colour menu blocker", "Line menu", "Line menu blocker", "Circle menu",
+                         "Circle menu blocker", "Snap menu", "Snap menu blocker" })
+                Assert.AreSame(menus.transform, Find(n).transform.parent, $"{n} is on the menus canvas");
+        }
+
+        [Test]
+        public void ALeftLimitShrinksThePaletteToStayRightOfIt()
+        {
+            TapColour();
+            Canvas.ForceUpdateCanvases();
+            Rect natural = WorldRect(Find("Colour menu"));
+            Menu.Close();
+            float limit = natural.xMin + natural.width * 0.2f;   // as if the sidebar reached 20% into the palette
+            Menu.LeftLimit = () => limit;
+            TapColour();
+            Canvas.ForceUpdateCanvases();
+            Rect shrunk = WorldRect(Find("Colour menu"));
+            Assert.GreaterOrEqual(shrunk.xMin, limit - 0.5f, "the left edge stays right of the limit");
+            Assert.AreEqual(natural.xMax, shrunk.xMax, 0.5f, "the right edge stays next to the button");
+            Assert.AreEqual(0.8f, shrunk.width / natural.width, 0.01f, "shrunk to fit");
+            Assert.AreEqual(Center(Colour).y, shrunk.center.y, 1f, "still centred on the button");
+            Menu.Close();
+            Menu.LeftLimit = () => natural.xMin + natural.width * 0.9f;   // far too narrow: not below MinLimitScale
+            TapColour();
+            Canvas.ForceUpdateCanvases();
+            Assert.AreEqual(ToolHoldMenu.MinLimitScale, WorldRect(Find("Colour menu")).width / natural.width, 0.01f,
+                "never below MinLimitScale");
+            Menu.Close();
+            Menu.LeftLimit = () => float.NaN;
+            TapColour();
+            Canvas.ForceUpdateCanvases();
+            Assert.AreEqual(natural.width, WorldRect(Find("Colour menu")).width, 0.5f, "NaN: no limit");
+        }
+
+        [Test]
+        public void ThePaletteStaysRightOfARealLayerSidebar()
+        {
+            var sidebar = _go.AddComponent<LayerSidebar>();
+            Call(sidebar, "Awake");
+            Call(sidebar, "Start");
+            Canvas.ForceUpdateCanvases();
+            Assert.IsTrue(sidebar.TryGetPillWorldRect(out Rect pill), "the pill is shown (board placed)");
+            TapColour();
+            Canvas.ForceUpdateCanvases();
+            Rect palette = WorldRect(Find("Colour menu"));
+            Assert.GreaterOrEqual(palette.xMin, pill.xMax, $"palette {palette} right of the sidebar pill {pill}");
+        }
+
         /// <summary>
         /// The layout by the spec formula (ToolBar.ApplySafeArea, PlaceActionBar, ToolHoldMenu.Open) in screen px for a
         /// w x h screen: the column, the Colour button's centre, the palette and the action bar.
@@ -442,7 +504,10 @@ namespace GeoART.Tests.Verifier
             float fromTop = before * ButtonH + (before - 1) * Spacing + GroupGap + ButtonH * 0.5f;
             float colourY = column.yMax - fromTop * s;
             float right = column.xMin - RowGap * s;
-            palette = Rect.MinMaxRect(right - PaletteW * s, colourY - PaletteH * s * 0.5f, right, colourY + PaletteH * s * 0.5f);
+            // Kept right of the layer sidebar's pill: shrunk when the space is narrower (21:9), not below 0.6 of the fit.
+            float limit = safe.xMin + (SidebarRight + SidebarGap) * scale;
+            float ps = Mathf.Max(s * ToolHoldMenu.MinLimitScale, Mathf.Min(s, (right - limit) / PaletteW));
+            palette = Rect.MinMaxRect(right - PaletteW * ps, colourY - PaletteH * ps * 0.5f, right, colourY + PaletteH * ps * 0.5f);
 
             float barLeft = safe.xMin + margin, barRight = safe.xMax - (EdgeMargin + ButtonW * fit + EdgeMargin) * scale;
             float barFit = Mathf.Clamp((barRight - barLeft) / (BarWidth * scale), MinFit, 1f);
@@ -452,29 +517,32 @@ namespace GeoART.Tests.Verifier
         }
 
         [Test]
-        public void SpecLayoutFitsThe390x844ReferenceAnIPhone14AndAnIPhone14ProMax()
+        public void SpecLayoutFitsThe390x844ReferenceIPhonesAndNarrowAndroids()
         {
             var phones = new[]
             {
                 ("390x844 reference", 390f, 844f, 0f, 0f, 1f),
                 ("iPhone 14 (1170x2532)", 1170f, 2532f, 34f, 47f, 0.968f),
                 ("iPhone 14 Pro Max (1290x2796)", 1290f, 2796f, 31f, 54f, 0.975f),
+                ("Pixel 7 (1080x2400)", 1080f, 2400f, 0f, 0f, -1f),
+                ("21:9 Android (1080x2520)", 1080f, 2520f, 0f, 0f, -1f),
             };
             foreach (var (name, w, h, insetBottom, insetTop, wantFit) in phones)
             {
                 float s = ScreenSnapMetric.ScaleFactor(w, h);
                 var safe = Rect.MinMaxRect(0f, insetBottom * s, w, h - insetTop * s);
                 SpecLayout(w, h, safe, out float fit, out Rect column, out Rect palette, out Rect bar);
-                if (!ToolBar.FillEnabled) Assert.AreEqual(wantFit, fit, 0.006f, $"{name}: column fit (minimal shrink)");
+                if (!ToolBar.FillEnabled && wantFit > 0f) Assert.AreEqual(wantFit, fit, 0.006f, $"{name}: column fit (minimal shrink)");
                 Assert.GreaterOrEqual(fit, 0.95f, $"{name}: the column shrinks only a little");
                 Assert.GreaterOrEqual(column.yMin, safe.yMin + PlacementRowTop * h, $"{name}: column above the placement row");
                 Assert.LessOrEqual(column.yMax, CoachTextBottom * h, $"{name}: column below the coach text");
-                Assert.GreaterOrEqual(palette.xMin, SidebarRight * s, $"{name}: palette {palette} right of the layer sidebar");
+                Assert.GreaterOrEqual(palette.xMin, (SidebarRight + SidebarGap) * s - 0.01f, $"{name}: palette {palette} right of the layer sidebar");
+                Assert.GreaterOrEqual(palette.height / (PaletteH * s), 0.9f, $"{name}: palette shrunk at most a little");
                 Assert.IsTrue(palette.yMin > safe.yMin && palette.yMax < safe.yMax, $"{name}: palette inside the safe area");
                 Assert.Less(palette.xMax, column.xMin, $"{name}: palette left of the column");
                 Assert.Greater(palette.yMin, bar.yMax, $"{name}: palette {palette} above the action bar {bar}");
                 Assert.Less(bar.xMax, column.xMin, $"{name}: the action bar still clears the column");
-                Assert.AreEqual(1f, bar.width / (BarWidth * s), 0.01f, $"{name}: the action bar is not shrunk");
+                if (wantFit > 0f) Assert.AreEqual(1f, bar.width / (BarWidth * s), 0.01f, $"{name}: the action bar is not shrunk");
                 // The Undo/Redo row: top-left, two buttons; the palette stays below it.
                 float undoBottom = safe.yMax - (EdgeMargin + ButtonH * fit) * s;
                 Assert.Less(palette.yMax, undoBottom, $"{name}: palette below Undo/Redo");
