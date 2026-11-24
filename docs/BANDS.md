@@ -24,7 +24,7 @@ Double, stripped, Interlace with Flip weave, inner lines, and the under band's s
    - **Structure line**: on = the book's bold line inside the band; off = the "stripped" view,
    - **Outline**: sets the band outline colour to the current colour (the swatch shows it),
    - **Inner lines**: a second pair of lines inside each band (book p23 bottom). Turning them on raises the band to at
-     least **10 mm** on this board in the same undo step, so the inner lines show and stay 2 mm clear of a Medium
+     least **10 mm** (times the stroke scale, like the inner-line limits) in the same undo step, so the inner lines show and stay 2 mm clear of a Medium
      structure line,
    - **Flip weave** (Interlace only; dimmed otherwise, the setting is remembered): swaps every over and under,
    - a note: amber "Bands this wide make the shapes small." above 75% of the largest safe width, red "Too wide: the bands
@@ -172,6 +172,9 @@ Known limits and decisions (v1):
   the shader keeps every stroke at least 1.5 px wide, so no stroke width or colour change can separate them there. A
   per-frame fade of the inner lines with distance (inner runs on their own mesh with a distance uniform) is the real fix
   and is deferred; a level of detail chosen only when the mesh is rebuilt would go stale as the user walks.
+- Structure cut, wider than an edge: when the band is wider than the under half-edge is long and the line continues in a
+  separate input that only touches it end to end, only the first input is cut. This needs a width at or past the safe
+  limit, where the popup is already red.
 - Fill (P6) on a banded layer: in flat Double and in the stripped view the crossing squares are open, so all the band
   strips form one connected region and a tap on any strip fills the whole band lattice (the book's geometry). In
   Interlace each band piece between two crossings is its own region. Stars, octagons and the gaps are separate regions
