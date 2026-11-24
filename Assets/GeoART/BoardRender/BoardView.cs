@@ -268,9 +268,10 @@ namespace GeoART.BoardRender
             _overlayDirty = true;
             if ((kind & (BoardChangeKind.Grid | BoardChangeKind.Reset)) != 0) _baseDirty = true;
             if ((kind & (BoardChangeKind.Shapes | BoardChangeKind.Reset | BoardChangeKind.History)) != 0) _bandCache.MarkTopologyDirty();
-            const BoardChangeKind fillKinds = BoardChangeKind.Shapes | BoardChangeKind.Layers | BoardChangeKind.Fills
-                                            | BoardChangeKind.Reset | BoardChangeKind.History;
+            const BoardChangeKind fillKinds = BoardChangeKind.Shapes | BoardChangeKind.Fills | BoardChangeKind.Reset
+                                            | BoardChangeKind.History;
             if ((kind & fillKinds) != 0) _fillCache.MarkDirty();
+            else if ((kind & BoardChangeKind.Layers) != 0) _fillCache.MarkStale();   // band width drags: rebuilt a moment later
         }
 
         void OnPreviewChanged() => _overlayDirty = true;
@@ -296,6 +297,7 @@ namespace GeoART.BoardRender
                 _lastGridKind = gridKind;
                 _baseDirty = false;
             }
+            if (_fillCache.StaleDue(Clock())) _shapesDirty = true;   // a deferred fill rebuild is due
             if (_shapesDirty) { RebuildShapes(board); _shapesDirty = false; }
             if (_selectionDirty) { RebuildSelection(board); _selectionDirty = false; }
             if (_candidatesDirty) { RebuildCandidates(); _candidatesDirty = false; }
@@ -401,7 +403,7 @@ namespace GeoART.BoardRender
                     if (opacity <= 0f) continue;
                     // Fills first: under the layer's bands and strokes (one mesh, so layer order is kept).
                     if (layer.Fills.Count > 0)
-                        foreach (var piece in _fillCache.Get(layer))
+                        foreach (var piece in _fillCache.Get(layer, Clock()))
                         {
                             _poly.Clear();
                             foreach (var p in piece.Triangles) _poly.Add(P(p, ShapesLift));
