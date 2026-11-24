@@ -33,8 +33,9 @@ divisions...), and tapping two points connects them with a line. An H/V lock kee
      structure line is highlighted in colour or weight, as in the book (p22).
    **Snap** (orange = on, the default) is at the bottom of the tool bar; **hold Snap** for the **H/V** lock chip (the Snap
    label reads "H/V" while the lock is on); see `docs/SNAPPING.md`. H/V had its own button until the **Fill** tool
-   (paint bucket, fourth button) needed the slot: the column stays at 9 buttons, [Line, Circle, Select, Fill] [Bands,
-   Width] [Square, 2x2] [Snap]. Fill: `docs/FILL.md`.
+   (paint bucket) needed the slot. Fill is **switched off for now** (`ToolBar.FillEnabled`, known issue in
+   `docs/FILL.md`), so the column has 8 buttons: [Line, Circle, Select] [Bands, Width] [Square, 2x2] [Snap]; with Fill on
+   it goes after Select. Suggestions for later work: `docs/FUTURE_WORK.md`.
 5. Shapes go into the active layer (the one selected in the left sidebar). If that layer is hidden, nothing is drawn and a
    toast says "Layer is hidden: double-tap it in the sidebar to show it".
 

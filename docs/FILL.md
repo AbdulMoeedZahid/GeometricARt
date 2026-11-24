@@ -3,6 +3,12 @@
 Book p23: "the individual forms ... can be elaborately decorated with patterns and colour". The **Fill** tool colours a
 closed region of the active layer.
 
+**Status: switched off for now.** `ToolBar.FillEnabled` is `false`: the tool column has no Fill button (8 buttons) and
+the colour bar never shows "No fill", because of the triangulator issue below. Everything else stays: the engine's Fill
+tool, `Layer.Fills`, saving and loading, and drawing. Fills saved by an earlier build still load, draw and survive a
+re-save. To turn Fill back on, fix the issue below and set `FillEnabled = true` (the column goes back to 9 buttons;
+the view tests follow the switch). Next steps: `docs/FUTURE_WORK.md`.
+
 ## Using it
 1. Tap **Fill** (paint bucket, fourth button in the tool column). A toast says "Fill: tap inside a closed shape".
 2. Pick a colour in the colour bar (any swatch, or the colour wheel's colour).
@@ -58,6 +64,26 @@ Consequences, by design:
   every 150 ms, so the previous fill is drawn during a drag and catches up right after it.
 - Cost: a banded 8-pointed star with two circles and two fills rebuilds its fills in about 10 ms in the editor; that is
   why width drags defer it.
+
+## Known issue: holes that share their rightmost x
+
+The triangulator (`Engine/Geometry/Triangulator.cs`) can produce **overlapping triangles** when two or more holes of a
+region have the same rightmost x. The fill then paints more than the region: parts of the holes are covered.
+
+- **Repro**: a square from (0.1, 0.1) to (0.9, 0.9) with two stacked square holes, (0.15, 0.15)-(0.21, 0.21) and
+  (0.15, 0.30)-(0.21, 0.36). The triangles add up to 0.7003 against the region's 0.6328. Grids of 2x2, 3x3 and 4x4
+  holes fail the same way. A realistic case: four stars in a 2x2 grid inside a square; filling the background gives
+  triangles totalling 0.947 against 0.599 (39% of the star interiors are painted).
+- **Suspected cause**: `Triangulator.Bridge`. The ray from a hole's rightmost vertex hits a vertical outer edge whose
+  two ends share the same x, and the tie picks the far corner. Several holes then bridge to the same outer vertex;
+  later holes are spliced into the wrong copy of that duplicated vertex, the bridges cross, and ear clipping makes
+  overlapping triangles. The existing checks pass only because their holes have distinct x.
+- **Suggested fix**: the standard Eberly hole bridging: from the ray's hit point take the candidate vertex, check the
+  reflex vertices inside the triangle (hole vertex, hit point, candidate) and keep the one with the smallest angle to
+  the ray, and when the chosen vertex appears more than once in the polygon (an earlier bridge), pick the copy whose
+  wedge contains the bridge direction. A simpler alternative is to bridge to the hit point itself (insert it into the
+  outer loop). Then add a fuzz check (random non-overlapping holes in random polygons: the triangles' area equals the
+  region's area and no two triangles overlap) and bring in the tester's `VerifierFillChecks` and `VerifierFillViewTests`.
 
 ## Checks
 `tools/enginecheck/FillChecks.cs` (regions, frame rule, star and tiled faces, holes, circles closed by lines, band lattice
