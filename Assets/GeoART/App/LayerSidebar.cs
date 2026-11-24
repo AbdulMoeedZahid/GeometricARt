@@ -47,6 +47,8 @@ namespace GeoART.App
         public const string BandsTooWideNote = "Too wide: the bands overlap. Make them narrower.";
         public const string BandsWideNote = "Bands this wide make the shapes small.";
         public const string CirclesNotBandedNote = "Circles are not banded.";
+        public const string InnerTooNarrowNote = "Inner lines need a wider band.";
+        public static string ConflictsNote(int n) => n == 1 ? "1 crossing can't alternate." : n + " crossings can't alternate.";
         static readonly Color NoteGrey = new Color(1f, 1f, 1f, 0.6f);
         static readonly Color NoteAmber = new Color(1f, 0.75f, 0.2f, 1f);
         static readonly Color NoteRed = new Color(1f, 0.35f, 0.3f, 1f);
@@ -91,6 +93,9 @@ namespace GeoART.App
         int _safeCrossings;
         double _safeAtWidth = double.NaN;   // the width SelfIntersections was counted at
         EntityId _safetyLayer;
+        LayerBands _safeBands;              // the settings the safety numbers were computed for
+        int _safeConflicts;                 // BandGraph.WeaveConflicts (topology only)
+        bool _safeInnerShown;
         readonly List<Row> _rows = new List<Row>();          // pool; index = relay tag
         Rect _safeArea;
         int _screenW, _screenH;   // ApplySafeArea depends on the screen size too, not just the safe area
@@ -542,17 +547,25 @@ namespace GeoART.App
             SetChip(_structureChip, !b.HideStructure);
             SetChip(_innerChip, b.InnerLines);
             SetChip(_flipChip, b.FlipWeave);
+            SetEnabled(_flipChip, b.On && b.Mode == BandMode.Interlace);   // dimmed (not hidden) outside Interlace
             Color outline = new Color32(b.OutlineColor.R, b.OutlineColor.G, b.OutlineColor.B, 255);
             if (_outlineSwatch.color != outline) _outlineSwatch.color = outline;
             if (!Mathf.Approximately(_bandSlider.value, (float)b.Width)) _bandSlider.SetValueWithoutNotify((float)b.Width);
             _bandWidthText.text = (b.Width * BoardSideMeters() * 1000.0).ToString("0.0") + " mm";
 
-            if (_safetyDirty || _safetyLayer != layer.Id || (!_bandDragging && _safeAtWidth != b.Width)) ComputeSafety(layer, b);
+            LayerBands others = _safeBands;
+            others.Width = b.Width;
+            if (_safetyDirty || _safetyLayer != layer.Id || others != b || (!_bandDragging && _safeAtWidth != b.Width))
+                ComputeSafety(layer, b);
             string note = "";
             Color color = NoteGrey;
             bool crossings = _safeCrossings > 0 && _safeAtWidth == b.Width;   // stale while dragging: recounted on release
+            bool interlace = b.Mode == BandMode.Interlace;
+            // Priority: red, amber width, amber conflicts, then the grey notes.
             if (b.On && (b.Width >= _safeMax || crossings)) { note = BandsTooWideNote; color = NoteRed; }
             else if (b.On && b.Width > 0.75 * _safeMax) { note = BandsWideNote; color = NoteAmber; }
+            else if (b.On && interlace && _safeConflicts > 0) { note = ConflictsNote(_safeConflicts); color = NoteAmber; }
+            else if (b.On && b.InnerLines && !_safeInnerShown && _safeAtWidth == b.Width) note = InnerTooNarrowNote;
             else if (b.On && HasCircles(layer)) note = CirclesNotBandedNote;
             if (_bandNote.text != note) _bandNote.text = note;
             if (_bandNote.color != color) _bandNote.color = color;
@@ -567,10 +580,14 @@ namespace GeoART.App
             _safetyDirty = false;
             _safetyLayer = layer.Id;
             _safeAtWidth = b.Width;
+            _safeBands = b;
             var graph = GeoART.Engine.BandGraph.Build(layer.Shapes);
-            var outline = GeoART.Engine.BandOutline.Build(graph, new GeoART.Engine.BandOutlineOptions { Width = b.Width });
+            var options = GeoART.Engine.BandOutlineOptions.ForBoard(b, BoardSideMeters());   // the same formula BoardView draws with
+            var outline = GeoART.Engine.BandOutline.Build(graph, options);
             _safeMax = outline.MaxSafeWidth;
             _safeCrossings = outline.SelfIntersections;
+            _safeConflicts = graph.WeaveConflicts;
+            _safeInnerShown = outline.InnerShown;
         }
 
         static bool HasCircles(Layer layer)
@@ -613,6 +630,22 @@ namespace GeoART.App
 
         void OnBandWidth(float v) => EditBands(b => { b.Width = v; return b; });
         void OnStructureToggle() => EditBands(b => { b.HideStructure = !b.HideStructure; return b; });
+        void OnFlipToggle() => EditBands(b => { b.FlipWeave = !b.FlipWeave; return b; });
+
+        /// <summary>
+        /// Inner lines on/off. Turning them on raises the band to at least 10 mm on this board in the same step, so the
+        /// inner lines show and stay 2 mm clear of a Medium structure line (readable at arm's length in AR).
+        /// </summary>
+        void OnInnerToggle() => EditBands(b =>
+        {
+            b.InnerLines = !b.InnerLines;
+            if (b.InnerLines)
+            {
+                double min = GeoART.Engine.BandOutlineOptions.InnerLinesMinWidthMeters / BoardSideMeters();
+                if (b.Width < min) b.Width = System.Math.Min(min, LayerBands.MaxWidth);
+            }
+            return b;
+        });
         void OnOutlineColor() => EditBands(b => { b.OutlineColor = _session.Style.Color; return b; });
 
         void PlacePopup()
@@ -837,7 +870,6 @@ namespace GeoART.App
                 _modeChips[i] = ChipButton("Bands " + modes[i], modes[i], new Vector2(12f + i * w / 3f, y - 18f),
                     new Vector2(w / 3f - 4f, 30f), () => OnBandMode(mode));
             }
-            SetEnabled(_modeChips[2], false);   // Interlace is wired up with the weave work (P5)
 
             y -= 58f;
             Caption("WidthCaption", "Width", y);
@@ -863,10 +895,8 @@ namespace GeoART.App
                 new Vector2(16f, 16f));
 
             y -= 36f;
-            _innerChip = ChipButton("Inner lines", "Inner lines", new Vector2(12f, y), new Vector2(w * 0.49f, 30f), () => { });
-            _flipChip = ChipButton("Flip weave", "Flip weave", new Vector2(12f + w * 0.51f, y), new Vector2(w * 0.49f, 30f), () => { });
-            SetEnabled(_innerChip, false);   // with interlace (P5)
-            SetEnabled(_flipChip, false);
+            _innerChip = ChipButton("Inner lines", "Inner lines", new Vector2(12f, y), new Vector2(w * 0.49f, 30f), OnInnerToggle);
+            _flipChip = ChipButton("Flip weave", "Flip weave", new Vector2(12f + w * 0.51f, y), new Vector2(w * 0.49f, 30f), OnFlipToggle);
 
             y -= 38f;
             _bandNote = LayerUiKit.NewText("BandNote", _popup, 11, TextAnchor.UpperLeft, NoteGrey);
